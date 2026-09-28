@@ -1,0 +1,147 @@
+@model IPOInvestmentManagement.Models.User
+
+@{
+    ViewData["Title"] = "Register";
+}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+
+            <div class="card shadow">
+
+                <div class="card-header">
+                    <h3 class="text-center">Create Account</h3>
+                </div>
+
+                <div class="card-body">
+
+                    <form asp-controller="Account"
+                          asp-action="Register"
+                          method="post">
+
+                        <div asp-validation-summary="All"
+                             class="text-danger mb-3">
+                        </div>
+
+                        <!-- First Name -->
+                        <div class="mb-3">
+
+                            <label asp-for="First_name"
+                                   class="form-label">
+                            </label>
+
+                            <input asp-for="First_name"
+                                   class="form-control"
+                                   placeholder="Enter first name" />
+
+                            <span asp-validation-for="First_name"
+                                  class="text-danger">
+                            </span>
+
+                        </div>
+
+                        <!-- Last Name -->
+                        <div class="mb-3">
+
+                            <label asp-for="Last_name"
+                                   class="form-label">
+                            </label>
+
+                            <input asp-for="Last_name"
+                                   class="form-control"
+                                   placeholder="Enter last name" />
+
+                            <span asp-validation-for="Last_name"
+                                  class="text-danger">
+                            </span>
+
+                        </div>
+
+                        <!-- Email -->
+                        <div class="mb-3">
+
+                            <label asp-for="Email"
+                                   class="form-label">
+                            </label>
+
+                            <input asp-for="Email"
+                                   class="form-control"
+                                   placeholder="Enter email address" />
+
+                            <span asp-validation-for="Email"
+                                  class="text-danger">
+                            </span>
+
+                        </div>
+
+                        <!-- Password -->
+                        <div class="mb-3">
+
+                            <label asp-for="Password_hash"
+                                   class="form-label">
+                                Password
+                            </label>
+
+                            <input asp-for="Password_hash"
+                                   type="password"
+                                   class="form-control"
+                                   placeholder="Enter password" />
+
+                            <span asp-validation-for="Password_hash"
+                                  class="text-danger">
+                            </span>
+
+                        </div>
+
+                        <!-- Phone -->
+                        <div class="mb-3">
+
+                            <label asp-for="Phone"
+                                   class="form-label">
+                            </label>
+
+                            <input asp-for="Phone"
+                                   class="form-control"
+                                   placeholder="Enter phone number" />
+
+                            <span asp-validation-for="Phone"
+                                  class="text-danger">
+                            </span>
+
+                        </div>
+
+                        <!-- Register -->
+                        <div class="d-grid">
+
+                            <button type="submit"
+                                    class="btn btn-primary">
+                                Register
+                            </button>
+
+                        </div>
+
+                    </form>
+
+                    <hr />
+
+                    <div class="text-center">
+
+                        <p>
+                            Already have an account?
+
+                            <a asp-controller="Account"
+                               asp-action="Login">
+                                Login here
+                            </a>
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+</div>
