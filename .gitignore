@@ -1,0 +1,8 @@
+bin/
+obj/
+tmp-build/
+tmp-obj/
+IPOInvestmentManagement/tmp-build/
+IPOInvestmentManagement/tmp-obj/
+tmp-company-id-build/
+IPOInvestmentManagement/tmp-company-id-build/

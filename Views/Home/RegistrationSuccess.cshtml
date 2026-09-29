@@ -1,18 +1,43 @@
 @{
     ViewData["Title"] = "Registration Complete";
     var firstName = TempData["RegisteredFirstName"] as string;
+    var pendingMessage = TempData["RegistrationPending"] as string;
+    var isPendingCompany = !string.IsNullOrWhiteSpace(pendingMessage);
 }
 
 <div class="row justify-content-center mt-5">
     <div class="col-md-7 col-lg-6">
         <div class="card shadow-sm text-center">
             <div class="card-body p-5">
-                <div class="display-4 text-success mb-3" aria-hidden="true">&#10003;</div>
-                <h1 class="h2 mb-3">Account created successfully</h1>
+                <div class="display-4 @(isPendingCompany ? "text-warning" : "text-success") mb-3" aria-hidden="true">
+                    @if (isPendingCompany)
+                    {
+                        <span>&#8987;</span>
+                    }
+                    else
+                    {
+                        <span>&#10003;</span>
+                    }
+                </div>
+                <h1 class="h2 mb-3">@(isPendingCompany ? "Request submitted for approval" : "Account created successfully")</h1>
                 <p class="text-muted mb-4">
-                    @(string.IsNullOrWhiteSpace(firstName) ? "Your IPO Investment Management account is ready." : $"Welcome, {firstName}! Your IPO Investment Management account is ready.")
+                    @if (isPendingCompany)
+                    {
+                        @pendingMessage
+                    }
+                    else
+                    {
+                        @(string.IsNullOrWhiteSpace(firstName) ? "Your IPO Investment Management account is ready." : $"Welcome, {firstName}! Your IPO Investment Management account is ready.")
+                    }
                 </p>
-                <a class="btn btn-primary px-4" asp-controller="Account" asp-action="Login">Continue to login</a>
+                @if (isPendingCompany)
+                {
+                    <a class="btn btn-primary px-4" asp-controller="Home" asp-action="Index">Return to home</a>
+                }
+                else
+                {
+                    <a class="btn btn-primary px-4" asp-controller="Account" asp-action="Login">Continue to login</a>
+                }
             </div>
         </div>
     </div>

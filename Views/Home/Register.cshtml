@@ -111,6 +111,18 @@
 
                         </div>
 
+                        <!-- Role -->
+                        <div class="mb-3">
+                            <label asp-for="Role" class="form-label">Account type</label>
+                            <select asp-for="Role" class="form-select">
+                                <option value="">Select account type</option>
+                                <option value="Investor">Investor</option>
+                                <option value="Company">Company</option>
+                            </select>
+                            <div class="form-text">Company accounts require Admin approval before access is granted.</div>
+                            <span asp-validation-for="Role" class="text-danger"></span>
+                        </div>
+
                         <!-- Register -->
                         <div class="d-grid">
 

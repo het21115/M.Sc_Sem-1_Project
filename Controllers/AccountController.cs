@@ -48,6 +48,12 @@ namespace IPOInvestmentManagement.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Register(User user)
         {
+            string requestedRole = user.Role?.Trim() ?? string.Empty;
+            if (requestedRole != "Investor" && requestedRole != "Company")
+            {
+                ModelState.AddModelError("Role", "Please select Investor or Company.");
+            }
+
             if (!ModelState.IsValid)
             {
                 return View("~/Views/Home/Register.cshtml", user);
@@ -89,7 +95,7 @@ namespace IPOInvestmentManagement.Controllers
                 ModelState.AddModelError(
                     "",
                     _environment.IsDevelopment()
-                        ? $"Email delivery failed: {emailError}"
+                        ? $"OTP email delivery failed: {emailError} Check that SMTP username is the Gmail account that created the App Password, and that the App Password is current."
                         : "We could not send the verification email. Please try again later."
                 );
 
@@ -100,6 +106,7 @@ namespace IPOInvestmentManagement.Controllers
                 "PendingRegistration",
                 JsonSerializer.Serialize(user)
             );
+            HttpContext.Session.SetString("RegistrationRequestedRole", requestedRole);
             HttpContext.Session.SetString("RegistrationOtpHash", HashOtp(otp));
             HttpContext.Session.SetString(
                 "RegistrationOtpExpires",
@@ -121,6 +128,43 @@ namespace IPOInvestmentManagement.Controllers
             }
 
             return View("~/Views/Home/VerifyOtp.cshtml");
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ResendOtp()
+        {
+            string? pendingJson = HttpContext.Session.GetString("PendingRegistration");
+            if (pendingJson is null)
+            {
+                return RedirectToAction("Register");
+            }
+
+            User? user = JsonSerializer.Deserialize<User>(pendingJson);
+            if (user is null || string.IsNullOrWhiteSpace(user.Email))
+            {
+                return RedirectToAction("Register");
+            }
+
+            string otp = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+
+            try
+            {
+                await SendOtpEmailAsync(user.Email, user.First_name, otp);
+                HttpContext.Session.SetString("RegistrationOtpHash", HashOtp(otp));
+                HttpContext.Session.SetString(
+                    "RegistrationOtpExpires",
+                    DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString()
+                );
+                TempData["OtpMessage"] = $"A new verification code was sent to {user.Email}. Check your inbox and Spam folder.";
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "Could not resend registration OTP to {Email}.", user.Email);
+                TempData["OtpError"] = "We could not send a new code. Check the SMTP configuration and try again.";
+            }
+
+            return RedirectToAction("VerifyOtp");
         }
 
         // =========================
@@ -171,10 +215,31 @@ namespace IPOInvestmentManagement.Controllers
                 return View("~/Views/Home/VerifyOtp.cshtml");
             }
 
+            bool isCompanyRequest = HttpContext.Session.GetString("RegistrationRequestedRole") == "Company";
+
+            await using var transaction = await _context.Database.BeginTransactionAsync();
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
+            if (isCompanyRequest)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO [Companies]
+                    (User_id, Company_name, CIN, Industry, Description, Website, Email, Phone, Address, Approval_status, Created_at)
+                    VALUES
+                    ({user.User_id}, {user.First_name + " " + user.Last_name + " Company"}, {"PENDING-" + user.User_id}, {string.Empty}, {string.Empty}, {string.Empty}, {user.Email}, {user.Phone}, {string.Empty}, {"Pending"}, {DateTime.Now})
+                    """);
+            }
+
+            await transaction.CommitAsync();
+
+            if (isCompanyRequest)
+            {
+                TempData["RegistrationPending"] = "Your Company request was submitted. An Admin must approve it before you can log in.";
+            }
+
             HttpContext.Session.Remove("PendingRegistration");
+            HttpContext.Session.Remove("RegistrationRequestedRole");
             HttpContext.Session.Remove("RegistrationOtpHash");
             HttpContext.Session.Remove("RegistrationOtpExpires");
             TempData["RegisteredFirstName"] = user.First_name;
@@ -220,7 +285,9 @@ namespace IPOInvestmentManagement.Controllers
             {
                 EnableSsl = enableSsl,
                 UseDefaultCredentials = false,
-                Credentials = new NetworkCredential(username, password)
+                Credentials = new NetworkCredential(username, password),
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                Timeout = 15000
             };
 
             await smtpClient.SendMailAsync(message);
@@ -425,6 +492,20 @@ namespace IPOInvestmentManagement.Controllers
                 return View("~/Views/Home/Login.cshtml");
             }
 
+            bool hasPendingCompanyRequest = await _context.Companies.AnyAsync(company =>
+                company.User_id == user.User_id &&
+                company.Approval_status == "Pending");
+
+            if (hasPendingCompanyRequest)
+            {
+                ModelState.AddModelError(
+                    "",
+                    "Your Company request is pending Admin approval. You can log in after it is approved."
+                );
+
+                return View("~/Views/Home/Login.cshtml");
+            }
+
             // Store user information in session
             HttpContext.Session.SetInt32(
                 "User_id",
@@ -446,7 +527,7 @@ namespace IPOInvestmentManagement.Controllers
                 user.Role ?? "User"
             );
 
-            return RedirectToAction("Index", "Home");
+            return RedirectToAction("Index", "Dashboard");
         }
 
         // =========================

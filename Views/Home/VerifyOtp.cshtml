@@ -11,6 +11,16 @@
                     Enter the six-digit OTP sent to your email address. The code expires in 10 minutes.
                 </p>
 
+                @if (TempData["OtpMessage"] is string otpMessage)
+                {
+                    <div class="alert alert-success" role="alert">@otpMessage</div>
+                }
+
+                @if (TempData["OtpError"] is string otpError)
+                {
+                    <div class="alert alert-danger" role="alert">@otpError</div>
+                }
+
                 <form asp-controller="Account" asp-action="VerifyOtp" method="post">
                     <div asp-validation-summary="All" class="text-danger mb-3"></div>
 
@@ -20,6 +30,10 @@
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100">Verify and create account</button>
+                </form>
+
+                <form asp-controller="Account" asp-action="ResendOtp" method="post" class="mt-2">
+                    <button type="submit" class="btn btn-link w-100">Did not receive it? Resend OTP</button>
                 </form>
 
                 <p class="text-center mt-4 mb-0">

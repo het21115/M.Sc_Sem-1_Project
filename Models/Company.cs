@@ -11,6 +11,7 @@ namespace IPOInvestmentManagement.Models
     public class Company
     {
         [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int Company_id { get; set; }
 
         public int User_id { get; set; }

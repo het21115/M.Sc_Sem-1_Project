@@ -27,6 +27,10 @@ namespace IPOInvestmentManagement.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            modelBuilder.Entity<Company>()
+                .Property(company => company.Company_id)
+                .ValueGeneratedOnAdd();
+
             // Company → IPO
             modelBuilder.Entity<IPO>()
                 .HasOne<Company>()
