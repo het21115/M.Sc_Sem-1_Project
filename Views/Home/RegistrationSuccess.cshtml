@@ -5,40 +5,41 @@
     var isPendingCompany = !string.IsNullOrWhiteSpace(pendingMessage);
 }
 
-<div class="row justify-content-center mt-5">
-    <div class="col-md-7 col-lg-6">
-        <div class="card shadow-sm text-center">
-            <div class="card-body p-5">
-                <div class="display-4 @(isPendingCompany ? "text-warning" : "text-success") mb-3" aria-hidden="true">
-                    @if (isPendingCompany)
-                    {
-                        <span>&#8987;</span>
-                    }
-                    else
-                    {
-                        <span>&#10003;</span>
-                    }
-                </div>
-                <h1 class="h2 mb-3">@(isPendingCompany ? "Request submitted for approval" : "Account created successfully")</h1>
-                <p class="text-muted mb-4">
-                    @if (isPendingCompany)
-                    {
-                        @pendingMessage
-                    }
-                    else
-                    {
-                        @(string.IsNullOrWhiteSpace(firstName) ? "Your IPO Investment Management account is ready." : $"Welcome, {firstName}! Your IPO Investment Management account is ready.")
-                    }
-                </p>
-                @if (isPendingCompany)
-                {
-                    <a class="btn btn-primary px-4" asp-controller="Home" asp-action="Index">Return to home</a>
-                }
-                else
-                {
-                    <a class="btn btn-primary px-4" asp-controller="Account" asp-action="Login">Continue to login</a>
-                }
-            </div>
+<div class="registration-complete @(isPendingCompany ? "registration-complete-pending" : "registration-complete-ready")">
+    <div class="registration-complete-decoration" aria-hidden="true"><span></span><i></i></div>
+    <div class="registration-complete-content">
+        <p class="gateway-kicker"><span></span> @(isPendingCompany ? "Company account" : "Registration complete")</p>
+        <div class="registration-complete-icon" aria-hidden="true">
+            @if (isPendingCompany)
+            {
+                <span>&#8987;</span>
+            }
+            else
+            {
+                <span>&#10003;</span>
+            }
+        </div>
+        <p class="registration-complete-label">@(isPendingCompany ? "Next step / Admin review" : "Your account is ready")</p>
+        <h1>@(isPendingCompany ? "Request submitted for approval" : "Account created successfully")</h1>
+        <p class="registration-complete-message">
+            @if (isPendingCompany)
+            {
+                @pendingMessage
+            }
+            else
+            {
+                @(string.IsNullOrWhiteSpace(firstName) ? "Your IPO Investment Management account is ready." : $"Welcome, {firstName}! Your IPO Investment Management account is ready.")
+            }
+        </p>
+        <div class="registration-complete-action">
+            @if (isPendingCompany)
+            {
+                <a class="btn registration-submit" asp-controller="Home" asp-action="Index">Return to home <span aria-hidden="true">&rarr;</span></a>
+            }
+            else
+            {
+                <a class="btn registration-submit" asp-controller="Account" asp-action="Login">Continue to login <span aria-hidden="true">&rarr;</span></a>
+            }
         </div>
     </div>
 </div>

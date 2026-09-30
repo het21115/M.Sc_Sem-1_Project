@@ -1,0 +1,21 @@
+@{
+    ViewData["Title"] = "IPO Submission Pending";
+    var ipoName = TempData["SubmittedIpoName"] as string;
+}
+
+<div class="registration-complete registration-complete-pending ipo-submission-pending-page">
+    <div class="registration-complete-decoration" aria-hidden="true"><span></span><i></i></div>
+    <div class="registration-complete-content">
+        <p class="gateway-kicker"><span></span> IPO submission / Admin review</p>
+        <div class="registration-complete-icon" aria-hidden="true"><span>&#8987;</span></div>
+        <p class="registration-complete-label">Request submitted successfully</p>
+        <h1>Request for submitting an IPO is submitted.</h1>
+        <p class="registration-complete-message">
+            @(string.IsNullOrWhiteSpace(ipoName) ? "Your IPO request has been sent to Admin." : $"Your request for {ipoName} has been sent to Admin.")
+            Please wait for approval or confirmation. Your IPO will be published publicly only after Admin approval.
+        </p>
+        <div class="registration-complete-action">
+            <a class="btn registration-submit" asp-controller="Dashboard" asp-action="Index">Return to company dashboard <span aria-hidden="true">&rarr;</span></a>
+        </div>
+    </div>
+</div>

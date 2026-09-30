@@ -3,8 +3,114 @@
     ViewData["Title"] = "Company Dashboard";
 }
 
-<div class="dashboard-shell py-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4"><div><p class="text-uppercase text-primary fw-semibold small mb-1">Company workspace</p><h1 class="h2 mb-1">Welcome, @Model.UserName</h1><p class="text-muted mb-0">Manage your company profile and IPO pipeline.</p></div><a class="btn btn-outline-secondary" asp-controller="Account" asp-action="Logout">Sign out</a></div>
-    <div class="row g-3 mb-4"><div class="col-sm-6 col-xl-3"><div class="card dashboard-stat h-100"><div class="card-body"><span>Company profiles</span><strong>@Model.CompanyCount</strong><small>Profiles linked to your account</small></div></div></div><div class="col-sm-6 col-xl-3"><div class="card dashboard-stat h-100"><div class="card-body"><span>IPO offerings</span><strong>@Model.IpoCount</strong><small>Your submitted offerings</small></div></div></div><div class="col-sm-6 col-xl-3"><div class="card dashboard-stat h-100"><div class="card-body"><span>Company reviews</span><strong>@Model.PendingCompanyCount</strong><small>Profiles awaiting approval</small></div></div></div><div class="col-sm-6 col-xl-3"><div class="card dashboard-stat h-100"><div class="card-body"><span>IPO reviews</span><strong>@Model.PendingIpoCount</strong><small>Offerings awaiting approval</small></div></div></div></div>
-    <div class="row g-4"><div class="col-lg-5"><div class="card dashboard-card h-100"><div class="card-body p-4"><h2 class="h5 mb-3">Your company profiles</h2>@if (Model.Companies.Count == 0) { <p class="text-muted mb-0">No company profile is linked to this account yet.</p> } else { foreach (var company in Model.Companies) { <div class="company-row"><div><strong>@company.Company_name</strong><small>@(company.Industry ?? "Industry not specified")</small></div><span class="badge text-bg-light">@(company.Approval_status ?? "Pending")</span></div> } }</div></div></div><div class="col-lg-7"><div class="card dashboard-card h-100"><div class="card-body p-4"><h2 class="h5 mb-3">IPO pipeline</h2>@if (Model.CompanyIpos.Count == 0) { <p class="text-muted mb-0">Your IPO pipeline will appear here once an offering is created.</p> } else { <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Offering</th><th>Open date</th><th>Close date</th><th>Status</th></tr></thead><tbody>@foreach (var ipo in Model.CompanyIpos) { <tr><td class="fw-semibold">@ipo.IPO_name</td><td>@ipo.Open_date.ToString("dd MMM yyyy")</td><td>@ipo.Close_date.ToString("dd MMM yyyy")</td><td><span class="badge text-bg-light">@(ipo.Status ?? "Draft")</span></td></tr> }</tbody></table></div> }</div></div></div></div>
+<div class="dashboard-shell company-dashboard py-4">
+    <section class="company-hero mb-4">
+        <div class="company-hero-copy">
+            <p class="company-kicker mb-2"><span></span> Company workspace / live</p>
+            <p class="company-hero-welcome">Welcome back,</p>
+            <h1>@Model.UserName</h1>
+            <p>Shape your profile, monitor approvals, and move your next offering forward.</p>
+            <div class="company-hero-meta"><span><i></i> Account active</span><span>Management console</span></div>
+        </div>
+        <div class="company-hero-mark" aria-hidden="true"><span>IPO</span><strong>+</strong><small>HQ</small></div>
+        <a class="btn company-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&rarr;</span></a>
+    </section>
+
+    @if (TempData["CompanyMessage"] is string companyMessage)
+    {
+        <div class="alert company-dashboard-alert" role="alert">@companyMessage</div>
+    }
+
+    @if (ViewData.ModelState.ErrorCount > 0)
+    {
+        <div class="alert alert-danger company-dashboard-validation" role="alert">
+            Please correct the IPO submission details below before trying again.
+            <div asp-validation-summary="All" class="mb-0"></div>
+        </div>
+    }
+
+    <div class="company-detail-grid mb-4">
+        <details class="company-detail-panel company-detail-wide company-feature-section">
+            <summary class="company-feature-summary"><div><span class="company-section-label">01 / Portfolio</span><strong>My IPOs</strong><small>View every IPO submitted by your company.</small></div><span class="company-section-symbol" aria-hidden="true">01</span></summary>
+            @if (Model.CompanyIpoDetails.Count == 0) { <p class="company-empty">No IPOs have been submitted yet.</p> } else { foreach (var detail in Model.CompanyIpoDetails) { <div class="company-feature-row"><div><strong>@detail.Ipo.IPO_name</strong><small>@detail.Ipo.Open_date.ToString("dd MMM yyyy") &mdash; @detail.Ipo.Close_date.ToString("dd MMM yyyy")</small></div><span class="badge company-status">@(detail.Ipo.Status ?? "Pending")</span></div> } }
+        </details>
+
+        <details class="company-detail-panel company-detail-wide company-detail-coral company-feature-section">
+            <summary class="company-feature-summary"><div><span class="company-section-label">02 / Demand</span><strong>My IPO Applications</strong><small>See applications received for each company IPO.</small></div><span class="company-section-symbol company-section-symbol-coral" aria-hidden="true">02</span></summary>
+            @if (Model.CompanyIpoDetails.Count == 0) { <p class="company-empty">Applications will appear after an IPO is submitted.</p> } else { foreach (var detail in Model.CompanyIpoDetails) { <div class="company-feature-row"><div><strong>Applications received for @detail.Ipo.IPO_name</strong><small>Investor demand recorded for this offering</small></div><b class="company-feature-value">@detail.ApplicationCount</b></div> } }
+        </details>
+
+        <details class="company-detail-panel company-feature-section">
+            <summary class="company-feature-summary"><div><span class="company-section-label">03 / Performance</span><strong>My Financial Information</strong><small>Review Revenue, Profit, and Net Worth for every IPO.</small></div><span class="company-section-symbol company-section-symbol-gold" aria-hidden="true">03</span></summary>
+            @if (Model.CompanyIpoDetails.Count == 0) { <p class="company-empty">Financial information will appear with your IPO.</p> } else { foreach (var detail in Model.CompanyIpoDetails) { <div class="company-detail-block"><strong>@detail.Ipo.IPO_name</strong><small>FY @(detail.Financial?.Financial_year.ToString() ?? "Not available")</small><div class="company-value-grid"><span>Revenue <b>@(detail.Financial?.Revenue?.ToString("N2") ?? "Not available")</b></span><span>Profit <b>@(detail.Financial?.Profit?.ToString("N2") ?? "Not available")</b></span><span>Net Worth <b>@(detail.Financial?.Net_worth?.ToString("N2") ?? "Not available")</b></span></div></div> } }
+        </details>
+
+        <details class="company-detail-panel company-detail-teal company-feature-section">
+            <summary class="company-feature-summary"><div><span class="company-section-label">04 / Insight</span><strong>My IPO Analysis</strong><small>Review analysis and growth indicators for each IPO.</small></div><span class="company-section-symbol company-section-symbol-teal" aria-hidden="true">04</span></summary>
+            @if (Model.CompanyIpoDetails.Count == 0) { <p class="company-empty">Analysis will appear after your IPO is reviewed.</p> } else { foreach (var detail in Model.CompanyIpoDetails) { <div class="company-detail-block"><strong>Analysis of @detail.Ipo.IPO_name</strong>@if (detail.Analysis is null) { <small>Not available yet</small> } else { <small>@(detail.Analysis.Analysis_summary ?? "Analysis summary not available.")</small><div class="company-value-grid"><span>ROE <b>@(detail.Analysis.ROE?.ToString("N2") ?? "-")</b></span><span>Revenue growth <b>@(detail.Analysis.Revenue_growth?.ToString("N2") ?? "-")</b></span><span>Profit growth <b>@(detail.Analysis.Profit_growth?.ToString("N2") ?? "-")</b></span></div> }</div> } }
+        </details>
+
+        <details class="company-detail-panel company-detail-wide company-detail-listing company-feature-section">
+            <summary class="company-feature-summary"><div><span class="company-section-label">05 / Market debut</span><strong>My IPO Listing</strong><small>View issue price, exchange prices, gain, and listed date.</small></div><span class="company-section-symbol company-section-symbol-green" aria-hidden="true">05</span></summary>
+            @if (Model.CompanyIpoDetails.Count == 0) { <p class="company-empty">Listing information will appear after your IPO is listed.</p> } else { foreach (var detail in Model.CompanyIpoDetails) { <div class="company-detail-block"><strong>@detail.Ipo.IPO_name</strong>@if (detail.Listing is null) { <small>Not listed yet</small> } else { <div class="company-listing-grid"><span>Issue Price <b>@(detail.Listing.Issue_price?.ToString("N2") ?? "-")</b></span><span>NSE Listing Price <b>@(detail.Listing.NSE_listing_price?.ToString("N2") ?? "-")</b></span><span>BSE Listing Price <b>@(detail.Listing.BSE_listing_price?.ToString("N2") ?? "-")</b></span><span>Listing Gain <b>@(detail.Listing.Listing_gain_percentage?.ToString("N2") ?? "-")%</b></span><span>Listed Date <b>@(detail.Listing.Listing_date?.ToString("dd MMM yyyy") ?? "-")</b></span></div> }</div> } }
+        </details>
+    </div>
+
+    <details class="company-ipo-section mt-4" id="submit-ipo" open="@(ViewData.ModelState.ErrorCount > 0 ? "open" : null)">
+        <summary>
+            <div><span class="company-section-label">03 / New offering</span><strong>Submit an IPO</strong><small>Open the submission form and share your offering details with Admin.</small></div>
+            <span class="company-section-symbol company-section-symbol-gold" aria-hidden="true">+</span>
+        </summary>
+        <div class="company-ipo-form card company-panel">
+            <div class="card-body p-4 p-lg-5">
+            <p class="company-form-intro">Prepare the offering details below. Your submission will be marked Pending and sent to Admin for review.</p>
+
+            <form asp-controller="Dashboard" asp-action="SubmitIpo" method="post">
+                <div asp-validation-summary="All" class="text-danger mb-3"></div>
+                <div class="company-form-subheading"><span>01</span><h3>Offering details</h3></div>
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label asp-for="IpoSubmission.IpoName" class="form-label"></label>
+                        <input asp-for="IpoSubmission.IpoName" class="form-control" placeholder="Enter IPO name" />
+                        <span asp-validation-for="IpoSubmission.IpoName" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="IpoSubmission.TotalShares" class="form-label"></label>
+                        <input asp-for="IpoSubmission.TotalShares" class="form-control" placeholder="Enter total shares" />
+                        <small class="company-unit-help">Enter the total number of shares</small>
+                        <span asp-validation-for="IpoSubmission.TotalShares" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-3"><label asp-for="IpoSubmission.OpeningDate" class="form-label"></label><input asp-for="IpoSubmission.OpeningDate" class="form-control" /><span asp-validation-for="IpoSubmission.OpeningDate" class="text-danger"></span></div>
+                    <div class="col-md-3"><label asp-for="IpoSubmission.ClosingDate" class="form-label"></label><input asp-for="IpoSubmission.ClosingDate" class="form-control" /><span asp-validation-for="IpoSubmission.ClosingDate" class="text-danger"></span></div>
+                    <div class="col-md-3"><label asp-for="IpoSubmission.PriceMin" class="form-label"></label><div class="input-group"><span class="input-group-text">₹</span><input asp-for="IpoSubmission.PriceMin" class="form-control" placeholder="Min" /></div><span asp-validation-for="IpoSubmission.PriceMin" class="text-danger"></span></div>
+                    <div class="col-md-3"><label asp-for="IpoSubmission.PriceMax" class="form-label"></label><div class="input-group"><span class="input-group-text">₹</span><input asp-for="IpoSubmission.PriceMax" class="form-control" placeholder="Max" /></div><span asp-validation-for="IpoSubmission.PriceMax" class="text-danger"></span></div>
+                    <div class="col-md-4"><label asp-for="IpoSubmission.LotSize" class="form-label"></label><input asp-for="IpoSubmission.LotSize" class="form-control" placeholder="Shares per lot" /><small class="company-unit-help">Always entered as shares</small><span asp-validation-for="IpoSubmission.LotSize" class="text-danger"></span></div>
+                    <div class="col-md-4"><label asp-for="IpoSubmission.IssueSize" class="form-label"></label><div class="input-group"><span class="input-group-text">₹</span><input asp-for="IpoSubmission.IssueSize" class="form-control" placeholder="e.g. 25" /><select asp-for="IpoSubmission.IssueSizeUnit" class="form-select company-unit-select"><option>Thousands</option><option>Lakhs</option><option selected="selected">Crores</option></select></div><small class="company-unit-help">Enter amount with its scale</small><span asp-validation-for="IpoSubmission.IssueSize" class="text-danger"></span></div>
+                    <div class="col-12"><label asp-for="IpoSubmission.Description" class="form-label">Description</label><textarea asp-for="IpoSubmission.Description" class="form-control" rows="3" placeholder="Describe the offering and its purpose"></textarea><span asp-validation-for="IpoSubmission.Description" class="text-danger"></span></div>
+                </div>
+
+                <div class="company-form-subheading mt-4"><span>02</span><h3>Important dates</h3></div>
+                <div class="row g-3">
+                    <div class="col-md-4"><label asp-for="IpoSubmission.AllotmentDate" class="form-label"></label><input asp-for="IpoSubmission.AllotmentDate" class="form-control" /><span asp-validation-for="IpoSubmission.AllotmentDate" class="text-danger"></span></div>
+                    <div class="col-md-4"><label asp-for="IpoSubmission.FundsUnblockDate" class="form-label"></label><input asp-for="IpoSubmission.FundsUnblockDate" class="form-control" /><span asp-validation-for="IpoSubmission.FundsUnblockDate" class="text-danger"></span></div>
+                    <div class="col-md-4"><label asp-for="IpoSubmission.ListingDate" class="form-label"></label><input asp-for="IpoSubmission.ListingDate" class="form-control" /><span asp-validation-for="IpoSubmission.ListingDate" class="text-danger"></span></div>
+                </div>
+
+                <div class="company-form-subheading mt-4"><span>03</span><h3>Financial information</h3></div>
+                <div class="row g-3">
+                    <div class="col-md-3"><label asp-for="IpoSubmission.FinancialYear" class="form-label"></label><input asp-for="IpoSubmission.FinancialYear" class="form-control" placeholder="e.g. 2026" /><span asp-validation-for="IpoSubmission.FinancialYear" class="text-danger"></span></div>
+                    <div class="col-md-3"><label asp-for="IpoSubmission.Revenue" class="form-label"></label><div class="input-group"><span class="input-group-text">₹</span><input asp-for="IpoSubmission.Revenue" class="form-control" placeholder="e.g. 120" /><select asp-for="IpoSubmission.RevenueUnit" class="form-select company-unit-select"><option>Thousands</option><option>Lakhs</option><option selected="selected">Crores</option></select></div><span asp-validation-for="IpoSubmission.Revenue" class="text-danger"></span></div>
+                    <div class="col-md-3"><label asp-for="IpoSubmission.Profit" class="form-label"></label><div class="input-group"><span class="input-group-text">₹</span><input asp-for="IpoSubmission.Profit" class="form-control" placeholder="e.g. 18" /><select asp-for="IpoSubmission.ProfitUnit" class="form-select company-unit-select"><option>Thousands</option><option>Lakhs</option><option selected="selected">Crores</option></select></div><span asp-validation-for="IpoSubmission.Profit" class="text-danger"></span></div>
+                    <div class="col-md-3"><label asp-for="IpoSubmission.NetWorth" class="form-label"></label><div class="input-group"><span class="input-group-text">₹</span><input asp-for="IpoSubmission.NetWorth" class="form-control" placeholder="e.g. 250" /><select asp-for="IpoSubmission.NetWorthUnit" class="form-select company-unit-select"><option>Thousands</option><option>Lakhs</option><option selected="selected">Crores</option></select></div><span asp-validation-for="IpoSubmission.NetWorth" class="text-danger"></span></div>
+                </div>
+
+                <div class="d-flex justify-content-end mt-4"><button type="submit" class="btn registration-submit">Submit IPO for review <span aria-hidden="true">&rarr;</span></button></div>
+            </form>
+            </div>
+        </div>
+    </details>
 </div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

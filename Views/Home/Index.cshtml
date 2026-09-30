@@ -1,12 +1,24 @@
 ﻿@{
-    ViewData["Title"] = "Home Page";
+    ViewData["Title"] = "Welcome";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Manage your IPO research and investment decisions in one place.</p>
-    <p>
-        <a class="btn btn-primary" asp-controller="Account" asp-action="Register">Create account</a>
-        <a class="btn btn-outline-primary ms-2" asp-controller="Account" asp-action="Login">Sign in</a>
-    </p>
+<div class="welcome-gateway">
+    <div class="welcome-gateway-copy">
+        <div class="welcome-logo" aria-label="IPO Investment Management">
+            <span class="welcome-logo-mark" aria-hidden="true"><i></i><i></i><i></i><b></b></span>
+            <span class="welcome-logo-type"><strong>IPO</strong><small>Investment / Management</small></span>
+        </div>
+        <p class="gateway-kicker"><span></span> IPO Investment Management</p>
+        <h1>Make your next market move with clarity.</h1>
+        <p>Research opportunities, build confidence, and bring ambitious companies to the public market.</p>
+        <a class="welcome-login-button" asp-controller="Account" asp-action="Login"><span>Already have an account?</span> Sign in <b aria-hidden="true">&rarr;</b></a>
+    </div>
+    <div class="welcome-gateway-choice">
+        <p class="gateway-choice-label">Start here</p>
+        <h2>What brings you here?</h2>
+        <div class="welcome-choice-links">
+            <a asp-controller="Account" asp-action="RegisterInvestor"><span>Investor</span><small>Discover IPO opportunities</small><b aria-hidden="true">&rarr;</b></a>
+            <a asp-controller="Account" asp-action="RegisterCompany"><span>Company</span><small>Prepare your public offering</small><b aria-hidden="true">&rarr;</b></a>
+        </div>
+    </div>
 </div>

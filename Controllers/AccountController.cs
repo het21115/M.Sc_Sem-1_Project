@@ -38,7 +38,19 @@ namespace IPOInvestmentManagement.Controllers
         [HttpGet]
         public IActionResult Register()
         {
-            return View("~/Views/Home/Register.cshtml");
+            return View("~/Views/Home/RegisterChoice.cshtml");
+        }
+
+        [HttpGet]
+        public IActionResult RegisterInvestor()
+        {
+            return View("~/Views/Home/Register.cshtml", new User { Role = "Investor" });
+        }
+
+        [HttpGet]
+        public IActionResult RegisterCompany()
+        {
+            return View("~/Views/Home/RegisterCompany.cshtml");
         }
 
         // =========================
@@ -48,14 +60,11 @@ namespace IPOInvestmentManagement.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Register(User user)
         {
-            string requestedRole = user.Role?.Trim() ?? string.Empty;
-            if (requestedRole != "Investor" && requestedRole != "Company")
-            {
-                ModelState.AddModelError("Role", "Please select Investor or Company.");
-            }
+            const string requestedRole = "Investor";
 
             if (!ModelState.IsValid)
             {
+                user.Role = requestedRole;
                 return View("~/Views/Home/Register.cshtml", user);
             }
 
@@ -112,6 +121,75 @@ namespace IPOInvestmentManagement.Controllers
                 "RegistrationOtpExpires",
                 DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString()
             );
+
+            return RedirectToAction("VerifyOtp");
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> RegisterCompany(CompanyRegistrationViewModel registration)
+        {
+            if (!ModelState.IsValid)
+            {
+                return View("~/Views/Home/RegisterCompany.cshtml", registration);
+            }
+
+            bool emailExists = await _context.Users.AnyAsync(user => user.Email == registration.CompanyEmail);
+            if (emailExists)
+            {
+                ModelState.AddModelError(nameof(registration.CompanyEmail), "This email address is already registered.");
+                return View("~/Views/Home/RegisterCompany.cshtml", registration);
+            }
+
+            var user = new User
+            {
+                First_name = registration.CompanyName,
+                Last_name = "Account",
+                Email = registration.CompanyEmail,
+                Phone = registration.CompanyPhone,
+                Role = "Company",
+                Created_at = DateTime.Now,
+                Is_active = true
+            };
+            user.Password_hash = _passwordHasher.HashPassword(user, registration.Password);
+
+            string otp = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+            try
+            {
+                await SendOtpEmailAsync(user.Email, user.First_name, otp);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "Could not send company registration OTP to {Email}.", user.Email);
+                string emailError = exception.GetBaseException().Message;
+                ModelState.AddModelError(
+                    "",
+                    _environment.IsDevelopment()
+                        ? $"OTP email delivery failed: {emailError} Check that SMTP username is the Gmail account that created the App Password, and that the App Password is current."
+                        : "We could not send the verification email. Please try again later."
+                );
+                return View("~/Views/Home/RegisterCompany.cshtml", registration);
+            }
+
+            var company = new Company
+            {
+                Company_name = registration.CompanyName,
+                CIN = registration.CIN,
+                Industry = registration.Industry,
+                Description = registration.Description,
+                Website = registration.Website,
+                Email = registration.CompanyEmail,
+                Phone = registration.CompanyPhone,
+                Address = registration.Address,
+                Approval_status = "Pending",
+                Created_at = DateTime.Now
+            };
+
+            HttpContext.Session.SetString("PendingRegistration", JsonSerializer.Serialize(user));
+            HttpContext.Session.SetString("PendingCompanyRegistration", JsonSerializer.Serialize(company));
+            HttpContext.Session.SetString("RegistrationRequestedRole", "Company");
+            HttpContext.Session.SetString("RegistrationOtpHash", HashOtp(otp));
+            HttpContext.Session.SetString("RegistrationOtpExpires", DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString());
 
             return RedirectToAction("VerifyOtp");
         }
@@ -223,12 +301,18 @@ namespace IPOInvestmentManagement.Controllers
 
             if (isCompanyRequest)
             {
-                await _context.Database.ExecuteSqlInterpolatedAsync($"""
-                    INSERT INTO [Companies]
-                    (User_id, Company_name, CIN, Industry, Description, Website, Email, Phone, Address, Approval_status, Created_at)
-                    VALUES
-                    ({user.User_id}, {user.First_name + " " + user.Last_name + " Company"}, {"PENDING-" + user.User_id}, {string.Empty}, {string.Empty}, {string.Empty}, {user.Email}, {user.Phone}, {string.Empty}, {"Pending"}, {DateTime.Now})
-                    """);
+                string? companyJson = HttpContext.Session.GetString("PendingCompanyRegistration");
+                Company? company = companyJson is null ? null : JsonSerializer.Deserialize<Company>(companyJson);
+                if (company is null)
+                {
+                    await transaction.RollbackAsync();
+                    ModelState.AddModelError("", "Your company registration session is invalid. Please register again.");
+                    return View("~/Views/Home/VerifyOtp.cshtml");
+                }
+
+                company.User_id = user.User_id;
+                _context.Companies.Add(company);
+                await _context.SaveChangesAsync();
             }
 
             await transaction.CommitAsync();
@@ -239,6 +323,7 @@ namespace IPOInvestmentManagement.Controllers
             }
 
             HttpContext.Session.Remove("PendingRegistration");
+            HttpContext.Session.Remove("PendingCompanyRegistration");
             HttpContext.Session.Remove("RegistrationRequestedRole");
             HttpContext.Session.Remove("RegistrationOtpHash");
             HttpContext.Session.Remove("RegistrationOtpExpires");
@@ -492,17 +577,17 @@ namespace IPOInvestmentManagement.Controllers
                 return View("~/Views/Home/Login.cshtml");
             }
 
-            bool hasPendingCompanyRequest = await _context.Companies.AnyAsync(company =>
+            Company? companyRequest = await _context.Companies.FirstOrDefaultAsync(company =>
                 company.User_id == user.User_id &&
-                company.Approval_status == "Pending");
+                (company.Approval_status == "Pending" || company.Approval_status == "Denied"));
 
-            if (hasPendingCompanyRequest)
+            if (companyRequest is not null)
             {
-                ModelState.AddModelError(
-                    "",
-                    "Your Company request is pending Admin approval. You can log in after it is approved."
-                );
+                string requestMessage = string.Equals(companyRequest.Approval_status, "Denied", StringComparison.OrdinalIgnoreCase)
+                    ? "Your Company request was denied by Admin. Please contact the administrator for more information."
+                    : "Your Company request is pending Admin approval. You can log in after it is approved.";
 
+                ModelState.AddModelError("", requestMessage);
                 return View("~/Views/Home/Login.cshtml");
             }
 

@@ -30,8 +30,10 @@ namespace IPOInvestmentManagement.Models
         [Required]
         public DateTime Close_date { get; set; }
 
+        [Required]
         public DateTime? Allotment_date { get; set; }
 
+        [Required]
         public DateTime? Funds_unblock_date { get; set; }
 
         public DateTime? Listing_date { get; set; }

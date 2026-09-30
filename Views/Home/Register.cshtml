@@ -4,156 +4,87 @@
     ViewData["Title"] = "Register";
 }
 
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
+<div class="registration-form-shell">
+    <div class="registration-form-intro registration-form-intro-investor">
+        <p class="gateway-kicker"><span></span> Investor account</p>
+        <h1>Find your next market opportunity.</h1>
+        <p>Set up your investor profile to research IPOs, follow opportunities, and manage your investments.</p>
+    </div>
 
-            <div class="card shadow">
-
-                <div class="card-header">
-                    <h3 class="text-center">Create Account</h3>
-                </div>
-
-                <div class="card-body">
-
-                    <form asp-controller="Account"
-                          asp-action="Register"
-                          method="post">
-
-                        <div asp-validation-summary="All"
-                             class="text-danger mb-3">
-                        </div>
-
-                        <!-- First Name -->
-                        <div class="mb-3">
-
-                            <label asp-for="First_name"
-                                   class="form-label">
-                            </label>
-
-                            <input asp-for="First_name"
-                                   class="form-control"
-                                   placeholder="Enter first name" />
-
-                            <span asp-validation-for="First_name"
-                                  class="text-danger">
-                            </span>
-
-                        </div>
-
-                        <!-- Last Name -->
-                        <div class="mb-3">
-
-                            <label asp-for="Last_name"
-                                   class="form-label">
-                            </label>
-
-                            <input asp-for="Last_name"
-                                   class="form-control"
-                                   placeholder="Enter last name" />
-
-                            <span asp-validation-for="Last_name"
-                                  class="text-danger">
-                            </span>
-
-                        </div>
-
-                        <!-- Email -->
-                        <div class="mb-3">
-
-                            <label asp-for="Email"
-                                   class="form-label">
-                            </label>
-
-                            <input asp-for="Email"
-                                   class="form-control"
-                                   placeholder="Enter email address" />
-
-                            <span asp-validation-for="Email"
-                                  class="text-danger">
-                            </span>
-
-                        </div>
-
-                        <!-- Password -->
-                        <div class="mb-3">
-
-                            <label asp-for="Password_hash"
-                                   class="form-label">
-                                Password
-                            </label>
-
-                            <input asp-for="Password_hash"
-                                   type="password"
-                                   class="form-control"
-                                   placeholder="Enter password" />
-
-                            <span asp-validation-for="Password_hash"
-                                  class="text-danger">
-                            </span>
-
-                        </div>
-
-                        <!-- Phone -->
-                        <div class="mb-3">
-
-                            <label asp-for="Phone"
-                                   class="form-label">
-                            </label>
-
-                            <input asp-for="Phone"
-                                   class="form-control"
-                                   placeholder="Enter phone number" />
-
-                            <span asp-validation-for="Phone"
-                                  class="text-danger">
-                            </span>
-
-                        </div>
-
-                        <!-- Role -->
-                        <div class="mb-3">
-                            <label asp-for="Role" class="form-label">Account type</label>
-                            <select asp-for="Role" class="form-select">
-                                <option value="">Select account type</option>
-                                <option value="Investor">Investor</option>
-                                <option value="Company">Company</option>
-                            </select>
-                            <div class="form-text">Company accounts require Admin approval before access is granted.</div>
-                            <span asp-validation-for="Role" class="text-danger"></span>
-                        </div>
-
-                        <!-- Register -->
-                        <div class="d-grid">
-
-                            <button type="submit"
-                                    class="btn btn-primary">
-                                Register
-                            </button>
-
-                        </div>
-
-                    </form>
-
-                    <hr />
-
-                    <div class="text-center">
-
-                        <p>
-                            Already have an account?
-
-                            <a asp-controller="Account"
-                               asp-action="Login">
-                                Login here
-                            </a>
-                        </p>
-
-                    </div>
-
-                </div>
-
+    <div class="card registration-form-card">
+        <div class="card-body p-4 p-lg-5">
+            <div class="registration-form-heading">
+                <div><span class="form-overline">Investor registration</span><h2>Personal details</h2></div>
+                <span class="form-step">01 / 01</span>
             </div>
 
+            <form asp-controller="Account" asp-action="Register" method="post">
+
+                <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+                <div class="mb-3">
+
+                    <label asp-for="First_name" class="form-label"></label>
+
+                    <input asp-for="First_name" class="form-control" placeholder="Enter first name" />
+
+                    <span asp-validation-for="First_name" class="text-danger"></span>
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label asp-for="Last_name" class="form-label"></label>
+
+                    <input asp-for="Last_name" class="form-control" placeholder="Enter last name" />
+
+                    <span asp-validation-for="Last_name" class="text-danger"></span>
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label asp-for="Email" class="form-label"></label>
+
+                    <input asp-for="Email" class="form-control" placeholder="Enter email address" />
+
+                    <span asp-validation-for="Email" class="text-danger"></span>
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label asp-for="Password_hash" class="form-label">Password</label>
+
+                    <input asp-for="Password_hash" type="password" class="form-control" placeholder="Enter password" />
+
+                    <span asp-validation-for="Password_hash" class="text-danger"></span>
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label asp-for="Phone" class="form-label"></label>
+
+                    <input asp-for="Phone" class="form-control" placeholder="Enter phone number" />
+
+                    <span asp-validation-for="Phone" class="text-danger"></span>
+
+                </div>
+
+                <input asp-for="Role" type="hidden" value="Investor" />
+
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mt-4">
+                    <a class="registration-back-link" asp-controller="Account" asp-action="Register">&larr; Choose another account</a>
+                    <button type="submit" class="btn registration-submit">Continue to verification <span aria-hidden="true">&rarr;</span></button>
+                </div>
+            </form>
+
+            <p class="text-center mt-4 mb-0 registration-login-note">Already have an account? <a class="auth-inline-button" asp-controller="Account" asp-action="Login">Sign in</a></p>
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

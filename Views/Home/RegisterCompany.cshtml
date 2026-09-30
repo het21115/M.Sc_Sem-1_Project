@@ -1,0 +1,81 @@
+@model IPOInvestmentManagement.Models.CompanyRegistrationViewModel
+
+@{
+    ViewData["Title"] = "Company Registration";
+}
+
+<div class="registration-form-shell">
+    <div class="registration-form-intro registration-form-intro-company">
+        <p class="gateway-kicker"><span></span> Company account</p>
+        <h1>Bring your next offering to market.</h1>
+        <p>Tell us about your company. Your profile will be sent to an Admin for approval after email verification.</p>
+    </div>
+
+    <div class="card registration-form-card">
+        <div class="card-body p-4 p-lg-5">
+            <div class="registration-form-heading">
+                <div><span class="form-overline">Company registration</span><h2>Company details</h2></div>
+                <span class="form-step">01 / 01</span>
+            </div>
+
+            <form asp-controller="Account" asp-action="RegisterCompany" method="post">
+                <div asp-validation-summary="All" class="text-danger mb-3"></div>
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label asp-for="CompanyName" class="form-label"></label>
+                        <input asp-for="CompanyName" class="form-control" placeholder="Enter registered company name" />
+                        <span asp-validation-for="CompanyName" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="CIN" class="form-label"></label>
+                        <input asp-for="CIN" class="form-control" placeholder="Optional" />
+                        <span asp-validation-for="CIN" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-6">
+                        <label asp-for="Industry" class="form-label"></label>
+                        <input asp-for="Industry" class="form-control" placeholder="e.g. Technology" />
+                        <span asp-validation-for="Industry" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-6">
+                        <label asp-for="Website" class="form-label"></label>
+                        <input asp-for="Website" class="form-control" placeholder="https://example.com" />
+                        <span asp-validation-for="Website" class="text-danger"></span>
+                    </div>
+                    <div class="col-12">
+                        <label asp-for="Description" class="form-label"></label>
+                        <textarea asp-for="Description" class="form-control" rows="3" placeholder="Briefly describe your company"></textarea>
+                        <span asp-validation-for="Description" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-6">
+                        <label asp-for="CompanyEmail" class="form-label"></label>
+                        <input asp-for="CompanyEmail" class="form-control" autocomplete="email" placeholder="company@example.com" />
+                        <span asp-validation-for="CompanyEmail" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-6">
+                        <label asp-for="CompanyPhone" class="form-label"></label>
+                        <input asp-for="CompanyPhone" class="form-control" autocomplete="tel" placeholder="10-digit mobile number" />
+                        <span asp-validation-for="CompanyPhone" class="text-danger"></span>
+                    </div>
+                    <div class="col-12">
+                        <label asp-for="Address" class="form-label"></label>
+                        <textarea asp-for="Address" class="form-control" rows="2" placeholder="Registered office address"></textarea>
+                        <span asp-validation-for="Address" class="text-danger"></span>
+                    </div>
+                    <div class="col-12">
+                        <label asp-for="Password" class="form-label"></label>
+                        <input asp-for="Password" class="form-control" autocomplete="new-password" placeholder="Create a secure password" />
+                        <span asp-validation-for="Password" class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mt-4">
+                    <a class="registration-back-link" asp-controller="Account" asp-action="Register">&larr; Choose another account</a>
+                    <button type="submit" class="btn registration-submit">Continue to verification <span aria-hidden="true">&rarr;</span></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
