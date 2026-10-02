@@ -1,0 +1,39 @@
+@model IPOInvestmentManagement.Models.User
+@{
+    ViewData["Title"] = "User Details";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar"><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@(Context.Session.GetString("UserName") ?? "Admin")</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
+    <main class="admin-main">
+        <div class="admin-heading"><div><span class="admin-overline">04 / PEOPLE</span><h1>User information</h1><p>Review the account details for the selected user.</p></div><div class="admin-status"><i></i> Administrator access</div></div>
+        <section class="admin-user-details-card">
+            @if (TempData["AdminMessage"] is string adminMessage)
+            {
+                <div class="alert alert-info" role="alert">@adminMessage</div>
+            }
+            <div class="admin-section-head"><div><span class="admin-overline">ACCOUNT DETAILS</span><h2>@Model.First_name @Model.Last_name</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a></div>
+            <div class="admin-user-detail-grid">
+                <div><span>First name</span><strong>@Model.First_name</strong></div>
+                <div><span>Last name</span><strong>@Model.Last_name</strong></div>
+                <div><span>Email</span><strong>@Model.Email</strong></div>
+                <div><span>Phone</span><strong>@Model.Phone</strong></div>
+                <div><span>Role</span><strong>@(Model.Role ?? "User")</strong></div>
+                <div><span>Registered</span><strong>@Model.Created_at.ToString("dd MMM yyyy, hh:mm tt")</strong></div>
+                <div><span>Status</span><strong>@(Model.Is_active ? "Active" : "Inactive")</strong></div>
+                <div><span>User ID</span><strong>#@Model.User_id</strong></div>
+            </div>
+            @if (Model.Is_active)
+            {
+                <form class="admin-deactivate-form" asp-controller="Dashboard" asp-action="DeactivateUser" method="post">
+                    <input type="hidden" name="userId" value="@Model.User_id" />
+                    <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Deactivate this user account? The user will no longer be able to log in.');">Deactivate account</button>
+                </form>
+            }
+            else
+            {
+                <p class="admin-inactive-notice">This account is inactive and cannot be used to log in.</p>
+            }
+        </section>
+    </main>
+</div>

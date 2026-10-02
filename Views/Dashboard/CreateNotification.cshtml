@@ -1,0 +1,24 @@
+@model IPOInvestmentManagement.Models.CreateNotificationViewModel
+@{
+    ViewData["Title"] = "Create Notification";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar"><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@(Context.Session.GetString("UserName") ?? "Admin")</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
+    <main class="admin-main">
+        <div class="admin-heading"><div><span class="admin-overline">06 / COMMUNICATIONS</span><h1>Create notification</h1><p>Send a system notification to investors or company accounts.</p></div><div class="admin-status"><i></i> Administrator access</div></div>
+        @if (TempData["AdminMessage"] is string adminMessage) { <div class="alert alert-success mt-3" role="alert">@adminMessage</div> }
+        <section class="admin-notification-card">
+            <div class="admin-section-head"><div><span class="admin-overline">NEW SYSTEM MESSAGE</span><h2>Notification details</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a></div>
+            <form asp-controller="Dashboard" asp-action="CreateNotification" method="post">
+                <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+                <label class="admin-notification-field">Title<input asp-for="Title" placeholder="ABC IPO Approved" /><span asp-validation-for="Title" class="text-danger"></span></label>
+                <label class="admin-notification-field">Message<textarea asp-for="Message" rows="5" placeholder="ABC Limited IPO has been approved."></textarea><span asp-validation-for="Message" class="text-danger"></span></label>
+                <fieldset class="admin-recipient-options"><legend>Send to</legend><label><input asp-for="RecipientType" type="radio" value="Investors" /> All Investors</label><label><input asp-for="RecipientType" type="radio" value="Companies" /> All Companies</label><label><input asp-for="RecipientType" type="radio" value="User" /> Specific User</label><label><input asp-for="RecipientType" type="radio" value="Company" /> Specific Company</label></fieldset>
+                <label class="admin-notification-field">Specific user<select asp-for="UserId"><option value="">Select an investor or company user</option>@foreach (var user in Model.Investors.Concat(Model.Companies)) { <option value="@user.User_id">@user.First_name @user.Last_name - @user.Email</option> }</select><span asp-validation-for="UserId" class="text-danger"></span></label>
+                <label class="admin-notification-field">Specific company<select asp-for="CompanyId"><option value="">Select a company</option>@foreach (var company in Model.CompanyProfiles) { <option value="@company.Company_id">@company.Company_name</option> }</select><span asp-validation-for="CompanyId" class="text-danger"></span></label>
+                <button class="btn btn-primary" type="submit">Send notification</button>
+            </form>
+        </section>
+    </main>
+</div>

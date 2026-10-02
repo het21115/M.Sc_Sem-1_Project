@@ -15,6 +15,7 @@
         <div class="company-hero-mark" aria-hidden="true"><span>IPO</span><strong>+</strong><small>HQ</small></div>
         <a class="btn company-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&rarr;</span></a>
     </section>
+    @if (Model.Notifications.Count > 0) { <section class="user-notifications"><div class="company-section-head"><div><span class="company-overline">SYSTEM NOTIFICATIONS</span><h2>Updates for you</h2></div></div>@foreach (var notification in Model.Notifications) { <article><strong>@notification.Title</strong><p>@notification.Message</p><small>@notification.Created_at.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</small></article> }</section> }
 
     @if (TempData["CompanyMessage"] is string companyMessage)
     {

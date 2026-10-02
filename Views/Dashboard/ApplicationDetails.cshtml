@@ -1,0 +1,29 @@
+@model IPOInvestmentManagement.Models.AdminApplicationDetailsViewModel
+@{
+    ViewData["Title"] = "Application Details";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar"><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@(Context.Session.GetString("UserName") ?? "Admin")</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
+    <main class="admin-main">
+        <div class="admin-heading"><div><span class="admin-overline">APPLICATION DETAILS</span><h1>Application #@Model.Application.Application_id</h1><p>Review the investor's application and submitted order details.</p></div><div class="admin-status"><i></i> Administrator access</div></div>
+        @if (TempData["AdminMessage"] is string adminMessage) { <div class="alert alert-info mt-3" role="alert">@adminMessage</div> }
+        <section class="admin-user-details-card">
+            <div class="admin-section-head"><div><span class="admin-overline">SUBMISSION SUMMARY</span><h2>@(Model.Ipo?.IPO_name ?? "IPO")</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Applications">Back to applications</a></div>
+            <div class="admin-user-detail-grid">
+                <div><span>Investor</span><strong>@($"{Model.Investor?.First_name} {Model.Investor?.Last_name}".Trim())</strong></div>
+                <div><span>Email</span><strong>@(Model.Investor?.Email ?? "Not available")</strong></div>
+                <div><span>Phone</span><strong>@(Model.Investor?.Phone ?? "Not available")</strong></div>
+                <div><span>IPO</span><strong>@(Model.Ipo?.IPO_name ?? "Not available")</strong></div>
+                <div><span>Status</span><strong>@(Model.Application.Status ?? "Pending")</strong></div>
+                <div><span>Application date</span><strong>@Model.Application.Application_date.ToString("dd MMM yyyy, hh:mm tt")</strong></div>
+                <div><span>Applied lots</span><strong>@Model.Application.Applied_lots.ToString("N0")</strong></div>
+                <div><span>Applied shares</span><strong>@Model.Application.Applied_shares.ToString("N0")</strong></div>
+                <div><span>Application amount</span><strong>₹@((Model.Application.Application_amount ?? 0m).ToString("N2"))</strong></div>
+            </div>
+            <div class="company-request-actions admin-detail-actions">
+                @if (string.Equals(Model.Application.Status, "Pending", StringComparison.OrdinalIgnoreCase)) { <form asp-controller="Dashboard" asp-action="ApproveApplication" method="post"><input type="hidden" name="applicationId" value="@Model.Application.Application_id" /><button class="btn btn-success" type="submit">Approve application</button></form><form asp-controller="Dashboard" asp-action="DenyApplication" method="post"><input type="hidden" name="applicationId" value="@Model.Application.Application_id" /><button class="btn btn-outline-danger" type="submit" onclick="return confirm('Deny this investor application?');">Deny application</button></form> }
+            </div>
+        </section>
+    </main>
+</div>

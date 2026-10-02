@@ -9,6 +9,8 @@ namespace IPOInvestmentManagement.Models
         public int WatchlistCount { get; set; }
         public int InvestmentCount { get; set; }
         public int UserCount { get; set; }
+        public int ActiveIpoCount { get; set; }
+        public int ListedIpoCount { get; set; }
         public int CompanyCount { get; set; }
         public int IpoCount { get; set; }
         public int TotalCompanyIpoCount { get; set; }
@@ -28,10 +30,16 @@ namespace IPOInvestmentManagement.Models
         public List<Company> PendingCompanies { get; set; } = new();
         public List<IPO> PendingIpos { get; set; } = new();
         public List<User> RecentUsers { get; set; } = new();
+        public List<User> RecentInvestors { get; set; } = new();
+        public List<User> RecentCompanies { get; set; } = new();
         public List<IPOApplication> RecentApplications { get; set; } = new();
+        public List<IPOApplication> PendingApplications { get; set; } = new();
         public List<Investment> Investments { get; set; } = new();
+        public List<SystemNotification> Notifications { get; set; } = new();
         public Dictionary<int, string> CompanyNames { get; set; } = new();
         public Dictionary<int, string> PendingIpoCompanyNames { get; set; } = new();
+        public Dictionary<int, string> PendingApplicationIpoNames { get; set; } = new();
+        public Dictionary<int, string> PendingApplicationUserNames { get; set; } = new();
         public IpoSubmissionViewModel IpoSubmission { get; set; } = new();
     }
 }

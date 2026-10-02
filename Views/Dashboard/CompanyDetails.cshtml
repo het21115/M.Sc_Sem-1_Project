@@ -1,0 +1,46 @@
+@model IPOInvestmentManagement.Models.CompanyDetailsViewModel
+@{
+    ViewData["Title"] = "Company Registration Details";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar"><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@(Context.Session.GetString("UserName") ?? "Admin")</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
+    <main class="admin-main">
+        <div class="admin-heading"><div><span class="admin-overline">03 / COMPANY REQUESTS</span><h1>Company registration</h1><p>Review the submitted information before approving this company.</p></div><div class="admin-status"><i></i> Administrator access</div></div>
+        <section class="admin-user-details-card">
+            <div class="admin-section-head"><div><span class="admin-overline">REGISTRATION DETAILS</span><h2>@Model.Company.Company_name</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Index" asp-fragment="company-requests">Back to requests</a></div>
+            <div class="admin-user-detail-grid">
+                <div><span>Company</span><strong>@Model.Company.Company_name</strong></div>
+                <div><span>CIN</span><strong>@(Model.Company.CIN ?? "Not provided")</strong></div>
+                <div><span>Email</span><strong>@(Model.Company.Email ?? "Not provided")</strong></div>
+                <div><span>Phone</span><strong>@(Model.Company.Phone ?? "Not provided")</strong></div>
+                <div><span>Industry</span><strong>@(Model.Company.Industry ?? "Not provided")</strong></div>
+                <div><span>Status</span><strong>@(Model.Company.Approval_status ?? "Pending")</strong></div>
+                <div><span>Submitted</span><strong>@Model.Company.Created_at.ToString("dd MMM yyyy, hh:mm tt")</strong></div>
+                <div><span>Address</span><strong>@(Model.Company.Address ?? "Not provided")</strong></div>
+                <div><span>Website</span><strong>@(Model.Company.Website ?? "Not provided")</strong></div>
+            </div>
+            <div class="company-request-actions admin-detail-actions">
+                <form asp-controller="Dashboard" asp-action="ApproveCompany" method="post"><input type="hidden" name="companyId" value="@Model.Company.Company_id" /><button type="submit" class="btn btn-success">Approve</button></form>
+                <form asp-controller="Dashboard" asp-action="DenyCompany" method="post"><input type="hidden" name="companyId" value="@Model.Company.Company_id" /><button type="submit" class="btn btn-outline-danger" onclick="return confirm('Reject this Company registration request?');">Reject</button></form>
+            </div>
+        </section>
+        <section class="admin-user-details-card company-ipo-details">
+            <div class="admin-section-head"><div><span class="admin-overline">PUBLISHED OFFERINGS</span><h2>Company IPOs</h2></div><span class="admin-muted">@Model.Ipos.Count total</span></div>
+            @if (Model.Ipos.Count == 0)
+            {
+                <div class="admin-empty">This company has not published any IPOs.</div>
+            }
+            else
+            {
+                foreach (var ipo in Model.Ipos)
+                {
+                    <div class="company-ipo-row">
+                        <div><strong><a class="admin-ipo-link" asp-controller="Dashboard" asp-action="IpoDetails" asp-route-ipoId="@ipo.IPO_id">@ipo.IPO_name</a></strong><small>Submitted @ipo.Created_at.ToString("dd MMM yyyy") &middot; Open @ipo.Open_date.ToString("dd MMM yyyy") - @ipo.Close_date.ToString("dd MMM yyyy")</small></div>
+                        <div class="company-ipo-meta"><span class="company-ipo-status">@ipo.Status</span><b>₹@((ipo.Issue_size ?? 0).ToString("N2"))</b></div>
+                    </div>
+                }
+            }
+        </section>
+    </main>
+</div>

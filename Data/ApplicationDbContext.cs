@@ -22,6 +22,7 @@ namespace IPOInvestmentManagement.Data
         public DbSet<Investment> Investments { get; set; }
         public DbSet<InvestmentTransaction> InvestmentTransactions { get; set; }
         public DbSet<IPOWatchlist> IPOWatchlists { get; set; }
+        public DbSet<SystemNotification> SystemNotifications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

@@ -1,0 +1,40 @@
+@model IPOInvestmentManagement.Models.AdminIpoDetailsViewModel
+@{
+    ViewData["Title"] = "IPO Details";
+    string scheduleStatus = Model.Ipo.Listing_date.HasValue && Model.Ipo.Listing_date.Value.Date <= DateTime.UtcNow.Date
+        ? "Listed"
+        : DateTime.UtcNow.Date < Model.Ipo.Open_date.Date
+            ? "Scheduled"
+            : DateTime.UtcNow.Date <= Model.Ipo.Close_date.Date ? "Open period" : "Closed period";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar"><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@(Context.Session.GetString("UserName") ?? "Admin")</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
+    <main class="admin-main">
+        <div class="admin-heading"><div><span class="admin-overline">04 / IPO CONTROL</span><h1>@Model.Ipo.IPO_name</h1><p>View, publish, schedule, and manage this IPO offering.</p></div><div class="admin-status"><i></i> Administrator access</div></div>
+        @if (TempData["AdminMessage"] is string adminMessage) { <div class="alert alert-info mt-3" role="alert">@adminMessage</div> }
+        <section class="admin-user-details-card">
+            <div class="admin-section-head"><div><span class="admin-overline">IPO INFORMATION</span><h2>@Model.CompanyName</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Index" asp-fragment="ipo-requests">Back to IPO requests</a></div>
+            <div class="admin-user-detail-grid">
+                <div><span>IPO name</span><strong>@Model.Ipo.IPO_name</strong></div>
+                <div><span>Company</span><strong>@Model.CompanyName</strong></div>
+                <div><span>Status</span><strong>@(Model.Ipo.Status ?? "Pending")</strong></div>
+                <div><span>Schedule</span><strong>@scheduleStatus</strong></div>
+                <div><span>Opening date</span><strong>@Model.Ipo.Open_date.ToString("dd MMM yyyy")</strong></div>
+                <div><span>Closing date</span><strong>@Model.Ipo.Close_date.ToString("dd MMM yyyy")</strong></div>
+                <div><span>Allotment date</span><strong>@(Model.Ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "Not provided")</strong></div>
+                <div><span>Funds unblock date</span><strong>@(Model.Ipo.Funds_unblock_date?.ToString("dd MMM yyyy") ?? "Not provided")</strong></div>
+                <div><span>Listing date</span><strong>@(Model.Ipo.Listing_date?.ToString("dd MMM yyyy") ?? "Not provided")</strong></div>
+                <div><span>Issue size</span><strong>₹@((Model.Ipo.Issue_size ?? 0).ToString("N2"))</strong></div>
+                <div><span>Price range</span><strong>₹@(Model.Ipo.Price_min?.ToString("N2") ?? "-") - ₹@(Model.Ipo.Price_max?.ToString("N2") ?? "-")</strong></div>
+                <div><span>Submitted</span><strong>@Model.Ipo.Created_at.ToString("dd MMM yyyy, hh:mm tt")</strong></div>
+            </div>
+            <div class="company-request-actions admin-detail-actions">
+                @if (string.Equals(Model.Ipo.Status, "Pending", StringComparison.OrdinalIgnoreCase)) { <form asp-controller="Dashboard" asp-action="ApproveIpo" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><button class="btn btn-success" type="submit">Approve IPO</button></form> }
+                @if (string.Equals(Model.Ipo.Status, "Approved", StringComparison.OrdinalIgnoreCase)) { <form asp-controller="Dashboard" asp-action="PublishIpo" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><button class="btn btn-success" type="submit">Publish IPO</button></form> }
+                @if (!string.Equals(Model.Ipo.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(Model.Ipo.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)) { <form asp-controller="Dashboard" asp-action="DenyIpo" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><button class="btn btn-outline-danger" type="submit" onclick="return confirm('Reject this IPO?');">Reject IPO</button></form><form asp-controller="Dashboard" asp-action="CancelIpo" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><button class="btn btn-outline-secondary" type="submit" onclick="return confirm('Cancel this IPO?');">Cancel IPO</button></form> }
+            </div>
+            <form class="admin-status-form" asp-controller="Dashboard" asp-action="ChangeIpoStatus" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><label for="status">Change IPO status</label><select id="status" name="status"><option selected="@(Model.Ipo.Status == "Pending")">Pending</option><option selected="@(Model.Ipo.Status == "Approved")">Approved</option><option selected="@(Model.Ipo.Status == "Open")">Open</option><option selected="@(Model.Ipo.Status == "Closed")">Closed</option><option selected="@(Model.Ipo.Status == "Listed")">Listed</option><option selected="@(Model.Ipo.Status == "Rejected")">Rejected</option><option selected="@(Model.Ipo.Status == "Cancelled")">Cancelled</option></select><button class="btn btn-primary" type="submit">Update status</button></form>
+        </section>
+    </main>
+</div>

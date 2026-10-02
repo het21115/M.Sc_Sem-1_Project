@@ -1,0 +1,27 @@
+@model IPOInvestmentManagement.Models.AdminProfileViewModel
+@{
+    ViewData["Title"] = "Edit Admin Profile";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar"><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@(Context.Session.GetString("UserName") ?? "Admin")</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
+    <main class="admin-main">
+        <div class="admin-heading"><div><span class="admin-overline">08 / ADMINISTRATOR PROFILE</span><h1>Edit profile</h1><p>Update your administrator contact information.</p></div><div class="admin-status"><i></i> Administrator access</div></div>
+        <section class="admin-profile-card">
+            @if (TempData["AdminMessage"] is string adminMessage) { <div class="alert alert-success" role="alert">@adminMessage</div> }
+            <div class="admin-section-head"><div><span class="admin-overline">PROFILE INFORMATION</span><h2>Account details</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a></div>
+            <form asp-controller="Dashboard" asp-action="EditProfile" method="post">
+                <input asp-for="UserId" type="hidden" />
+                <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+                <div class="admin-profile-grid">
+                    <label>First name<input asp-for="FirstName" /><span asp-validation-for="FirstName" class="text-danger"></span></label>
+                    <label>Last name<input asp-for="LastName" /><span asp-validation-for="LastName" class="text-danger"></span></label>
+                    <label>Email<input asp-for="Email" type="email" /><span asp-validation-for="Email" class="text-danger"></span></label>
+                    <label>Phone<input asp-for="Phone" /><span asp-validation-for="Phone" class="text-danger"></span></label>
+                    <label>Role<input value="@Model.Role" readonly /></label>
+                </div>
+                <button class="btn btn-primary" type="submit">Save changes</button>
+            </form>
+        </section>
+    </main>
+</div>

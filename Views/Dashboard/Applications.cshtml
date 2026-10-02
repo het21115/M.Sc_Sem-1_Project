@@ -1,0 +1,32 @@
+@model IPOInvestmentManagement.Models.AdminApplicationsViewModel
+@{
+    ViewData["Title"] = "Applications";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar"><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@(Context.Session.GetString("UserName") ?? "Admin")</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
+    <main class="admin-main">
+        <div class="admin-heading"><div><span class="admin-overline">05 / APPLICATION CONTROL</span><h1>Investor applications</h1><p>Review applications, inspect investor details, and monitor demand by IPO.</p></div><div class="admin-status"><i></i> Administrator access</div></div>
+        @if (TempData["AdminMessage"] is string adminMessage) { <div class="alert alert-info mt-3" role="alert">@adminMessage</div> }
+        <section class="admin-application-stats">
+            <div><span>Total applications</span><strong>@Model.TotalApplications.ToString("N0")</strong><small>Matching the current filters</small></div>
+            <div><span>Total shares applied</span><strong>@Model.TotalSharesApplied.ToString("N0")</strong><small>Across selected applications</small></div>
+            <div><span>Total amount</span><strong>₹@((Model.TotalAmount / 10000000m).ToString("N2")) Crore</strong><small>Application value</small></div>
+        </section>
+        <section class="admin-application-panel">
+            <div class="admin-section-head"><div><span class="admin-overline">APPLICATION REGISTER</span><h2>All applications</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Index" asp-fragment="application-requests">Back to dashboard</a></div>
+            <form class="admin-application-filters" asp-controller="Dashboard" asp-action="Applications" method="get">
+                <label>Filter by IPO<select name="ipoId"><option value="">All IPOs</option>@foreach (var ipo in Model.AvailableIpos) { <option value="@ipo.IPO_id" selected="@(Model.SelectedIpoId == ipo.IPO_id)">@ipo.IPO_name</option> }</select></label>
+                <label>Filter by status<select name="status"><option value="">All statuses</option><option value="Pending" selected="@(Model.SelectedStatus == "Pending")">Pending</option><option value="Approved" selected="@(Model.SelectedStatus == "Approved")">Approved</option><option value="Rejected" selected="@(Model.SelectedStatus == "Rejected")">Rejected</option><option value="Cancelled" selected="@(Model.SelectedStatus == "Cancelled")">Cancelled</option></select></label>
+                <button class="btn btn-primary" type="submit">Apply filters</button><a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Applications">Clear</a>
+            </form>
+            @if (Model.Applications.Count == 0) { <div class="admin-empty">No applications match the selected filters.</div> } else {
+                <div class="admin-application-list">
+                    @foreach (var item in Model.Applications) {
+                        <div class="admin-application-row"><div><strong>@item.IpoName</strong><small>@item.InvestorName &middot; @item.InvestorEmail &middot; Applied @item.Application.Applied_shares.ToString("N0") shares on @item.Application.Application_date.ToString("dd MMM yyyy")</small></div><div class="admin-application-row-meta"><span class="admin-application-status">@item.Application.Status</span><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@item.Application.Application_id">View details</a></div></div>
+                    }
+                </div>
+            }
+        </section>
+    </main>
+</div>
