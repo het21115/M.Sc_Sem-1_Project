@@ -1,0 +1,38 @@
+@model IPOInvestmentManagement.Models.DashboardViewModel
+
+<div class="investor-live-market-card">
+    <div>
+        <span class="terminal-overline"><i></i> LIVE MARKET</span>
+        <strong>Track open IPOs in real time</strong>
+        <small>Current offerings, price ranges, lot sizes, and closing dates.</small>
+    </div>
+    <button type="button" class="btn investor-live-market-button" data-bs-toggle="modal" data-bs-target="#live-market-modal">View Live Market <span aria-hidden="true">&#8594;</span></button>
+</div>
+
+<div class="modal fade investor-modal" id="live-market-modal" tabindex="-1" aria-labelledby="live-market-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="live-market-modal-title"><span class="live-market-dot"></span>Live Market</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="investor-modal-intro">Open IPOs available for applications right now.</p>
+                @if (Model.MarketIpos.Count(ipo => Model.MarketStatuses.GetValueOrDefault(ipo.IPO_id, "Upcoming") == "Open") == 0)
+                {
+                    <div class="terminal-empty">There are no IPOs open for applications right now.</div>
+                }
+                else
+                {
+                    <div class="investor-live-market-list">
+                        @foreach (var ipo in Model.MarketIpos.Where(ipo => Model.MarketStatuses.GetValueOrDefault(ipo.IPO_id, "Upcoming") == "Open"))
+                        {
+                            <div class="investor-live-market-row"><div><strong>@ipo.IPO_name</strong><small>@Model.CompanyNames.GetValueOrDefault(ipo.Company_id, "Company") &middot; Lot size @ipo.Lot_size shares</small></div><span>₹@(ipo.Price_min?.ToString("N2") ?? "-") - ₹@(ipo.Price_max?.ToString("N2") ?? "-")</span><em>Closes @ipo.Close_date.ToString("dd MMM yyyy")</em></div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div>
+        </div>
+    </div>
+</div>

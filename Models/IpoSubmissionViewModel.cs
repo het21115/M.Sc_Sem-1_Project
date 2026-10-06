@@ -41,6 +41,11 @@ namespace IPOInvestmentManagement.Models
 
         [Required]
         [Range(typeof(decimal), "0.01", "79228162514264337593543950335")]
+        [Display(Name = "Minimum Investment")]
+        public decimal? MinimumInvestment { get; set; }
+
+        [Required]
+        [Range(typeof(decimal), "0.01", "79228162514264337593543950335")]
         [Display(Name = "Issue Size")]
         public decimal? IssueSize { get; set; }
 

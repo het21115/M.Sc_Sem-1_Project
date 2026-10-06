@@ -1,0 +1,43 @@
+@model IPOInvestmentManagement.Models.DashboardViewModel
+
+<div class="investor-market-launcher">
+    <div>
+        <span class="terminal-overline">02 / IPO MARKET</span>
+        <strong>Find your next IPO</strong>
+        <small>Search by status, type, or company.</small>
+    </div>
+    <button type="button" class="btn investor-market-launch-button" data-bs-toggle="modal" data-bs-target="#search-ipo-modal">Search IPO <span aria-hidden="true">&#8594;</span></button>
+</div>
+
+<div class="modal fade investor-modal" id="search-ipo-modal" tabindex="-1" aria-labelledby="search-ipo-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="search-ipo-modal-title">Search IPO</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form class="investor-market-filters" asp-controller="Dashboard" asp-action="Index" method="get">
+                    <label>Filter by status<select name="marketStatus"><option value="">All statuses</option>@foreach (var status in new[] { "Open", "Upcoming", "Closed", "Listed" }) { <option value="@status" selected="@(Model.MarketStatus == status)">@status</option> }</select></label>
+                    <label>IPO type<select name="marketIpoType"><option value="">All IPO types</option>@foreach (var type in Model.MarketIpoTypes) { <option value="@type" selected="@(Model.MarketIpoType == type)">@type</option> }</select></label>
+                    <label>Company<select name="marketCompany"><option value="">All companies</option>@foreach (var company in Model.MarketCompanies) { <option value="@company" selected="@(Model.MarketCompany == company)">@company</option> }</select></label>
+                    <button class="btn investor-market-submit" type="submit">Search IPO</button>
+                </form>
+                @if (Model.MarketIpos.Count == 0)
+                {
+                    <div class="terminal-empty">No IPOs match the selected filters.</div>
+                }
+                else
+                {
+                    <div class="investor-modal-list">
+                        @foreach (var ipo in Model.MarketIpos)
+                        {
+                            <div class="investor-modal-row" data-market-status="@Model.MarketStatuses.GetValueOrDefault(ipo.IPO_id, "Upcoming")"><div><strong>@ipo.IPO_name</strong><small>@Model.CompanyNames.GetValueOrDefault(ipo.Company_id, "Company") &middot; ₹@(ipo.Price_min?.ToString("N2") ?? "-") - ₹@(ipo.Price_max?.ToString("N2") ?? "-") &middot; @ipo.Open_date.ToString("dd MMM yyyy") - @ipo.Close_date.ToString("dd MMM yyyy")</small></div><em>@Model.MarketStatuses.GetValueOrDefault(ipo.IPO_id, "Upcoming")</em></div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div>
+        </div>
+    </div>
+</div>

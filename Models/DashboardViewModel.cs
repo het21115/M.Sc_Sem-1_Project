@@ -8,6 +8,8 @@ namespace IPOInvestmentManagement.Models
         public int ApplicationCount { get; set; }
         public int WatchlistCount { get; set; }
         public int InvestmentCount { get; set; }
+        public decimal InvestmentTotal { get; set; }
+        public decimal ProfitLoss { get; set; }
         public int UserCount { get; set; }
         public int ActiveIpoCount { get; set; }
         public int ListedIpoCount { get; set; }
@@ -23,12 +25,20 @@ namespace IPOInvestmentManagement.Models
         public int PendingApplicationCount { get; set; }
         public int PendingIpoCount { get; set; }
         public List<IPO> RecentIpos { get; set; } = new();
+        public List<IPO> MarketIpos { get; set; } = new();
+        public List<string> MarketIpoTypes { get; set; } = new();
+        public List<string> MarketCompanies { get; set; } = new();
+        public Dictionary<int, string> MarketStatuses { get; set; } = new();
+        public string? MarketStatus { get; set; }
+        public string? MarketIpoType { get; set; }
+        public string? MarketCompany { get; set; }
         public List<CompanyIpoDetailsViewModel> PublishedIpoDetails { get; set; } = new();
         public List<IPO> CompanyIpos { get; set; } = new();
         public List<CompanyIpoDetailsViewModel> CompanyIpoDetails { get; set; } = new();
         public List<Company> Companies { get; set; } = new();
         public List<Company> PendingCompanies { get; set; } = new();
         public List<IPO> PendingIpos { get; set; } = new();
+        public List<IPO> ApprovedIpos { get; set; } = new();
         public List<User> RecentUsers { get; set; } = new();
         public List<User> RecentInvestors { get; set; } = new();
         public List<User> RecentCompanies { get; set; } = new();
@@ -37,7 +47,10 @@ namespace IPOInvestmentManagement.Models
         public List<Investment> Investments { get; set; } = new();
         public List<SystemNotification> Notifications { get; set; } = new();
         public Dictionary<int, string> CompanyNames { get; set; } = new();
+        public Dictionary<int, string> ApplicationIpoNames { get; set; } = new();
+        public Dictionary<int, string> InvestmentIpoNames { get; set; } = new();
         public Dictionary<int, string> PendingIpoCompanyNames { get; set; } = new();
+        public Dictionary<int, string> ApprovedIpoCompanyNames { get; set; } = new();
         public Dictionary<int, string> PendingApplicationIpoNames { get; set; } = new();
         public Dictionary<int, string> PendingApplicationUserNames { get; set; } = new();
         public IpoSubmissionViewModel IpoSubmission { get; set; } = new();

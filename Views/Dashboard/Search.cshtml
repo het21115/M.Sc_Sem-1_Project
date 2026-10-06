@@ -4,7 +4,7 @@
 }
 
 <div class="admin-console">
-    <header class="admin-topbar"><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@(Context.Session.GetString("UserName") ?? "Admin")</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
+    <header class="admin-topbar"><button type="button" class="admin-back-button" data-admin-back="@Url.Action("Index", "Dashboard")" title="Go back">&#8592; Back</button><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@(Context.Session.GetString("UserName") ?? "Admin")</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
     <main class="admin-main">
         <div class="admin-heading"><div><span class="admin-overline">07 / SYSTEM SEARCH</span><h1>Search the platform</h1><p>Find users, IPO offerings, and company registrations from one workspace.</p></div><div class="admin-status"><i></i> Administrator access</div></div>
         <div class="admin-page-actions"><a class="admin-back-link" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a></div>

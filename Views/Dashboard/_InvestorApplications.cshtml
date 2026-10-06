@@ -1,0 +1,21 @@
+@model IPOInvestmentManagement.Models.DashboardViewModel
+
+@{
+    var openIpos = Model.PublishedIpoDetails
+        .Where(detail => string.Equals(detail.Ipo.Status, "Open", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+}
+@foreach (var detail in openIpos)
+{
+    <template class="investor-apply-template" data-ipo-name="@detail.Ipo.IPO_name">
+        @{ decimal minimumLotAmount = (detail.Ipo.Lot_size ?? 0) * (detail.Ipo.Price_min ?? 0m); }
+        <form class="investor-apply-row investor-bid-form" asp-controller="Dashboard" asp-action="ApplyIpo" method="post" data-lot-size="@detail.Ipo.Lot_size" data-price-min="@detail.Ipo.Price_min" data-price-max="@detail.Ipo.Price_max">
+            <input type="hidden" name="ipoId" value="@detail.Ipo.IPO_id" />
+            <div class="investor-bid-heading"><strong>@detail.Ipo.IPO_name</strong><small>Lot of @detail.Ipo.Lot_size shares &middot; Bid range ₹@(detail.Ipo.Price_min?.ToString("N2") ?? "-") - ₹@(detail.Ipo.Price_max?.ToString("N2") ?? "-") &middot; Closes @detail.Ipo.Close_date.ToString("dd MMM yyyy")</small></div>
+            <div class="investor-bid-controls"><label>Shares<div class="investor-stepper"><button type="button" data-lot-adjust="-1" aria-label="Decrease lots">−</button><input type="number" name="appliedLots" min="1" value="1" required /><button type="button" data-lot-adjust="1" aria-label="Increase lots">+</button></div></label><label>Bid price<input class="investor-bid-price" type="number" name="bidPrice" min="@detail.Ipo.Price_min" max="@detail.Ipo.Price_max" step="0.01" value="@detail.Ipo.Price_min" required /></label></div>
+            <div class="investor-bid-summary"><span>Shares applied <strong data-bid-shares>@detail.Ipo.Lot_size</strong></span><span>To be blocked <strong data-bid-total>₹@minimumLotAmount.ToString("N2")</strong></span></div>
+            <label class="investor-terms"><input type="checkbox" name="acceptTerms" value="true" required /> I accept the <strong>Terms &amp; Conditions</strong> and <strong>Privacy Policy</strong></label>
+            <button type="submit" class="btn investor-apply-button">Apply IPO</button>
+        </form>
+    </template>
+}

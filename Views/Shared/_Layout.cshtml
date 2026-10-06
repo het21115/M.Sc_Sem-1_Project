@@ -26,12 +26,15 @@
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link auth-nav-button auth-nav-login" asp-controller="Account" asp-action="Login">Sign in</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link auth-nav-button auth-nav-register" asp-controller="Account" asp-action="Register">Register</a>
-                        </li>
+                        @if (!string.Equals(ViewContext.RouteData.Values["controller"]?.ToString(), "Dashboard", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link auth-nav-button auth-nav-login" asp-controller="Account" asp-action="Login">Sign in</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link auth-nav-button auth-nav-register" asp-controller="Account" asp-action="Register">Register</a>
+                            </li>
+                        }
                     </ul>
                 </div>
             </div>

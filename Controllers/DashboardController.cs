@@ -19,7 +19,7 @@ namespace IPOInvestmentManagement.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(string? marketStatus, string? marketIpoType, string? marketCompany)
         {
             int? userId = HttpContext.Session.GetInt32("User_id");
             if (!userId.HasValue)
@@ -55,8 +55,75 @@ namespace IPOInvestmentManagement.Controllers
                 return View("Company", model);
             }
 
-            await LoadInvestorDashboardAsync(model, userId.Value);
+            await LoadInvestorDashboardAsync(model, userId.Value, marketStatus, marketIpoType, marketCompany);
             return View("Investor", model);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApplyIpo(int ipoId, int appliedLots, decimal bidPrice, bool acceptTerms)
+        {
+            int? userId = HttpContext.Session.GetInt32("User_id");
+            if (!userId.HasValue || !string.Equals(HttpContext.Session.GetString("UserRole"), "Investor", StringComparison.OrdinalIgnoreCase))
+            {
+                return Forbid();
+            }
+
+            IPO? ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(item => item.IPO_id == ipoId);
+            DateTime today = DateTime.UtcNow.Date;
+            if (ipo is null || !string.Equals(ipo.Status, "Open", StringComparison.OrdinalIgnoreCase) ||
+                ipo.Open_date.Date > today || ipo.Close_date.Date < today)
+            {
+                TempData["InvestorMessage"] = "This IPO is not currently open for applications.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            if (appliedLots <= 0 || !ipo.Lot_size.HasValue || ipo.Lot_size.Value <= 0)
+            {
+                TempData["InvestorMessage"] = "Enter a valid number of lots for this IPO.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            if (!acceptTerms)
+            {
+                TempData["InvestorMessage"] = "Accept the Terms and Conditions before applying.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            decimal minimumPrice = ipo.Price_min ?? 0m;
+            decimal maximumPrice = ipo.Price_max ?? minimumPrice;
+            if (bidPrice < minimumPrice || bidPrice > maximumPrice)
+            {
+                TempData["InvestorMessage"] = $"Bid price must be between ₹{minimumPrice:N2} and ₹{maximumPrice:N2}.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            bool alreadyApplied = await _context.IPOApplications.AnyAsync(application =>
+                application.User_id == userId.Value &&
+                application.IPO_id == ipoId &&
+                application.Status != "Rejected" &&
+                application.Status != "Cancelled");
+            if (alreadyApplied)
+            {
+                TempData["InvestorMessage"] = "You have already submitted an application for this IPO.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            int appliedShares = checked(appliedLots * ipo.Lot_size.Value);
+            decimal applicationAmount = appliedShares * bidPrice;
+            _context.IPOApplications.Add(new IPOApplication
+            {
+                User_id = userId.Value,
+                IPO_id = ipoId,
+                Applied_lots = appliedLots,
+                Applied_shares = appliedShares,
+                Application_amount = applicationAmount,
+                Application_date = DateTime.UtcNow,
+                Status = "Pending"
+            });
+            await _context.SaveChangesAsync();
+            TempData["InvestorMessage"] = $"Your application for {ipo.IPO_name} was submitted successfully.";
+            return RedirectToAction(nameof(Index));
         }
 
         [HttpGet]
@@ -580,17 +647,7 @@ namespace IPOInvestmentManagement.Controllers
             }
             ipo.Status = "Approved";
             await _context.SaveChangesAsync();
-            User? companyUser = await _context.Companies
-                .Where(company => company.Company_id == ipo.Company_id)
-                .Join(_context.Users, company => company.User_id, user => user.User_id, (_, user) => user)
-                .FirstOrDefaultAsync();
-            if (companyUser is not null)
-            {
-                await TrySendEventEmailAsync(
-                    companyUser,
-                    "IPO Approved",
-                    $"{ipo.IPO_name} has been approved and can now be published.");
-            }
+            await NotifyCompanyIpoApprovedAsync(ipo);
             TempData["AdminMessage"] = $"{ipo.IPO_name} was approved and can now be published publicly.";
             return RedirectToAction(nameof(Index));
         }
@@ -632,6 +689,40 @@ namespace IPOInvestmentManagement.Controllers
             }
             TempData["AdminMessage"] = $"{ipo.IPO_name} was published and is now visible to investors.";
             return RedirectToAction(nameof(IpoDetails), new { ipoId });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> PublishCompanyIpo(int ipoId)
+        {
+            int? userId = HttpContext.Session.GetInt32("User_id");
+            if (!userId.HasValue || !string.Equals(HttpContext.Session.GetString("UserRole"), "Company", StringComparison.OrdinalIgnoreCase))
+            {
+                return Forbid();
+            }
+
+            Company? company = await _context.Companies
+                .AsNoTracking()
+                .FirstOrDefaultAsync(item => item.User_id == userId.Value && item.Approval_status == "Approved");
+            IPO? ipo = company is null
+                ? null
+                : await _context.IPOs.FirstOrDefaultAsync(item => item.IPO_id == ipoId && item.Company_id == company.Company_id);
+            if (ipo is null)
+            {
+                return NotFound();
+            }
+
+            if (!string.Equals(ipo.Status, "Approved", StringComparison.OrdinalIgnoreCase))
+            {
+                TempData["CompanyMessage"] = "Only an approved IPO can be published.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            ipo.Status = "Open";
+            await _context.SaveChangesAsync();
+            await NotifyInvestorsIpoAvailableAsync(ipo);
+            TempData["CompanyMessage"] = $"{ipo.IPO_name} was published and is now visible to investors.";
+            return RedirectToAction(nameof(Index));
         }
 
         [HttpPost]
@@ -681,8 +772,15 @@ namespace IPOInvestmentManagement.Controllers
                 TempData["AdminMessage"] = "Please select a valid IPO status.";
                 return RedirectToAction(nameof(IpoDetails), new { ipoId });
             }
+
+            string? previousStatus = ipo.Status;
             ipo.Status = selectedStatus;
             await _context.SaveChangesAsync();
+            if (string.Equals(selectedStatus, "Approved", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(previousStatus, "Approved", StringComparison.OrdinalIgnoreCase))
+            {
+                await NotifyCompanyIpoApprovedAsync(ipo);
+            }
             TempData["AdminMessage"] = $"{ipo.IPO_name} status changed to {selectedStatus}.";
             return RedirectToAction(nameof(IpoDetails), new { ipoId });
         }
@@ -890,7 +988,12 @@ namespace IPOInvestmentManagement.Controllers
             };
         }
 
-        private async Task LoadInvestorDashboardAsync(DashboardViewModel model, int userId)
+        private async Task LoadInvestorDashboardAsync(
+            DashboardViewModel model,
+            int userId,
+            string? marketStatus,
+            string? marketIpoType,
+            string? marketCompany)
         {
             model.Notifications = await LoadNotificationsAsync(userId);
             DateTime today = DateTime.UtcNow.Date;
@@ -899,7 +1002,34 @@ namespace IPOInvestmentManagement.Controllers
                 ipo.Open_date.Date <= today && ipo.Close_date.Date >= today);
             model.ApplicationCount = await _context.IPOApplications.CountAsync(application => application.User_id == userId);
             model.WatchlistCount = await _context.IPOWatchlists.CountAsync(item => item.User_id == userId);
-            model.InvestmentCount = await _context.Investments.CountAsync(investment => investment.User_id == userId);
+            List<Investment> investorInvestments = await _context.Investments
+                .AsNoTracking()
+                .Where(investment => investment.User_id == userId)
+                .ToListAsync();
+            model.InvestmentCount = investorInvestments.Count;
+            model.InvestmentTotal = investorInvestments.Sum(investment =>
+                investment.Investment_amount ?? ((investment.Buy_price ?? 0m) * investment.Quantity));
+            model.ProfitLoss = investorInvestments.Sum(investment =>
+                investment.Current_price.HasValue
+                    ? (investment.Current_price.Value * investment.Quantity) -
+                      (investment.Investment_amount ?? ((investment.Buy_price ?? 0m) * investment.Quantity))
+                    : 0m);
+            int[] investmentIpoIds = investorInvestments.Select(investment => investment.IPO_id).Distinct().ToArray();
+            model.InvestmentIpoNames = await _context.IPOs
+                .AsNoTracking()
+                .Where(ipo => investmentIpoIds.Contains(ipo.IPO_id))
+                .ToDictionaryAsync(ipo => ipo.IPO_id, ipo => ipo.IPO_name);
+            model.RecentApplications = await _context.IPOApplications
+                .AsNoTracking()
+                .Where(application => application.User_id == userId)
+                .OrderByDescending(application => application.Application_date)
+                .Take(10)
+                .ToListAsync();
+            int[] applicationIpoIds = model.RecentApplications.Select(application => application.IPO_id).Distinct().ToArray();
+            model.ApplicationIpoNames = await _context.IPOs
+                .AsNoTracking()
+                .Where(ipo => applicationIpoIds.Contains(ipo.IPO_id))
+                .ToDictionaryAsync(ipo => ipo.IPO_id, ipo => ipo.IPO_name);
             List<IPO> publishedIpos = await _context.IPOs
                 .AsNoTracking()
                 .Where(ipo => ipo.Status == "Approved" || ipo.Status == "Open" || ipo.Status == "Listed" || ipo.Status == "Closed")
@@ -907,13 +1037,68 @@ namespace IPOInvestmentManagement.Controllers
                 .ToListAsync();
             model.RecentIpos = publishedIpos.Take(5).ToList();
             model.PublishedIpoDetails = await LoadIpoDetailsAsync(publishedIpos);
-            model.Investments = await _context.Investments
-                .AsNoTracking()
-                .Where(investment => investment.User_id == userId)
+            model.Investments = investorInvestments
                 .OrderByDescending(investment => investment.Buy_date)
                 .Take(5)
-                .ToListAsync();
+                .ToList();
             await LoadCompanyNamesAsync(model, publishedIpos.Select(ipo => ipo.Company_id));
+
+            model.MarketStatus = marketStatus;
+            model.MarketIpoType = marketIpoType;
+            model.MarketCompany = marketCompany;
+            model.MarketIpoTypes = publishedIpos
+                .Where(ipo => !string.IsNullOrWhiteSpace(ipo.IPO_type))
+                .Select(ipo => ipo.IPO_type!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(type => type)
+                .ToList();
+            model.MarketCompanies = publishedIpos
+                .Select(ipo => model.CompanyNames.GetValueOrDefault(ipo.Company_id, "Company"))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(company => company)
+                .ToList();
+            model.MarketStatuses = publishedIpos.ToDictionary(
+                ipo => ipo.IPO_id,
+                ipo => GetInvestorMarketStatus(ipo, today));
+
+            IEnumerable<IPO> marketIpos = publishedIpos;
+            if (!string.IsNullOrWhiteSpace(marketStatus))
+            {
+                marketIpos = marketIpos.Where(ipo =>
+                    string.Equals(GetInvestorMarketStatus(ipo, today), marketStatus.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+            if (!string.IsNullOrWhiteSpace(marketIpoType))
+            {
+                marketIpos = marketIpos.Where(ipo =>
+                    string.Equals(ipo.IPO_type, marketIpoType.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+            if (!string.IsNullOrWhiteSpace(marketCompany))
+            {
+                marketIpos = marketIpos.Where(ipo =>
+                    string.Equals(model.CompanyNames.GetValueOrDefault(ipo.Company_id, "Company"), marketCompany.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+            model.MarketIpos = marketIpos.ToList();
+        }
+
+        private static string GetInvestorMarketStatus(IPO ipo, DateTime today)
+        {
+            if (string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase) ||
+                (ipo.Listing_date.HasValue && ipo.Listing_date.Value.Date <= today))
+            {
+                return "Listed";
+            }
+
+            if (ipo.Open_date.Date > today)
+            {
+                return "Upcoming";
+            }
+
+            if (ipo.Close_date.Date < today)
+            {
+                return "Closed";
+            }
+
+            return "Open";
         }
 
         private async Task<List<CompanyIpoDetailsViewModel>> LoadIpoDetailsAsync(List<IPO> ipos)
@@ -977,6 +1162,17 @@ namespace IPOInvestmentManagement.Controllers
             model.PendingIpoCompanyNames = await _context.Companies
                 .AsNoTracking()
                 .Where(company => pendingIpoCompanyIds.Contains(company.Company_id))
+                .ToDictionaryAsync(company => company.Company_id, company => company.Company_name);
+            model.ApprovedIpos = await _context.IPOs
+                .AsNoTracking()
+                .Where(ipo => ipo.Status == "Approved")
+                .OrderBy(ipo => ipo.Created_at)
+                .Take(10)
+                .ToListAsync();
+            int[] approvedIpoCompanyIds = model.ApprovedIpos.Select(ipo => ipo.Company_id).Distinct().ToArray();
+            model.ApprovedIpoCompanyNames = await _context.Companies
+                .AsNoTracking()
+                .Where(company => approvedIpoCompanyIds.Contains(company.Company_id))
                 .ToDictionaryAsync(company => company.Company_id, company => company.Company_name);
             model.PendingApplications = await _context.IPOApplications
                 .AsNoTracking()
@@ -1118,6 +1314,57 @@ namespace IPOInvestmentManagement.Controllers
                 .OrderByDescending(notification => notification.Created_at)
                 .Take(5)
                 .ToListAsync();
+        }
+
+        private async Task NotifyCompanyIpoApprovedAsync(IPO ipo)
+        {
+            User? companyUser = await _context.Companies
+                .Where(company => company.Company_id == ipo.Company_id)
+                .Join(_context.Users, company => company.User_id, user => user.User_id, (_, user) => user)
+                .FirstOrDefaultAsync();
+            if (companyUser is null)
+            {
+                return;
+            }
+
+            _context.SystemNotifications.Add(new SystemNotification
+            {
+                User_id = companyUser.User_id,
+                Title = "IPO Approved",
+                Message = $"{ipo.IPO_name} has been approved and can now be published.",
+                Created_at = DateTime.UtcNow,
+                Is_read = false
+            });
+            await _context.SaveChangesAsync();
+            await TrySendEventEmailAsync(
+                companyUser,
+                "IPO Approved",
+                $"{ipo.IPO_name} has been approved and can now be published.");
+        }
+
+        private async Task NotifyInvestorsIpoAvailableAsync(IPO ipo)
+        {
+            User[] investors = await _context.Users
+                .AsNoTracking()
+                .Where(user => user.Role == "Investor" && user.Is_active)
+                .ToArrayAsync();
+            DateTime createdAt = DateTime.UtcNow;
+            _context.SystemNotifications.AddRange(investors.Select(investor => new SystemNotification
+            {
+                User_id = investor.User_id,
+                Title = "IPO Available",
+                Message = $"{ipo.IPO_name} is now available to investors.",
+                Created_at = createdAt,
+                Is_read = false
+            }));
+            await _context.SaveChangesAsync();
+            foreach (User investor in investors)
+            {
+                await TrySendEventEmailAsync(
+                    investor,
+                    "IPO Available",
+                    $"{ipo.IPO_name} is now available to investors. Log in to review the offering.");
+            }
         }
 
         private async Task TrySendEventEmailAsync(User user, string subject, string body)
