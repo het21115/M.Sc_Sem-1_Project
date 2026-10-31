@@ -18,7 +18,7 @@
                 <span class="form-step">01 / 01</span>
             </div>
 
-            <form asp-controller="Account" asp-action="Register" method="post">
+            <form asp-controller="Account" asp-action="Register" method="post" autocomplete="off">
 
                 <div asp-validation-summary="All" class="text-danger mb-3"></div>
 
@@ -46,7 +46,7 @@
 
                     <label asp-for="Email" class="form-label"></label>
 
-                    <input asp-for="Email" class="form-control" placeholder="Enter email address" />
+                    <input asp-for="Email" class="form-control" placeholder="Enter email address" autocomplete="off" />
 
                     <span asp-validation-for="Email" class="text-danger"></span>
 
@@ -56,9 +56,19 @@
 
                     <label asp-for="Password_hash" class="form-label">Password</label>
 
-                    <input asp-for="Password_hash" type="password" class="form-control" placeholder="Enter password" />
+                    <input asp-for="Password_hash" type="password" class="form-control" placeholder="Enter password" autocomplete="new-password" />
 
                     <span asp-validation-for="Password_hash" class="text-danger"></span>
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label asp-for="ConfirmPassword" class="form-label">Confirm Password</label>
+
+                    <input asp-for="ConfirmPassword" type="password" class="form-control" placeholder="Confirm password" autocomplete="new-password" />
+
+                    <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
 
                 </div>
 
@@ -70,6 +80,18 @@
 
                     <span asp-validation-for="Phone" class="text-danger"></span>
 
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="DematAccountNumber" class="form-label">Demat Account Number</label>
+                    <input asp-for="DematAccountNumber" class="form-control" placeholder="Enter demat account number" />
+                    <span asp-validation-for="DematAccountNumber" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="UpiId" class="form-label">UPI ID</label>
+                    <input asp-for="UpiId" class="form-control" placeholder="example@upi" />
+                    <span asp-validation-for="UpiId" class="text-danger"></span>
                 </div>
 
                 <input asp-for="Role" type="hidden" value="Investor" />

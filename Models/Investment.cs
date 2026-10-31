@@ -22,6 +22,7 @@ namespace IPOInvestmentManagement.Models
         [Column(TypeName = "decimal(18,2)")]
         public decimal? Buy_price { get; set; }
 
+        [DatabaseGenerated(DatabaseGeneratedOption.Computed)]
         [Column(TypeName = "decimal(29,2)")]
         public decimal? Investment_amount { get; set; }
 

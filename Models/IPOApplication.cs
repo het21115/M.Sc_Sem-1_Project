@@ -17,12 +17,30 @@ namespace IPOInvestmentManagement.Models
 
         public int IPO_id { get; set; }
 
+        [StringLength(40)]
+        public string? Application_number { get; set; }
+
         public int Applied_lots { get; set; }
 
         public int Applied_shares { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
+        public decimal? Bid_price { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
         public decimal? Application_amount { get; set; }
+
+        [StringLength(30)]
+        public string? Demat_account_number { get; set; }
+
+        [StringLength(100)]
+        public string? Upi_id { get; set; }
+
+        [StringLength(40)]
+        public string? Payment_reference { get; set; }
+
+        [StringLength(20)]
+        public string? Payment_status { get; set; }
 
         public DateTime Application_date { get; set; }
 

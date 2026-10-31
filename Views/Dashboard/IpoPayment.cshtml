@@ -1,0 +1,34 @@
+@model IPOInvestmentManagement.Models.IpoPaymentViewModel
+@{
+    ViewData["Title"] = "IPO Payment";
+}
+
+<div class="registration-form-shell">
+    <div class="registration-form-intro registration-form-intro-investor">
+        <p class="gateway-kicker"><span></span> Secure payment</p>
+        <h1>Complete your IPO application.</h1>
+        <p>Review the application summary and confirm payment through the demo payment gateway.</p>
+    </div>
+    <div class="card registration-form-card">
+        <div class="card-body p-4 p-lg-5">
+            <div class="registration-form-heading">
+                <div><span class="form-overline">Payment gateway</span><h2>@Model.IpoName</h2></div>
+                <span class="form-step">02 / 02</span>
+            </div>
+            <div class="investor-payment-summary">
+                <p><span>Application number</span><strong>@Model.ApplicationNumber</strong></p>
+                <p><span>Investor</span><strong>@Model.InvestorName</strong></p>
+                <p><span>Bid price</span><strong>₹@Model.BidPrice.ToString("N2")</strong></p>
+                <p><span>Lots / shares</span><strong>@Model.AppliedLots / @Model.AppliedShares</strong></p>
+                <p><span>Demat account</span><strong>@Model.DematAccountNumber</strong></p>
+                <p><span>UPI ID</span><strong>@Model.UpiId</strong></p>
+                <p><span>Total amount</span><strong>₹@Model.ApplicationAmount.ToString("N2")</strong></p>
+            </div>
+            <form asp-controller="Dashboard" asp-action="ConfirmIpoPayment" method="post">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn registration-submit">Pay and submit application <span aria-hidden="true">&rarr;</span></button>
+                <a class="registration-back-link" asp-controller="Dashboard" asp-action="Index">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>

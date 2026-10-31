@@ -1,0 +1,13 @@
+@model IPOInvestmentManagement.Models.DashboardViewModel
+
+@foreach (var detail in Model.PublishedIpoDetails)
+{
+    bool isWatched = Model.WatchlistDetails.Any(item => item.Ipo.IPO_id == detail.Ipo.IPO_id);
+    <template class="investor-watchlist-template" data-ipo-id="@detail.Ipo.IPO_id">
+        <form asp-controller="Dashboard" asp-action="ToggleWatchlist" method="post" class="investor-ipo-watchlist-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ipoId" value="@detail.Ipo.IPO_id" />
+            <button type="submit" class="watchlist-action">@(isWatched ? "Remove from watchlist" : "Add to watchlist")</button>
+        </form>
+    </template>
+}

@@ -7,7 +7,7 @@ document.addEventListener("click", function (event) {
 	const lotButton = event.target.closest("[data-lot-adjust]");
 	if (lotButton) {
 		const form = lotButton.closest(".investor-bid-form");
-		const lotsInput = form?.querySelector("[name='appliedLots']");
+		const lotsInput = form?.querySelector("[name='AppliedLots']");
 		if (lotsInput) {
 			lotsInput.value = Math.max(1, Number(lotsInput.value || 1) + Number(lotButton.dataset.lotAdjust));
 			updateInvestorBidForm(form);
@@ -24,6 +24,27 @@ document.addEventListener("click", function (event) {
 		document.querySelectorAll("#search-ipo-modal [data-market-status]").forEach(function (row) {
 			row.hidden = false;
 		});
+	}
+
+	const marketNavigation = event.target.closest("[data-market-navigation]");
+	if (marketNavigation) {
+		event.preventDefault();
+		const target = document.getElementById(marketNavigation.dataset.marketNavigation);
+		const modal = marketNavigation.closest(".modal");
+		const navigateToMarket = function () {
+			if (target) {
+				window.location.hash = marketNavigation.getAttribute("href").substring(1);
+				target.scrollIntoView({ behavior: "smooth", block: "start" });
+			}
+		};
+
+		if (modal && window.bootstrap) {
+			modal.addEventListener("hidden.bs.modal", navigateToMarket, { once: true });
+			window.bootstrap.Modal.getOrCreateInstance(modal).hide();
+		} else {
+			navigateToMarket();
+		}
+		return;
 	}
 
 	const backButton = event.target.closest("[data-admin-back]");
@@ -43,19 +64,14 @@ document.addEventListener("click", function (event) {
 
 function attachInvestorApplyButtons() {
 	const templates = Array.from(document.querySelectorAll(".investor-apply-template"));
-	const normalize = function (value) {
-		return (value || "").replace(/\s+/g, " ").trim().toLowerCase();
-	};
 	document.querySelectorAll(".investor-ipo-record").forEach(function (record) {
 		if (record.dataset.applyAttached === "true") {
 			return;
 		}
 
-		const ipoName = normalize(record.querySelector("summary strong")?.textContent);
-		const isOpen = /\bopen\b/i.test(record.querySelector("summary small")?.textContent || "");
 		const template = templates.find(function (item) {
-			return normalize(item.dataset.ipoName) === ipoName;
-		}) || (isOpen ? templates.find(function (item) { return !item.dataset.used; }) : null);
+			return item.dataset.ipoId === record.dataset.ipoId;
+		});
 		const detailsBody = record.querySelector(".investor-ipo-record-body");
 		if (template && detailsBody) {
 			detailsBody.appendChild(template.content.cloneNode(true));
@@ -66,25 +82,72 @@ function attachInvestorApplyButtons() {
 	});
 }
 
+function attachInvestorWatchlistButtons() {
+	const templates = Array.from(document.querySelectorAll(".investor-watchlist-template"));
+	document.querySelectorAll(".investor-ipo-record").forEach(function (record) {
+		if (record.querySelector(".investor-ipo-watchlist-form")) {
+			return;
+		}
+
+		const template = templates.find(function (item) {
+			return item.dataset.ipoId === record.dataset.ipoId;
+		});
+		const detailsBody = record.querySelector(".investor-ipo-record-body");
+		if (template && detailsBody) {
+			detailsBody.appendChild(template.content.cloneNode(true));
+		}
+	});
+}
+
 if (document.readyState === "loading") {
-	document.addEventListener("DOMContentLoaded", attachInvestorApplyButtons);
+	document.addEventListener("DOMContentLoaded", function () {
+		attachInvestorApplyButtons();
+		attachInvestorWatchlistButtons();
+		openFilteredMarketModal();
+	});
 } else {
 	attachInvestorApplyButtons();
+	attachInvestorWatchlistButtons();
+	openFilteredMarketModal();
+}
+
+function openFilteredMarketModal() {
+	const query = new URLSearchParams(window.location.search);
+	const hasMarketFilter = ["marketIpoName", "marketStatus", "marketIpoType", "marketCompany"]
+		.some(function (key) { return query.get(key); });
+	const modal = document.getElementById("search-ipo-modal");
+	if (hasMarketFilter && modal && window.bootstrap) {
+		window.bootstrap.Modal.getOrCreateInstance(modal).show();
+	}
 }
 
 document.addEventListener("toggle", function (event) {
 	if (event.target.matches(".investor-ipo-record")) {
 		attachInvestorApplyButtons();
+		attachInvestorWatchlistButtons();
 	}
 }, true);
+
+document.addEventListener("click", function (event) {
+	const watchlistLink = event.target.closest(".watchlist-ipo-link");
+	if (!watchlistLink) {
+		return;
+	}
+
+	const record = document.querySelector(watchlistLink.getAttribute("href"));
+	if (record && record.matches(".investor-ipo-record")) {
+		record.open = true;
+		record.scrollIntoView({ behavior: "smooth", block: "center" });
+	}
+});
 
 function updateInvestorBidForm(form) {
 	if (!form) {
 		return;
 	}
-	const lots = Math.max(1, Number(form.querySelector("[name='appliedLots']")?.value || 1));
+	const lots = Math.max(1, Number(form.querySelector("[name='AppliedLots']")?.value || 1));
 	const lotSize = Number(form.dataset.lotSize || 0);
-	const bidPrice = Number(form.querySelector("[name='bidPrice']")?.value || 0);
+	const bidPrice = Number(form.querySelector("[name='BidPrice']")?.value || 0);
 	const shares = lots * lotSize;
 	const total = shares * bidPrice;
 	const sharesOutput = form.querySelector("[data-bid-shares]");

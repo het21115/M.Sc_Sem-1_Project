@@ -1,21 +1,30 @@
 @model IPOInvestmentManagement.Models.DashboardViewModel
 
 @{
+    var indiaNow = DateTime.UtcNow.AddHours(5.5);
+    var today = indiaNow.Date;
+    var marketOpen = indiaNow.TimeOfDay >= new TimeSpan(9, 30, 0) && indiaNow.TimeOfDay < new TimeSpan(15, 30, 0);
     var openIpos = Model.PublishedIpoDetails
-        .Where(detail => string.Equals(detail.Ipo.Status, "Open", StringComparison.OrdinalIgnoreCase))
+        .Where(detail =>
+            !string.Equals(detail.Ipo.Status, "Rejected", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(detail.Ipo.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) &&
+            detail.Ipo.Open_date.Date <= today &&
+            detail.Ipo.Close_date.Date >= today &&
+            marketOpen)
         .ToList();
 }
 @foreach (var detail in openIpos)
 {
-    <template class="investor-apply-template" data-ipo-name="@detail.Ipo.IPO_name">
+    <template class="investor-apply-template" data-ipo-id="@detail.Ipo.IPO_id">
         @{ decimal minimumLotAmount = (detail.Ipo.Lot_size ?? 0) * (detail.Ipo.Price_min ?? 0m); }
         <form class="investor-apply-row investor-bid-form" asp-controller="Dashboard" asp-action="ApplyIpo" method="post" data-lot-size="@detail.Ipo.Lot_size" data-price-min="@detail.Ipo.Price_min" data-price-max="@detail.Ipo.Price_max">
-            <input type="hidden" name="ipoId" value="@detail.Ipo.IPO_id" />
-            <div class="investor-bid-heading"><strong>@detail.Ipo.IPO_name</strong><small>Lot of @detail.Ipo.Lot_size shares &middot; Bid range ₹@(detail.Ipo.Price_min?.ToString("N2") ?? "-") - ₹@(detail.Ipo.Price_max?.ToString("N2") ?? "-") &middot; Closes @detail.Ipo.Close_date.ToString("dd MMM yyyy")</small></div>
-            <div class="investor-bid-controls"><label>Shares<div class="investor-stepper"><button type="button" data-lot-adjust="-1" aria-label="Decrease lots">−</button><input type="number" name="appliedLots" min="1" value="1" required /><button type="button" data-lot-adjust="1" aria-label="Increase lots">+</button></div></label><label>Bid price<input class="investor-bid-price" type="number" name="bidPrice" min="@detail.Ipo.Price_min" max="@detail.Ipo.Price_max" step="0.01" value="@detail.Ipo.Price_min" required /></label></div>
-            <div class="investor-bid-summary"><span>Shares applied <strong data-bid-shares>@detail.Ipo.Lot_size</strong></span><span>To be blocked <strong data-bid-total>₹@minimumLotAmount.ToString("N2")</strong></span></div>
-            <label class="investor-terms"><input type="checkbox" name="acceptTerms" value="true" required /> I accept the <strong>Terms &amp; Conditions</strong> and <strong>Privacy Policy</strong></label>
-            <button type="submit" class="btn investor-apply-button">Apply IPO</button>
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="IpoId" value="@detail.Ipo.IPO_id" />
+            <div class="investor-bid-heading"><strong>@detail.Ipo.IPO_name</strong><small>Investor: @Context.Session.GetString("UserName") &middot; Bid range ₹@(detail.Ipo.Price_min?.ToString("N2") ?? "-") - ₹@(detail.Ipo.Price_max?.ToString("N2") ?? "-") &middot; Closes @detail.Ipo.Close_date.ToString("dd MMM yyyy")</small></div>
+            <div class="investor-bid-controls"><label>Investor name<input type="text" value="@(Context.Session.GetString("UserName") ?? "Investor")" readonly /></label><label>IPO name<input type="text" value="@detail.Ipo.IPO_name" readonly /></label><label>Bid price<input class="investor-bid-price" type="number" name="BidPrice" min="@detail.Ipo.Price_min" max="@detail.Ipo.Price_max" step="0.01" value="@detail.Ipo.Price_min" required /></label><label>Lot size<input type="number" value="@detail.Ipo.Lot_size" readonly /></label><label>Number of lots<div class="investor-stepper"><button type="button" data-lot-adjust="-1" aria-label="Decrease lots">−</button><input type="number" name="AppliedLots" min="1" value="1" required /><button type="button" data-lot-adjust="1" aria-label="Increase lots">+</button></div></label><label>Demat account number<input type="text" value="@Model.InvestorDematAccountNumber" readonly /></label><label>UPI ID<input type="text" value="@Model.InvestorUpiId" readonly /></label></div>
+            <div class="investor-bid-summary"><span>Total shares <strong data-bid-shares>@detail.Ipo.Lot_size</strong></span><span>Total amount <strong data-bid-total>₹@minimumLotAmount.ToString("N2")</strong></span></div>
+            <label class="investor-terms"><input type="checkbox" name="AcceptTerms" value="true" required /> I accept the <strong>Terms &amp; Conditions</strong> and <strong>Privacy Policy</strong></label>
+            <button type="submit" class="btn investor-apply-button">Submit Application</button>
         </form>
     </template>
 }

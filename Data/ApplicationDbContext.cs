@@ -19,6 +19,7 @@ namespace IPOInvestmentManagement.Data
         public DbSet<IPOFinancial> IPOFinancials { get; set; }
         public DbSet<IPOListing> IPOListings { get; set; }
         public DbSet<IPOApplication> IPOApplications { get; set; }
+        public DbSet<IPOAllotment> IPOAllotments { get; set; }
         public DbSet<Investment> Investments { get; set; }
         public DbSet<InvestmentTransaction> InvestmentTransactions { get; set; }
         public DbSet<IPOWatchlist> IPOWatchlists { get; set; }
@@ -31,6 +32,22 @@ namespace IPOInvestmentManagement.Data
             modelBuilder.Entity<Company>()
                 .Property(company => company.Company_id)
                 .ValueGeneratedOnAdd();
+
+            modelBuilder.Entity<User>()
+                .Property(user => user.First_name)
+                .IsRequired(false);
+            modelBuilder.Entity<User>()
+                .Property(user => user.Last_name)
+                .IsRequired(false);
+            modelBuilder.Entity<User>()
+                .Property(user => user.DematAccountNumber)
+                .IsRequired(false);
+            modelBuilder.Entity<User>()
+                .Property(user => user.UpiId)
+                .IsRequired(false);
+            modelBuilder.Entity<User>()
+                .Property(user => user.Phone)
+                .IsRequired(false);
 
             // Company → IPO
             modelBuilder.Entity<IPO>()
@@ -73,6 +90,28 @@ namespace IPOInvestmentManagement.Data
                 .WithMany()
                 .HasForeignKey(a => a.IPO_id)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<IPOAllotment>()
+                .HasOne<IPOApplication>()
+                .WithMany()
+                .HasForeignKey(a => a.Application_id)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<IPOAllotment>()
+                .HasOne<User>()
+                .WithMany()
+                .HasForeignKey(a => a.User_id)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<IPOAllotment>()
+                .HasOne<IPO>()
+                .WithMany()
+                .HasForeignKey(a => a.IPO_id)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<IPOAllotment>()
+                .HasIndex(a => a.Application_id)
+                .IsUnique();
 
             // User → Investment
             modelBuilder.Entity<Investment>()

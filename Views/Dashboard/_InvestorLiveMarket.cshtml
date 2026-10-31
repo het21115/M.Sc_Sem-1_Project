@@ -1,12 +1,19 @@
 @model IPOInvestmentManagement.Models.DashboardViewModel
 
 <div class="investor-live-market-card">
-    <div>
+    <span class="live-market-orb live-market-orb-one" aria-hidden="true"></span>
+    <span class="live-market-orb live-market-orb-two" aria-hidden="true"></span>
+    <div class="live-market-copy">
         <span class="terminal-overline"><i></i> LIVE MARKET</span>
-        <strong>Track open IPOs in real time</strong>
-        <small>Current offerings, price ranges, lot sizes, and closing dates.</small>
+        <strong><span class="live-market-spark" aria-hidden="true">&#10022;</span> Market pulse, at a glance</strong>
+        <small>Latest stored NSE/BSE prices and published IPO opportunities.</small>
     </div>
-    <button type="button" class="btn investor-live-market-button" data-bs-toggle="modal" data-bs-target="#live-market-modal">View Live Market <span aria-hidden="true">&#8594;</span></button>
+    <div class="live-market-highlights" aria-label="Live market summary">
+        <span class="live-market-stat-offers"><b>@Model.PublishedIpoDetails.Count</b><small>IPO offers</small></span>
+        <span class="live-market-stat-listed"><b>@Model.PublishedIpoDetails.Count(detail => detail.Listing is not null)</b><small>Listed</small></span>
+        <span class="live-market-stat-open"><b class="live-market-positive"><i></i> Open</b><small>Market status</small></span>
+    </div>
+    <button type="button" class="btn investor-live-market-button" data-bs-toggle="modal" data-bs-target="#live-market-modal"><span class="live-market-button-icon" aria-hidden="true">&#8599;</span> Explore live market <span aria-hidden="true">&#8594;</span></button>
 </div>
 
 <div class="modal fade investor-modal" id="live-market-modal" tabindex="-1" aria-labelledby="live-market-modal-title" aria-hidden="true">
@@ -17,22 +24,36 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p class="investor-modal-intro">Open IPOs available for applications right now.</p>
-                @if (Model.MarketIpos.Count(ipo => Model.MarketStatuses.GetValueOrDefault(ipo.IPO_id, "Upcoming") == "Open") == 0)
+                <div class="live-market-exchanges" aria-label="Market coverage">
+                    <span class="live-market-exchange-nse"><i>N</i><strong>NSE</strong><small>Listing and closing prices</small></span>
+                    <span class="live-market-exchange-bse"><i>B</i><strong>BSE</strong><small>Listing and closing prices</small></span>
+                    <span class="live-market-exchange-watch"><i>+</i><strong>IPO WATCH</strong><small>@Model.PublishedIpoDetails.Count published offers</small></span>
+                </div>
+                <p class="investor-modal-intro">Published IPOs and their latest available exchange prices.</p>
+                @if (Model.PublishedIpoDetails.Count == 0)
                 {
-                    <div class="terminal-empty">There are no IPOs open for applications right now.</div>
+                    <div class="terminal-empty">No published IPO market data is available yet.</div>
                 }
                 else
                 {
                     <div class="investor-live-market-list">
-                        @foreach (var ipo in Model.MarketIpos.Where(ipo => Model.MarketStatuses.GetValueOrDefault(ipo.IPO_id, "Upcoming") == "Open"))
+                        @foreach (var detail in Model.PublishedIpoDetails)
                         {
-                            <div class="investor-live-market-row"><div><strong>@ipo.IPO_name</strong><small>@Model.CompanyNames.GetValueOrDefault(ipo.Company_id, "Company") &middot; Lot size @ipo.Lot_size shares</small></div><span>₹@(ipo.Price_min?.ToString("N2") ?? "-") - ₹@(ipo.Price_max?.ToString("N2") ?? "-")</span><em>Closes @ipo.Close_date.ToString("dd MMM yyyy")</em></div>
+                            var ipo = detail.Ipo;
+                            var status = Model.MarketStatuses.GetValueOrDefault(ipo.IPO_id, ipo.Status ?? "Published");
+                            var nsePrice = detail.Listing?.NSE_closing_price ?? detail.Listing?.NSE_listing_price;
+                            var bsePrice = detail.Listing?.BSE_closing_price ?? detail.Listing?.BSE_listing_price;
+                            <div class="investor-live-market-row">
+                                <div class="live-market-ipo-name"><span class="live-market-ipo-icon" aria-hidden="true">&#9670;</span><div><strong>@ipo.IPO_name</strong><small>@Model.CompanyNames.GetValueOrDefault(ipo.Company_id, "Company") &middot; @status</small></div></div>
+                                <span class="live-market-price live-market-price-nse"><b>NSE</b> ₹@(nsePrice?.ToString("N2") ?? "-")</span>
+                                <span class="live-market-price live-market-price-bse"><b>BSE</b> ₹@(bsePrice?.ToString("N2") ?? "-")</span>
+                                <em>@(status == "Open" ? $"Closes {ipo.Close_date:dd MMM yyyy}" : $"Price range ₹{ipo.Price_min?.ToString("N2") ?? "-"} - ₹{ipo.Price_max?.ToString("N2") ?? "-"}")</em>
+                            </div>
                         }
                     </div>
                 }
             </div>
-            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div>
+            <div class="modal-footer"><small class="live-market-disclaimer">Prices shown are the latest values stored by the platform; connect a market-feed provider for exchange streaming.</small><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div>
         </div>
     </div>
 </div>

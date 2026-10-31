@@ -94,7 +94,7 @@ namespace IPOInvestmentManagement.Controllers
 
             try
             {
-                await SendOtpEmailAsync(user.Email, user.First_name, otp);
+                await SendOtpEmailAsync(user.Email, user.First_name ?? string.Empty, otp);
             }
             catch (Exception exception)
             {
@@ -156,7 +156,7 @@ namespace IPOInvestmentManagement.Controllers
             string otp = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
             try
             {
-                await SendOtpEmailAsync(user.Email, user.First_name, otp);
+                await SendOtpEmailAsync(user.Email, user.First_name ?? string.Empty, otp);
             }
             catch (Exception exception)
             {
@@ -228,7 +228,7 @@ namespace IPOInvestmentManagement.Controllers
 
             try
             {
-                await SendOtpEmailAsync(user.Email, user.First_name, otp);
+                await SendOtpEmailAsync(user.Email, user.First_name ?? string.Empty, otp);
                 HttpContext.Session.SetString("RegistrationOtpHash", HashOtp(otp));
                 HttpContext.Session.SetString(
                     "RegistrationOtpExpires",
@@ -433,7 +433,7 @@ namespace IPOInvestmentManagement.Controllers
             }
 
             string otp = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
-            await SendOtpEmailAsync(user.Email, user.First_name, otp);
+            await SendOtpEmailAsync(user.Email, user.First_name ?? string.Empty, otp);
 
             HttpContext.Session.SetInt32("PasswordResetUserId", user.User_id);
             HttpContext.Session.SetString("PasswordResetOtpHash", HashOtp(otp));
@@ -547,10 +547,23 @@ namespace IPOInvestmentManagement.Controllers
                 return View("~/Views/Home/Login.cshtml");
             }
 
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Email == Email);
+            var storedUser = await _context.Users
+                .AsNoTracking()
+                .Where(u => u.Email == Email)
+                .Select(u => new
+                {
+                    u.User_id,
+                    FirstName = u.First_name ?? string.Empty,
+                    LastName = u.Last_name ?? string.Empty,
+                    u.Email,
+                    u.Password_hash,
+                    Phone = u.Phone ?? string.Empty,
+                    Role = u.Role ?? "User",
+                    u.Is_active
+                })
+                .FirstOrDefaultAsync();
 
-            if (user == null || !user.Is_active)
+            if (storedUser == null || !storedUser.Is_active)
             {
                 ModelState.AddModelError(
                     "",
@@ -559,6 +572,18 @@ namespace IPOInvestmentManagement.Controllers
 
                 return View("~/Views/Home/Login.cshtml");
             }
+
+            var user = new User
+            {
+                User_id = storedUser.User_id,
+                First_name = storedUser.FirstName,
+                Last_name = storedUser.LastName,
+                Email = storedUser.Email,
+                Password_hash = storedUser.Password_hash,
+                Phone = storedUser.Phone,
+                Role = storedUser.Role,
+                Is_active = storedUser.Is_active
+            };
 
             var result =
                 _passwordHasher.VerifyHashedPassword(

@@ -15,11 +15,11 @@ namespace IPOInvestmentManagement.Models
 
         [Required]
         [StringLength(100)]
-        public string First_name { get; set; } = string.Empty;
+        public string? First_name { get; set; }
 
         [Required]
         [StringLength(100)]
-        public string Last_name { get; set; } = string.Empty;
+        public string? Last_name { get; set; }
 
         [Required]
         [EmailAddress]
@@ -30,10 +30,24 @@ namespace IPOInvestmentManagement.Models
         [StringLength(255)]
         public string Password_hash { get; set; } = string.Empty;
 
+        [NotMapped]
+        [Required]
+        [DataType(DataType.Password)]
+        [Compare(nameof(Password_hash), ErrorMessage = "The passwords do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+
         [Required]
         [RegularExpression(@"^[6-9]\d{9}$",
         ErrorMessage = "Please enter a valid 10-digit mobile number.")]
         public string Phone { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(30)]
+        public string? DematAccountNumber { get; set; }
+
+        [Required]
+        [StringLength(100)]
+        public string? UpiId { get; set; }
 
         [StringLength(100)]
         public string? Role { get; set; }

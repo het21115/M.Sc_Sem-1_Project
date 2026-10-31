@@ -1,6 +1,9 @@
 @model IPOInvestmentManagement.Models.AdminApplicationDetailsViewModel
 @{
     ViewData["Title"] = "Application Details";
+    var application = Model.Application;
+    var ipo = Model.Ipo;
+    var allotment = Model.Allotment;
 }
 
 <div class="admin-console">
@@ -15,14 +18,40 @@
                 <div><span>Email</span><strong>@(Model.Investor?.Email ?? "Not available")</strong></div>
                 <div><span>Phone</span><strong>@(Model.Investor?.Phone ?? "Not available")</strong></div>
                 <div><span>IPO</span><strong>@(Model.Ipo?.IPO_name ?? "Not available")</strong></div>
+                <div><span>Application number</span><strong>@(Model.Application.Application_number ?? $"#{Model.Application.Application_id}")</strong></div>
                 <div><span>Status</span><strong>@(Model.Application.Status ?? "Pending")</strong></div>
                 <div><span>Application date</span><strong>@Model.Application.Application_date.ToString("dd MMM yyyy, hh:mm tt")</strong></div>
                 <div><span>Applied lots</span><strong>@Model.Application.Applied_lots.ToString("N0")</strong></div>
                 <div><span>Applied shares</span><strong>@Model.Application.Applied_shares.ToString("N0")</strong></div>
+                <div><span>Bid price</span><strong>₹@((Model.Application.Bid_price ?? 0m).ToString("N2"))</strong></div>
                 <div><span>Application amount</span><strong>₹@((Model.Application.Application_amount ?? 0m).ToString("N2"))</strong></div>
+                <div><span>Demat account</span><strong>@(Model.Application.Demat_account_number ?? "Not recorded")</strong></div>
+                <div><span>UPI ID</span><strong>@(Model.Application.Upi_id ?? "Not recorded")</strong></div>
+                <div><span>Payment status</span><strong>@(Model.Application.Payment_status ?? "Not recorded")</strong></div>
+                @if (allotment is not null)
+                {
+                    <div><span>Allotment status</span><strong>@allotment.Status</strong></div>
+                    <div><span>Allotted lots</span><strong>@allotment.Allotted_lots.ToString("N0")</strong></div>
+                    <div><span>Allotted shares</span><strong>@allotment.Allotted_shares.ToString("N0")</strong></div>
+                    <div><span>Allotment price</span><strong>₹@allotment.Allotment_price.ToString("N2")</strong></div>
+                }
             </div>
             <div class="company-request-actions admin-detail-actions">
-                @if (string.Equals(Model.Application.Status, "Pending", StringComparison.OrdinalIgnoreCase)) { <form asp-controller="Dashboard" asp-action="ApproveApplication" method="post"><input type="hidden" name="applicationId" value="@Model.Application.Application_id" /><button class="btn btn-success" type="submit">Approve application</button></form><form asp-controller="Dashboard" asp-action="DenyApplication" method="post"><input type="hidden" name="applicationId" value="@Model.Application.Application_id" /><button class="btn btn-outline-danger" type="submit" onclick="return confirm('Deny this investor application?');">Deny application</button></form> }
+                @if (allotment is null && DateTime.UtcNow.AddHours(5.5).Date > ipo.Close_date.Date && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+                {
+                    <form asp-controller="Dashboard" asp-action="ProcessAllotment" method="post" class="admin-allotment-form">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="applicationId" value="@application.Application_id" />
+                        <label>Allotted lots<input type="number" name="allottedLots" min="0" max="@application.Applied_lots" value="@application.Applied_lots" required /></label>
+                        <label>Allotted shares<input type="number" name="allottedShares" min="0" max="@application.Applied_shares" value="@application.Applied_shares" required /></label>
+                        <label>Allotment price <small>(optional)</small><input type="number" name="allotmentPrice" min="0" step="0.01" placeholder="Application price" /></label>
+                        <button class="btn btn-primary" type="submit">Process allotment</button>
+                    </form>
+                }
+                else if (allotment is null && ipo.Close_date.Date >= DateTime.UtcNow.AddHours(5.5).Date && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+                {
+                    <p class="admin-muted">Allotment can be processed after the IPO closes on @ipo.Close_date.ToString("dd MMM yyyy").</p>
+                }
             </div>
         </section>
     </main>

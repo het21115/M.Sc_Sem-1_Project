@@ -18,9 +18,10 @@
             </div>
             <div class="modal-body">
                 <form class="investor-market-filters" asp-controller="Dashboard" asp-action="Index" method="get">
-                    <label>Filter by status<select name="marketStatus"><option value="">All statuses</option>@foreach (var status in new[] { "Open", "Upcoming", "Closed", "Listed" }) { <option value="@status" selected="@(Model.MarketStatus == status)">@status</option> }</select></label>
-                    <label>IPO type<select name="marketIpoType"><option value="">All IPO types</option>@foreach (var type in Model.MarketIpoTypes) { <option value="@type" selected="@(Model.MarketIpoType == type)">@type</option> }</select></label>
-                    <label>Company<select name="marketCompany"><option value="">All companies</option>@foreach (var company in Model.MarketCompanies) { <option value="@company" selected="@(Model.MarketCompany == company)">@company</option> }</select></label>
+                    <label>IPO name<input type="search" name="marketIpoName" value="@Model.MarketIpoName" placeholder="Search IPO name" /></label>
+                    <label>Filter by status<select name="marketStatus"><option value="">All statuses</option>@foreach (var status in new[] { "Open", "Upcoming", "Closed", "Listed" }) { <option value="@status" selected="@(Model.MarketStatus == status ? "selected" : null)">@status</option> }</select></label>
+                    <label>IPO type<select name="marketIpoType"><option value="">All IPO types</option>@foreach (var type in Model.MarketIpoTypes) { <option value="@type" selected="@(Model.MarketIpoType == type ? "selected" : null)">@type</option> }</select></label>
+                    <label>Company<select name="marketCompany"><option value="">All companies</option>@foreach (var company in Model.MarketCompanies) { <option value="@company" selected="@(Model.MarketCompany == company ? "selected" : null)">@company</option> }</select></label>
                     <button class="btn investor-market-submit" type="submit">Search IPO</button>
                 </form>
                 @if (Model.MarketIpos.Count == 0)

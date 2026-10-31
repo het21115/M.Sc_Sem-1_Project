@@ -3,6 +3,8 @@ namespace IPOInvestmentManagement.Models
     public class DashboardViewModel
     {
         public string UserName { get; set; } = string.Empty;
+        public string InvestorDematAccountNumber { get; set; } = string.Empty;
+        public string InvestorUpiId { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty;
         public int OpenIpoCount { get; set; }
         public int ApplicationCount { get; set; }
@@ -24,6 +26,7 @@ namespace IPOInvestmentManagement.Models
         public int PendingCompanyCount { get; set; }
         public int PendingApplicationCount { get; set; }
         public int PendingIpoCount { get; set; }
+        public List<AdminSubscriptionStatisticsViewModel> SubscriptionStatistics { get; set; } = new();
         public List<IPO> RecentIpos { get; set; } = new();
         public List<IPO> MarketIpos { get; set; } = new();
         public List<string> MarketIpoTypes { get; set; } = new();
@@ -31,8 +34,10 @@ namespace IPOInvestmentManagement.Models
         public Dictionary<int, string> MarketStatuses { get; set; } = new();
         public string? MarketStatus { get; set; }
         public string? MarketIpoType { get; set; }
+        public string? MarketIpoName { get; set; }
         public string? MarketCompany { get; set; }
         public List<CompanyIpoDetailsViewModel> PublishedIpoDetails { get; set; } = new();
+        public List<CompanyIpoDetailsViewModel> WatchlistDetails { get; set; } = new();
         public List<IPO> CompanyIpos { get; set; } = new();
         public List<CompanyIpoDetailsViewModel> CompanyIpoDetails { get; set; } = new();
         public List<Company> Companies { get; set; } = new();
@@ -43,6 +48,7 @@ namespace IPOInvestmentManagement.Models
         public List<User> RecentInvestors { get; set; } = new();
         public List<User> RecentCompanies { get; set; } = new();
         public List<IPOApplication> RecentApplications { get; set; } = new();
+        public Dictionary<int, IPOAllotment> ApplicationAllotments { get; set; } = new();
         public List<IPOApplication> PendingApplications { get; set; } = new();
         public List<Investment> Investments { get; set; } = new();
         public List<SystemNotification> Notifications { get; set; } = new();

@@ -14,6 +14,7 @@ namespace IPOInvestmentManagement.Models
     public class AdminApplicationListItem
     {
         public IPOApplication Application { get; set; } = new();
+        public IPOAllotment? Allotment { get; set; }
         public string InvestorName { get; set; } = "Investor";
         public string InvestorEmail { get; set; } = string.Empty;
         public string IpoName { get; set; } = "IPO";

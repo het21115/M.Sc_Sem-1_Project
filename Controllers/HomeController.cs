@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using IPOInvestmentManagement.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace IPOInvestmentManagement.Controllers
 {
@@ -13,15 +14,11 @@ namespace IPOInvestmentManagement.Controllers
             _context = context;
         }
 
-        public IActionResult Index()
+        public async Task<IActionResult> Index()
         {
-            var users = _context.Users.ToList();
-            var companies = _context.Companies.ToList();
-            var ipos = _context.IPOs.ToList();
-
-            ViewBag.UserCount = users.Count;
-            ViewBag.CompanyCount = companies.Count;
-            ViewBag.IPOCount = ipos.Count;
+            ViewBag.UserCount = await _context.Users.CountAsync();
+            ViewBag.CompanyCount = await _context.Companies.CountAsync();
+            ViewBag.IPOCount = await _context.IPOs.CountAsync();
 
             return View();
         }
