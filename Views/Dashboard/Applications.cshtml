@@ -21,9 +21,18 @@
                 <button class="btn btn-primary" type="submit">Apply filters</button><a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Applications">Clear</a>
             </form>
             @if (Model.Applications.Count == 0) { <div class="admin-empty">No applications match the selected filters.</div> } else {
+                @if (Model.SelectedIpoId.HasValue)
+                {
+                    <form id="bulk-allotment-form" asp-controller="Dashboard" asp-action="ProcessBulkAllotment" method="post" class="mb-3">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="IpoId" value="@Model.SelectedIpoId.Value" />
+                        <button class="btn btn-primary" type="submit">Process selected applications as applied</button>
+                        <span class="admin-muted">Select eligible applications below. Allotments are validated against the IPO lot size and available shares.</span>
+                    </form>
+                }
                 <div class="admin-application-list">
                     @foreach (var item in Model.Applications) {
-                        <div class="admin-application-row"><div><strong>@item.IpoName</strong><small>@item.InvestorName &middot; @item.InvestorEmail &middot; Applied @item.Application.Applied_shares.ToString("N0") shares on @item.Application.Application_date.ToString("dd MMM yyyy")@if (item.Allotment is not null) { <text> &middot; Allotted @item.Allotment.Allotted_shares.ToString("N0") shares</text> }</small></div><div class="admin-application-row-meta"><span class="admin-application-status">@item.Application.Status</span><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@item.Application.Application_id">View details</a></div></div>
+                        <div class="admin-application-row"><div>@if (Model.SelectedIpoId.HasValue && item.Allotment is null && item.Application.Status != "Rejected" && item.Application.Status != "Cancelled") { <input type="checkbox" name="ApplicationIds" value="@item.Application.Application_id" form="bulk-allotment-form" /> }<strong>@item.IpoName</strong><small>@item.InvestorName &middot; @item.InvestorEmail &middot; Applied @item.Application.Applied_shares.ToString("N0") shares on @item.Application.Application_date.ToString("dd MMM yyyy")@if (item.Allotment is not null) { <text> &middot; Allotted @item.Allotment.Allotted_shares.ToString("N0") shares</text> }</small></div><div class="admin-application-row-meta"><span class="admin-application-status">@item.Application.Status</span><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@item.Application.Application_id">View details</a></div></div>
                     }
                 </div>
             }

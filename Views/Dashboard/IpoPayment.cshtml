@@ -20,15 +20,74 @@
                 <p><span>Investor</span><strong>@Model.InvestorName</strong></p>
                 <p><span>Bid price</span><strong>₹@Model.BidPrice.ToString("N2")</strong></p>
                 <p><span>Lots / shares</span><strong>@Model.AppliedLots / @Model.AppliedShares</strong></p>
-                <p><span>Demat account</span><strong>@Model.DematAccountNumber</strong></p>
-                <p><span>UPI ID</span><strong>@Model.UpiId</strong></p>
                 <p><span>Total amount</span><strong>₹@Model.ApplicationAmount.ToString("N2")</strong></p>
             </div>
-            <form asp-controller="Dashboard" asp-action="ConfirmIpoPayment" method="post">
+            <form id="razorpay-confirmation-form" asp-controller="Dashboard" asp-action="ConfirmIpoPayment" method="post">
                 @Html.AntiForgeryToken()
-                <button type="submit" class="btn registration-submit">Pay and submit application <span aria-hidden="true">&rarr;</span></button>
+                <input type="hidden" name="razorpayPaymentId" id="razorpayPaymentId" />
+                <input type="hidden" name="razorpayOrderId" id="razorpayOrderId" />
+                <input type="hidden" name="razorpaySignature" id="razorpaySignature" />
+                <div class="mb-4">
+                    <label class="form-label" for="upi-id">UPI ID</label>
+                    <input type="text" id="upi-id" class="form-control" inputmode="email" autocomplete="off" placeholder="example@upi" maxlength="100" />
+                    <div class="form-text">Enter your UPI ID, then approve the payment in Razorpay Checkout.</div>
+                </div>
+                <button type="button" id="razorpay-pay-button" class="btn registration-submit">Pay with UPI <span aria-hidden="true">&rarr;</span></button>
                 <a class="registration-back-link" asp-controller="Dashboard" asp-action="Index">Cancel</a>
             </form>
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script>
+        const payButton = document.getElementById("razorpay-pay-button");
+        const upiInput = document.getElementById("upi-id");
+
+        payButton.addEventListener("click", function () {
+            const button = this;
+            const upiId = upiInput.value.trim();
+            if (!/^[^@@\s]+@@[^@@\s]+$/.test(upiId)) {
+                upiInput.focus();
+                window.alert("Enter a valid UPI ID, for example name@@upi.");
+                return;
+            }
+
+            button.disabled = true;
+            const checkout = new Razorpay({
+                key: @Html.Raw(Json.Serialize(Model.RazorpayKeyId)),
+                amount: @Html.Raw(Json.Serialize((long)Math.Round(Model.ApplicationAmount * 100m, 0))),
+                currency: "INR",
+                name: "IPO Investment Management",
+                description: @Html.Raw(Json.Serialize(Model.IpoName)),
+                order_id: @Html.Raw(Json.Serialize(Model.RazorpayOrderId)),
+                method: {
+                    upi: true
+                },
+                prefill: {
+                    vpa: upiId
+                },
+                handler: function (response) {
+                    document.getElementById("razorpayPaymentId").value = response.razorpay_payment_id;
+                    document.getElementById("razorpayOrderId").value = response.razorpay_order_id;
+                    document.getElementById("razorpaySignature").value = response.razorpay_signature;
+                    document.getElementById("razorpay-confirmation-form").submit();
+                },
+                modal: {
+                    ondismiss: function () {
+                        button.disabled = false;
+                    }
+                },
+                theme: {
+                    color: "#0f4653"
+                }
+            });
+            checkout.on("payment.failed", function () {
+                button.disabled = false;
+                window.alert("Payment failed. Your IPO application was not submitted.");
+            });
+            checkout.open();
+        });
+    </script>
+}

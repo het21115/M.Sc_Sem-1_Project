@@ -129,7 +129,7 @@ namespace IPOInvestmentManagement.Data
 
             // Investment → InvestmentTransaction
             modelBuilder.Entity<InvestmentTransaction>()
-                .HasOne<Investment>()
+                .HasOne(transaction => transaction.Investment)
                 .WithMany()
                 .HasForeignKey(t => t.Investment_id)
                 .OnDelete(DeleteBehavior.Cascade);

@@ -932,12 +932,15 @@ body {
   .portfolio-actions { display: flex; gap: 8px; }
   .portfolio-export, .portfolio-buy-button { background: var(--terminal-blue); border: 0; color: #fff; font-size: .66rem; font-weight: 700; }
   .portfolio-export:hover, .portfolio-buy-button:hover { background: #116f79; color: #fff; }
-  .portfolio-summary { background: #fff; border-radius: 14px; box-shadow: 0 12px 26px rgba(33,77,81,.08); display: grid; grid-template-columns: repeat(4, 1fr); margin: 25px 0 16px; overflow: hidden; }
+  .portfolio-summary { background: #fff; border-radius: 14px; box-shadow: 0 12px 26px rgba(33,77,81,.08); display: grid; grid-template-columns: repeat(3, 1fr); margin: 25px 0 16px; overflow: hidden; }
   .portfolio-summary > div { border-top: 4px solid var(--terminal-blue); border-right: 1px solid #e5eeee; padding: 19px 22px; }
   .portfolio-summary > div:nth-child(2) { border-top-color: #55a878; }
   .portfolio-summary > div:nth-child(3) { border-top-color: var(--terminal-coral); }
-  .portfolio-summary > div:nth-child(4) { border-top-color: var(--terminal-yellow); border-right: 0; }
+  .portfolio-summary > div:nth-child(4) { border-top-color: var(--terminal-yellow); }
+  .portfolio-summary > div:nth-child(5) { border-top-color: var(--terminal-blue); }
+  .portfolio-summary > div:nth-child(3n) { border-right: 0; }
   .portfolio-summary span { color: #84909a; display: block; font-size: .58rem; font-weight: 700; letter-spacing: .08em; }
+  .portfolio-summary small { color: #84909a; display: block; font-size: .63rem; line-height: 1.4; margin-top: 5px; min-height: 1.8em; }
   .portfolio-summary strong { color: #1b4851; display: block; font-family: Georgia, "Times New Roman", serif; font-size: 1.5rem; font-weight: 400; margin-top: 8px; }
   .portfolio-summary .profit { color: #2d8a61; }
   .portfolio-summary .loss { color: #c75c50; }
@@ -1013,6 +1016,41 @@ body {
   .terminal-footer { color: #87919a; display: flex; font-size: .57rem; justify-content: space-between; letter-spacing: .12em; margin-top: 35px; }
 
   .investor-ipo-library { background: #fff; margin-top: 18px; padding: 24px 27px; }
+  .investor-calendar { background: linear-gradient(135deg, #fff 0%, #f0f7f6 100%); margin-top: 28px; padding: 24px 27px; }
+  .investor-calendar .terminal-overline { color: var(--terminal-blue); }
+  .investor-calendar .terminal-section-head h2 { color: #1b4851; }
+  .investor-calendar .terminal-section-head p { color: #71808d; font-size: .7rem; margin: 6px 0 0; }
+  .investor-calendar-filters { align-items: end; background: rgba(255,255,255,.7); display: flex; flex-wrap: wrap; gap: 13px; margin: 18px 0; padding: 15px; }
+  .investor-calendar-filters label { color: #1b2940; display: flex; flex-direction: column; font-size: .63rem; font-weight: 700; gap: 6px; letter-spacing: .06em; text-transform: uppercase; }
+  .investor-calendar-filters select { border: 1px solid #c9d5df; color: #1b2940; font: inherit; min-width: 150px; padding: 8px; text-transform: none; }
+  .investor-calendar-list { display: grid; gap: 12px; }
+  .investor-calendar-card { background: #fff; border: 1px solid #dce8e7; border-left: 4px solid var(--terminal-blue); border-radius: 8px; padding: 16px; }
+  .investor-calendar-card-head { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
+  .investor-calendar-card-head strong, .investor-calendar-card-head small { display: block; }
+  .investor-calendar-card-head strong { color: #1b2940; font-family: Georgia, "Times New Roman", serif; font-size: 1rem; font-weight: 400; }
+  .investor-calendar-card-head small { color: #8998a5; font-size: .63rem; margin-top: 4px; }
+  .investor-calendar-dates { display: grid; gap: 10px; grid-template-columns: repeat(4, 1fr); margin-top: 15px; }
+  .investor-calendar-dates span { background: #f5f8fa; border-top: 2px solid #b8d9d4; padding: 9px 10px; }
+  .investor-calendar-dates small, .investor-calendar-dates b { display: block; }
+  .investor-calendar-dates small { color: #84909a; font-size: .57rem; text-transform: uppercase; }
+  .investor-calendar-dates b { color: #1b4851; font-size: .7rem; margin-top: 5px; }
+  .investor-comparison { background: #fff; margin-top: 28px; padding: 24px 27px; }
+  .investor-comparison .terminal-overline { color: var(--terminal-coral); }
+  .investor-comparison .terminal-section-head h2 { color: #1b4851; }
+  .investor-comparison .terminal-section-head p { color: #71808d; font-size: .7rem; margin: 6px 0 0; }
+  .investor-comparison-picker { background: #f4f7fb; margin: 18px 0; padding: 15px; }
+  .investor-comparison-options { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 14px; }
+  .investor-comparison-options label { align-items: flex-start; background: #fff; border: 1px solid #dce5ea; color: #1b2940; display: flex; gap: 8px; padding: 10px; }
+  .investor-comparison-options input { margin-top: 3px; }
+  .investor-comparison-options span, .investor-comparison-options small { display: block; }
+  .investor-comparison-options span { font-size: .68rem; font-weight: 700; }
+  .investor-comparison-options small { color: #8998a5; font-size: .6rem; font-weight: 400; margin-top: 4px; }
+  .investor-comparison-table { border: 1px solid #dce5ea; overflow-x: auto; }
+  .investor-comparison-row { display: grid; gap: 14px; grid-template-columns: minmax(130px, .8fr) repeat(3, minmax(150px, 1fr)); min-width: 650px; }
+  .investor-comparison-row > * { border-bottom: 1px solid #e8ebed; color: #71808d; font-size: .67rem; padding: 12px 14px; }
+  .investor-comparison-row > span:not(:first-child), .investor-comparison-heading > strong:not(:first-child) { color: #1b2940; font-weight: 700; }
+  .investor-comparison-heading { background: #eef6f6; }
+  .investor-comparison-heading > strong { color: #1b4851; font-size: .68rem; }
   .investor-market { background: #fff; margin-top: 28px; padding: 24px 27px; }
   .investor-market-filters { align-items: end; background: #f4f7fb; display: flex; flex-wrap: wrap; gap: 13px; margin: 18px 0; padding: 15px; }
   .investor-market-filters label { color: #1b2940; display: flex; flex-direction: column; font-size: .63rem; font-weight: 700; gap: 6px; letter-spacing: .06em; text-transform: uppercase; }
@@ -1124,13 +1162,15 @@ body {
     .terminal-feature-grid, .terminal-content-grid { grid-template-columns: 1fr; }
     .terminal-metrics { grid-template-columns: repeat(2, 1fr); }
     .portfolio-summary { grid-template-columns: repeat(2, 1fr); }
-    .portfolio-summary > div:nth-child(2) { border-right: 0; }
+    .portfolio-summary > div:nth-child(2n) { border-right: 0; }
     .portfolio-grid, .portfolio-lower-grid { grid-template-columns: 1fr; }
     .portfolio-actions { align-self: flex-start; }
     .terminal-metrics > div:nth-child(2) { border-right: 0; }
     .terminal-metrics > div:nth-child(-n+2) { border-bottom: 1px solid var(--terminal-line); }
     .investor-ipo-overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .investor-ipo-data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .investor-calendar-dates { grid-template-columns: repeat(2, 1fr); }
+    .investor-comparison-options { grid-template-columns: 1fr; }
     .investor-apply-row { align-items: stretch; flex-direction: column; }
     .investor-apply-row input { width: 100%; }
     .investor-bid-controls { grid-template-columns: 1fr; }
@@ -1163,8 +1203,12 @@ body {
     .terminal-table-head span:nth-child(2), .terminal-table-row > span { display: none; }
     .terminal-footer { align-items: flex-start; flex-direction: column; gap: 7px; }
     .investor-ipo-library { padding: 20px; }
+    .investor-calendar { padding: 20px; }
     .investor-ipo-record summary > span { font-size: 0; }
     .investor-ipo-record summary b { font-size: 1rem; }
+    .investor-calendar-dates { grid-template-columns: 1fr; }
+    .investor-calendar-card-head { align-items: flex-start; flex-direction: column; }
+    .investor-comparison { padding: 20px; }
     .investor-ipo-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .investor-ipo-data-grid { grid-template-columns: 1fr; }
   }

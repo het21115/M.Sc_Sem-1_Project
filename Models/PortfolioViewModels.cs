@@ -6,6 +6,8 @@ namespace IPOInvestmentManagement.Models
         public decimal CurrentValue { get; set; }
         public decimal RealizedProfitLoss { get; set; }
         public decimal UnrealizedProfitLoss { get; set; }
+        public decimal TotalReturn { get; set; }
+        public decimal ReturnPercentage { get; set; }
         public List<PortfolioHoldingViewModel> Holdings { get; set; } = new();
         public List<PortfolioTransactionViewModel> Transactions { get; set; } = new();
         public List<PortfolioAllocationViewModel> Allocation { get; set; } = new();

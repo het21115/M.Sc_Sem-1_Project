@@ -41,11 +41,9 @@ namespace IPOInvestmentManagement.Models
         ErrorMessage = "Please enter a valid 10-digit mobile number.")]
         public string Phone { get; set; } = string.Empty;
 
-        [Required]
         [StringLength(30)]
         public string? DematAccountNumber { get; set; }
 
-        [Required]
         [StringLength(100)]
         public string? UpiId { get; set; }
 

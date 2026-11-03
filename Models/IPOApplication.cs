@@ -46,5 +46,12 @@ namespace IPOInvestmentManagement.Models
 
         [StringLength(30)]
         public string? Status { get; set; }
+
+        public int? Cancellation_admin_id { get; set; }
+
+        [StringLength(500)]
+        public string? Cancellation_reason { get; set; }
+
+        public DateTime? Cancellation_date { get; set; }
     }
 }

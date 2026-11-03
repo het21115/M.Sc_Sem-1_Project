@@ -28,6 +28,12 @@
                 <div><span>Demat account</span><strong>@(Model.Application.Demat_account_number ?? "Not recorded")</strong></div>
                 <div><span>UPI ID</span><strong>@(Model.Application.Upi_id ?? "Not recorded")</strong></div>
                 <div><span>Payment status</span><strong>@(Model.Application.Payment_status ?? "Not recorded")</strong></div>
+                @if (application.Cancellation_date.HasValue)
+                {
+                    <div><span>Cancellation date</span><strong>@application.Cancellation_date.Value.ToString("dd MMM yyyy, hh:mm tt")</strong></div>
+                    <div><span>Cancellation admin ID</span><strong>@(application.Cancellation_admin_id?.ToString() ?? "Not recorded")</strong></div>
+                    <div><span>Cancellation reason</span><strong>@(application.Cancellation_reason ?? "Not recorded")</strong></div>
+                }
                 @if (allotment is not null)
                 {
                     <div><span>Allotment status</span><strong>@allotment.Status</strong></div>
@@ -37,6 +43,19 @@
                 }
             </div>
             <div class="company-request-actions admin-detail-actions">
+                @if (allotment is null &&
+                    !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(application.Status, "Allotted", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(application.Status, "Partially Allotted", StringComparison.OrdinalIgnoreCase))
+                {
+                    <form asp-controller="Dashboard" asp-action="CancelApplication" method="post" class="admin-allotment-form" onsubmit="return confirm('Cancel this application? This action cannot be undone.');">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="ApplicationId" value="@application.Application_id" />
+                        <label>Cancellation reason<textarea name="Reason" maxlength="500" minlength="5" required placeholder="Enter the reason for cancellation"></textarea></label>
+                        <button class="btn btn-outline-danger" type="submit">Cancel application</button>
+                    </form>
+                }
                 @if (allotment is null && DateTime.UtcNow.AddHours(5.5).Date > ipo.Close_date.Date && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
                 {
                     <form asp-controller="Dashboard" asp-action="ProcessAllotment" method="post" class="admin-allotment-form">

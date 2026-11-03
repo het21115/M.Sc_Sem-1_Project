@@ -1,0 +1,72 @@
+@model IPOInvestmentManagement.Models.CompanyIpoDetailsViewModel
+@{
+    ViewData["Title"] = "IPO Details";
+    IPOInvestmentManagement.Models.IPO ipo = Model.Ipo;
+    IPOInvestmentManagement.Models.Company? company = Model.Company;
+    IPOInvestmentManagement.Models.IPOFinancial? financial = Model.Financial;
+    IPOInvestmentManagement.Models.IPOAnalysis? analysis = Model.Analysis;
+    IPOInvestmentManagement.Models.IPOListing? listing = Model.Listing;
+}
+
+<div class="admin-console">
+    <header class="admin-topbar">
+        <a class="admin-back-button" asp-controller="Dashboard" asp-action="Index">&#8592; Back to dashboard</a>
+        <div class="admin-brand"><span></span> IPO <strong>INVEST</strong></div>
+        <span class="admin-mode">INVESTOR IPO RESEARCH</span>
+        <div class="admin-user"><span>@(Context.Session.GetString("UserName") ?? "Investor")</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div>
+    </header>
+    <main class="admin-main">
+        <div class="admin-heading">
+            <div><span class="admin-overline">IPO INFORMATION</span><h1>@ipo.IPO_name</h1><p>@(company?.Company_name ?? "Company") &middot; @(ipo.Status ?? "Published")</p></div>
+        </div>
+        <section class="admin-user-details-card">
+            <div class="admin-section-head"><div><span class="admin-overline">OFFER DETAILS</span><h2>Complete IPO overview</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Index" asp-fragment="published-ipos">Back to IPO market</a></div>
+            <div class="admin-user-detail-grid">
+                <div><span>IPO type</span><strong>@(ipo.IPO_type ?? "Not specified")</strong></div>
+                <div><span>Application type</span><strong>@(ipo.Apply_type ?? "Not specified")</strong></div>
+                <div><span>Price range</span><strong>₹@(ipo.Price_min?.ToString("N2") ?? "-") - ₹@(ipo.Price_max?.ToString("N2") ?? "-")</strong></div>
+                <div><span>Lot size</span><strong>@(ipo.Lot_size?.ToString("N0") ?? "-") shares</strong></div>
+                <div><span>Total shares</span><strong>@(ipo.Total_shares?.ToString("N0") ?? "-")</strong></div>
+                <div><span>Issue size</span><strong>₹@(ipo.Issue_size?.ToString("N2") ?? "-")</strong></div>
+                <div><span>Open date</span><strong>@ipo.Open_date.ToString("dd MMM yyyy")</strong></div>
+                <div><span>Close date</span><strong>@ipo.Close_date.ToString("dd MMM yyyy")</strong></div>
+                <div><span>Allotment date</span><strong>@(ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "Not announced")</strong></div>
+                <div><span>Funds release date</span><strong>@(ipo.Funds_unblock_date?.ToString("dd MMM yyyy") ?? "Not announced")</strong></div>
+                <div><span>Listing date</span><strong>@(ipo.Listing_date?.ToString("dd MMM yyyy") ?? "Not announced")</strong></div>
+            </div>
+            <p class="investor-ipo-description">@(ipo.Description ?? "No description provided for this IPO.")</p>
+        </section>
+        <section class="admin-user-details-card">
+            <div class="admin-section-head"><div><span class="admin-overline">COMPANY PROFILE</span><h2>@(company?.Company_name ?? "Company")</h2></div></div>
+            <div class="admin-user-detail-grid">
+                <div><span>Industry</span><strong>@(company?.Industry ?? "Not specified")</strong></div>
+                <div><span>CIN</span><strong>@(company?.CIN ?? "Not specified")</strong></div>
+                <div><span>Email</span><strong>@(company?.Email ?? "Not specified")</strong></div>
+                <div><span>Phone</span><strong>@(company?.Phone ?? "Not specified")</strong></div>
+                <div><span>Website</span><strong>@(company?.Website ?? "Not specified")</strong></div>
+                <div><span>Address</span><strong>@(company?.Address ?? "Not specified")</strong></div>
+            </div>
+            <p class="investor-ipo-description">@(company?.Description ?? "No company description provided.")</p>
+        </section>
+        <section class="admin-user-details-card">
+            <div class="admin-section-head"><div><span class="admin-overline">FINANCIALS, ANALYSIS AND LISTING</span><h2>Market information</h2></div></div>
+            <div class="admin-user-detail-grid">
+                <div><span>Financial year</span><strong>@(financial?.Financial_year.ToString() ?? "Not available")</strong></div>
+                <div><span>Revenue</span><strong>₹@(financial?.Revenue?.ToString("N2") ?? "-")</strong></div>
+                <div><span>Profit</span><strong>₹@(financial?.Profit?.ToString("N2") ?? "-")</strong></div>
+                <div><span>Net worth</span><strong>₹@(financial?.Net_worth?.ToString("N2") ?? "-")</strong></div>
+                <div><span>ROE</span><strong>@(analysis?.ROE?.ToString("N2") ?? "-")%</strong></div>
+                <div><span>Revenue growth</span><strong>@(analysis?.Revenue_growth?.ToString("N2") ?? "-")%</strong></div>
+                <div><span>Profit growth</span><strong>@(analysis?.Profit_growth?.ToString("N2") ?? "-")%</strong></div>
+                <div><span>Issue price</span><strong>₹@(listing?.Issue_price?.ToString("N2") ?? "-")</strong></div>
+                <div><span>NSE listing price</span><strong>₹@(listing?.NSE_listing_price?.ToString("N2") ?? "-")</strong></div>
+                <div><span>BSE listing price</span><strong>₹@(listing?.BSE_listing_price?.ToString("N2") ?? "-")</strong></div>
+                <div><span>NSE closing price</span><strong>₹@(listing?.NSE_closing_price?.ToString("N2") ?? "-")</strong></div>
+                <div><span>BSE closing price</span><strong>₹@(listing?.BSE_closing_price?.ToString("N2") ?? "-")</strong></div>
+                <div><span>Listing gain</span><strong>@(listing?.Listing_gain_percentage?.ToString("N2") ?? "-")%</strong></div>
+                <div><span>Listed date</span><strong>@(listing?.Listing_date?.ToString("dd MMM yyyy") ?? "Not listed")</strong></div>
+            </div>
+            <p class="investor-ipo-description">@(analysis?.Analysis_summary ?? "No analysis summary is available yet.")</p>
+        </section>
+    </main>
+</div>

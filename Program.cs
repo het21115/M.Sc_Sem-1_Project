@@ -3,11 +3,17 @@ using IPOInvestmentManagement.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession();
 builder.Services.AddScoped<IEmailNotificationService, SmtpEmailNotificationService>();
+builder.Services.AddHttpClient<IRazorpayPaymentService, RazorpayPaymentService>(client =>
+{
+    client.BaseAddress = new Uri("https://api.razorpay.com/v1/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(
@@ -68,6 +74,12 @@ using (var scope = app.Services.CreateScope())
             ALTER TABLE [IPOApplications] ADD [Payment_reference] nvarchar(40) NULL;
         IF COL_LENGTH(N'[IPOApplications]', N'Payment_status') IS NULL
             ALTER TABLE [IPOApplications] ADD [Payment_status] nvarchar(20) NULL;
+        IF COL_LENGTH(N'[IPOApplications]', N'Cancellation_admin_id') IS NULL
+            ALTER TABLE [IPOApplications] ADD [Cancellation_admin_id] int NULL;
+        IF COL_LENGTH(N'[IPOApplications]', N'Cancellation_reason') IS NULL
+            ALTER TABLE [IPOApplications] ADD [Cancellation_reason] nvarchar(500) NULL;
+        IF COL_LENGTH(N'[IPOApplications]', N'Cancellation_date') IS NULL
+            ALTER TABLE [IPOApplications] ADD [Cancellation_date] datetime2 NULL;
         """);
 }
 

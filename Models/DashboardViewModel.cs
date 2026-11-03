@@ -38,6 +38,12 @@ namespace IPOInvestmentManagement.Models
         public string? MarketCompany { get; set; }
         public List<CompanyIpoDetailsViewModel> PublishedIpoDetails { get; set; } = new();
         public List<CompanyIpoDetailsViewModel> WatchlistDetails { get; set; } = new();
+        public List<CompanyIpoDetailsViewModel> CalendarIpoDetails { get; set; } = new();
+        public int CalendarMonth { get; set; }
+        public int CalendarYear { get; set; }
+        public List<CompanyIpoDetailsViewModel> ComparisonIpoDetails { get; set; } = new();
+        public int[] ComparisonIpoIds { get; set; } = Array.Empty<int>();
+        public Dictionary<int, decimal> ComparisonSubscriptionMultiples { get; set; } = new();
         public List<IPO> CompanyIpos { get; set; } = new();
         public List<CompanyIpoDetailsViewModel> CompanyIpoDetails { get; set; } = new();
         public List<Company> Companies { get; set; } = new();

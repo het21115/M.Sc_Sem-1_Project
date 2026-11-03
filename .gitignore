@@ -1,5 +1,6 @@
 bin/
 obj/
+appsettings.Local.json
 tmp-build/
 tmp-obj/
 IPOInvestmentManagement/tmp-build/

@@ -11,5 +11,7 @@ namespace IPOInvestmentManagement.Models
         public decimal ApplicationAmount { get; set; }
         public string DematAccountNumber { get; set; } = string.Empty;
         public string UpiId { get; set; } = string.Empty;
+        public string RazorpayOrderId { get; set; } = string.Empty;
+        public string RazorpayKeyId { get; set; } = string.Empty;
     }
 }

@@ -15,6 +15,8 @@ namespace IPOInvestmentManagement.Models
 
         public int Investment_id { get; set; }
 
+        public Investment? Investment { get; set; }
+
         [StringLength(10)]
         public string? Transaction_type { get; set; }
 
