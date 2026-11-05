@@ -1,0 +1,44 @@
+@model IPOInvestmentManagement.Models.AllotmentPreviewViewModel
+@{
+    ViewData["Title"] = "Allotment Preview";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar">
+        <button type="button" class="admin-back-button" data-admin-back="@Url.Action("ApplicationDetails", "Dashboard", new { applicationId = Model.Application.Application_id })">&#8592; Back</button>
+        <div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div>
+        <span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span>
+    </header>
+    <main class="admin-main">
+        <div class="admin-heading">
+            <div>
+                <span class="admin-overline">ALLOTMENT PREVIEW</span>
+                <h1>Review before confirmation</h1>
+                <p>@Model.Ipo.IPO_name · Application #@Model.Application.Application_id</p>
+            </div>
+        </div>
+        <section class="admin-user-details-card">
+            <div class="admin-user-detail-grid">
+                <div><span>Application status</span><strong>@Model.Application.Status</strong></div>
+                <div><span>Payment status</span><strong>@Model.Application.Payment_status</strong></div>
+                <div><span>Applied lots</span><strong>@Model.Application.Applied_lots.ToString("N0")</strong></div>
+                <div><span>Allotted lots</span><strong>@Model.AllottedLots.ToString("N0")</strong></div>
+                <div><span>Allotted shares</span><strong>@Model.AllottedShares.ToString("N0")</strong></div>
+                <div><span>Allotment price</span><strong>₹@Model.AllotmentPrice.ToString("N2")</strong></div>
+                <div><span>Allocated amount</span><strong>₹@Model.AllocatedAmount.ToString("N2")</strong></div>
+                <div><span>Amount to unblock</span><strong>₹@Model.UnblockedAmount.ToString("N2")</strong></div>
+            </div>
+            <div class="company-request-actions admin-detail-actions">
+                <form asp-controller="Dashboard" asp-action="ProcessAllotment" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="applicationId" value="@Model.Application.Application_id" />
+                    <input type="hidden" name="allottedLots" value="@Model.AllottedLots" />
+                    <input type="hidden" name="allottedShares" value="@Model.AllottedShares" />
+                    <input type="hidden" name="allotmentPrice" value="@Model.AllotmentPrice" />
+                    <button class="btn btn-primary" type="submit">Confirm allotment</button>
+                    <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@Model.Application.Application_id">Cancel</a>
+                </form>
+            </div>
+        </section>
+    </main>
+</div>

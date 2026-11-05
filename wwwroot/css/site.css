@@ -988,6 +988,8 @@ body {
   .performance-chart { align-items: end; border-bottom: 1px solid #cfe0dc; display: flex; gap: 9px; height: 180px; margin-top: 20px; overflow-x: auto; padding: 0 8px; }
   .performance-column { align-items: center; display: flex; flex: 1 0 28px; flex-direction: column; height: 100%; justify-content: end; min-width: 28px; }
   .performance-column span { background: linear-gradient(180deg, #f2b84b, #177b82); border-radius: 5px 5px 0 0; display: block; min-height: 5px; width: 18px; }
+  .investor-dashboard-performance { margin-top: 16px; }
+  .investor-dashboard-performance .performance-column span.loss { background: linear-gradient(180deg, #e88978, #c75c50); }
   .performance-column small { color: #8a989a; font-size: .52rem; margin-top: 7px; white-space: nowrap; }
   .terminal-section-head { align-items: flex-end; border-bottom: 1px solid var(--terminal-line); display: flex; justify-content: space-between; padding-bottom: 17px; }
   .terminal-section-head h2 { font-family: Georgia, "Times New Roman", serif; font-size: 1.5rem; font-weight: 400; margin: 7px 0 0; }

@@ -53,5 +53,9 @@ namespace IPOInvestmentManagement.Models
         public DateTime Created_at { get; set; }
 
         public bool Is_active { get; set; } = true;
+
+        public int FailedLoginAttempts { get; set; }
+
+        public DateTime? LockoutEndsAt { get; set; }
     }
 }

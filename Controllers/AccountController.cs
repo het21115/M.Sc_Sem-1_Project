@@ -13,6 +13,11 @@ namespace IPOInvestmentManagement.Controllers
 {
     public class AccountController : Controller
     {
+        private const int MaxOtpAttempts = 5;
+        private const int MaxOtpResends = 3;
+        private const int OtpResendCooldownSeconds = 60;
+        private const int MaxLoginAttempts = 5;
+        private static readonly TimeSpan LoginLockoutDuration = TimeSpan.FromMinutes(2);
         private readonly ApplicationDbContext _context;
         private readonly PasswordHasher<User> _passwordHasher;
         private readonly IConfiguration _configuration;
@@ -69,6 +74,7 @@ namespace IPOInvestmentManagement.Controllers
             }
 
             // Check whether email already exists
+            user.Email = user.Email.Trim().ToLowerInvariant();
             bool emailExists = await _context.Users
                 .AnyAsync(u => u.Email == user.Email);
 
@@ -117,6 +123,9 @@ namespace IPOInvestmentManagement.Controllers
             );
             HttpContext.Session.SetString("RegistrationRequestedRole", requestedRole);
             HttpContext.Session.SetString("RegistrationOtpHash", HashOtp(otp));
+            HttpContext.Session.SetInt32("RegistrationOtpAttempts", 0);
+            HttpContext.Session.SetInt32("RegistrationOtpResends", 0);
+            HttpContext.Session.SetString("RegistrationOtpLastSent", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
             HttpContext.Session.SetString(
                 "RegistrationOtpExpires",
                 DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString()
@@ -134,6 +143,7 @@ namespace IPOInvestmentManagement.Controllers
                 return View("~/Views/Home/RegisterCompany.cshtml", registration);
             }
 
+            registration.CompanyEmail = registration.CompanyEmail.Trim().ToLowerInvariant();
             bool emailExists = await _context.Users.AnyAsync(user => user.Email == registration.CompanyEmail);
             if (emailExists)
             {
@@ -189,6 +199,9 @@ namespace IPOInvestmentManagement.Controllers
             HttpContext.Session.SetString("PendingCompanyRegistration", JsonSerializer.Serialize(company));
             HttpContext.Session.SetString("RegistrationRequestedRole", "Company");
             HttpContext.Session.SetString("RegistrationOtpHash", HashOtp(otp));
+            HttpContext.Session.SetInt32("RegistrationOtpAttempts", 0);
+            HttpContext.Session.SetInt32("RegistrationOtpResends", 0);
+            HttpContext.Session.SetString("RegistrationOtpLastSent", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
             HttpContext.Session.SetString("RegistrationOtpExpires", DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString());
 
             return RedirectToAction("VerifyOtp");
@@ -224,6 +237,12 @@ namespace IPOInvestmentManagement.Controllers
                 return RedirectToAction("Register");
             }
 
+            if (!CanResendOtp("RegistrationOtp"))
+            {
+                TempData["OtpError"] = "Please wait before requesting another code, or start a new registration after the resend limit is reached.";
+                return RedirectToAction("VerifyOtp");
+            }
+
             string otp = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
 
             try
@@ -234,6 +253,9 @@ namespace IPOInvestmentManagement.Controllers
                     "RegistrationOtpExpires",
                     DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString()
                 );
+                HttpContext.Session.SetInt32("RegistrationOtpAttempts", 0);
+                HttpContext.Session.SetInt32("RegistrationOtpResends", (HttpContext.Session.GetInt32("RegistrationOtpResends") ?? 0) + 1);
+                HttpContext.Session.SetString("RegistrationOtpLastSent", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
                 TempData["OtpMessage"] = $"A new verification code was sent to {user.Email}. Check your inbox and Spam folder.";
             }
             catch (Exception exception)
@@ -266,6 +288,15 @@ namespace IPOInvestmentManagement.Controllers
                 DateTimeOffset.UtcNow.ToUnixTimeSeconds() > expiresAt)
             {
                 ModelState.AddModelError("", "This OTP has expired. Please register again.");
+                return View("~/Views/Home/VerifyOtp.cshtml");
+            }
+
+            int attempts = (HttpContext.Session.GetInt32("RegistrationOtpAttempts") ?? 0) + 1;
+            HttpContext.Session.SetInt32("RegistrationOtpAttempts", attempts);
+            if (attempts > MaxOtpAttempts)
+            {
+                HttpContext.Session.Remove("RegistrationOtpHash");
+                ModelState.AddModelError("", "Too many incorrect attempts. Please register again.");
                 return View("~/Views/Home/VerifyOtp.cshtml");
             }
 
@@ -327,6 +358,9 @@ namespace IPOInvestmentManagement.Controllers
             HttpContext.Session.Remove("RegistrationRequestedRole");
             HttpContext.Session.Remove("RegistrationOtpHash");
             HttpContext.Session.Remove("RegistrationOtpExpires");
+            HttpContext.Session.Remove("RegistrationOtpAttempts");
+            HttpContext.Session.Remove("RegistrationOtpResends");
+            HttpContext.Session.Remove("RegistrationOtpLastSent");
             TempData["RegisteredFirstName"] = user.First_name;
 
             return RedirectToAction("RegistrationSuccess");
@@ -425,6 +459,7 @@ namespace IPOInvestmentManagement.Controllers
                 return View("~/Views/Home/ForgotPassword.cshtml");
             }
 
+            email = email.Trim().ToLowerInvariant();
             User? user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
             if (user is null)
             {
@@ -441,6 +476,9 @@ namespace IPOInvestmentManagement.Controllers
                 "PasswordResetOtpExpires",
                 DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString()
             );
+            HttpContext.Session.SetInt32("PasswordResetOtpAttempts", 0);
+            HttpContext.Session.SetInt32("PasswordResetOtpResends", 0);
+            HttpContext.Session.SetString("PasswordResetOtpLastSent", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
 
             return RedirectToAction("ResetPassword");
         }
@@ -457,6 +495,39 @@ namespace IPOInvestmentManagement.Controllers
             }
 
             return View("~/Views/Home/ResetPassword.cshtml");
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ResendResetOtp()
+        {
+            int? userId = HttpContext.Session.GetInt32("PasswordResetUserId");
+            if (!userId.HasValue)
+            {
+                return RedirectToAction("ForgotPassword");
+            }
+
+            if (!CanResendOtp("PasswordResetOtp"))
+            {
+                TempData["ResetMessage"] = "Please wait before requesting another code, or start a new reset request after the resend limit is reached.";
+                return RedirectToAction("ResetPassword");
+            }
+
+            User? user = await _context.Users.FindAsync(userId.Value);
+            if (user is null || !user.Is_active)
+            {
+                return RedirectToAction("ForgotPassword");
+            }
+
+            string otp = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+            await SendOtpEmailAsync(user.Email, user.First_name ?? string.Empty, otp);
+            HttpContext.Session.SetString("PasswordResetOtpHash", HashOtp(otp));
+            HttpContext.Session.SetString("PasswordResetOtpExpires", DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds().ToString());
+            HttpContext.Session.SetInt32("PasswordResetOtpAttempts", 0);
+            HttpContext.Session.SetInt32("PasswordResetOtpResends", (HttpContext.Session.GetInt32("PasswordResetOtpResends") ?? 0) + 1);
+            HttpContext.Session.SetString("PasswordResetOtpLastSent", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
+            TempData["ResetMessage"] = "A new verification code was sent.";
+            return RedirectToAction("ResetPassword");
         }
 
         // =========================
@@ -483,6 +554,15 @@ namespace IPOInvestmentManagement.Controllers
                 DateTimeOffset.UtcNow.ToUnixTimeSeconds() > expiresAt)
             {
                 ModelState.AddModelError("", "This OTP has expired. Please request a new one.");
+                return View("~/Views/Home/ResetPassword.cshtml");
+            }
+
+            int attempts = (HttpContext.Session.GetInt32("PasswordResetOtpAttempts") ?? 0) + 1;
+            HttpContext.Session.SetInt32("PasswordResetOtpAttempts", attempts);
+            if (attempts > MaxOtpAttempts)
+            {
+                HttpContext.Session.Remove("PasswordResetOtpHash");
+                ModelState.AddModelError("", "Too many incorrect attempts. Please request a new code.");
                 return View("~/Views/Home/ResetPassword.cshtml");
             }
 
@@ -522,6 +602,9 @@ namespace IPOInvestmentManagement.Controllers
             HttpContext.Session.Remove("PasswordResetUserId");
             HttpContext.Session.Remove("PasswordResetOtpHash");
             HttpContext.Session.Remove("PasswordResetOtpExpires");
+            HttpContext.Session.Remove("PasswordResetOtpAttempts");
+            HttpContext.Session.Remove("PasswordResetOtpResends");
+            HttpContext.Session.Remove("PasswordResetOtpLastSent");
             TempData["SuccessMessage"] = "Your password has been reset. Please sign in.";
 
             return RedirectToAction("Login");
@@ -547,21 +630,8 @@ namespace IPOInvestmentManagement.Controllers
                 return View("~/Views/Home/Login.cshtml");
             }
 
-            var storedUser = await _context.Users
-                .AsNoTracking()
-                .Where(u => u.Email == Email)
-                .Select(u => new
-                {
-                    u.User_id,
-                    FirstName = u.First_name ?? string.Empty,
-                    LastName = u.Last_name ?? string.Empty,
-                    u.Email,
-                    u.Password_hash,
-                    Phone = u.Phone ?? string.Empty,
-                    Role = u.Role ?? "User",
-                    u.Is_active
-                })
-                .FirstOrDefaultAsync();
+            Email = Email.Trim().ToLowerInvariant();
+            User? storedUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == Email);
 
             if (storedUser == null || !storedUser.Is_active)
             {
@@ -573,27 +643,37 @@ namespace IPOInvestmentManagement.Controllers
                 return View("~/Views/Home/Login.cshtml");
             }
 
-            var user = new User
+            if (storedUser.LockoutEndsAt.HasValue && storedUser.LockoutEndsAt > DateTime.UtcNow)
             {
-                User_id = storedUser.User_id,
-                First_name = storedUser.FirstName,
-                Last_name = storedUser.LastName,
-                Email = storedUser.Email,
-                Password_hash = storedUser.Password_hash,
-                Phone = storedUser.Phone,
-                Role = storedUser.Role,
-                Is_active = storedUser.Is_active
-            };
+                int remainingSeconds = Math.Max(1, (int)Math.Ceiling((storedUser.LockoutEndsAt.Value - DateTime.UtcNow).TotalSeconds));
+                ViewData["LockoutSeconds"] = remainingSeconds;
+                ModelState.AddModelError("", $"This account is temporarily locked. Try again in {remainingSeconds / 60:D2}:{remainingSeconds % 60:D2}.");
+                return View("~/Views/Home/Login.cshtml");
+            }
+
+            if (storedUser.LockoutEndsAt.HasValue)
+            {
+                storedUser.LockoutEndsAt = null;
+                storedUser.FailedLoginAttempts = 0;
+            }
 
             var result =
                 _passwordHasher.VerifyHashedPassword(
-                    user,
-                    user.Password_hash,
+                    storedUser,
+                    storedUser.Password_hash,
                     Password
                 );
 
             if (result == PasswordVerificationResult.Failed)
             {
+                storedUser.FailedLoginAttempts++;
+                if (storedUser.FailedLoginAttempts >= MaxLoginAttempts)
+                {
+                    storedUser.LockoutEndsAt = DateTime.UtcNow.Add(LoginLockoutDuration);
+                    storedUser.FailedLoginAttempts = 0;
+                    ViewData["LockoutSeconds"] = (int)LoginLockoutDuration.TotalSeconds;
+                }
+                await _context.SaveChangesAsync();
                 ModelState.AddModelError(
                     "",
                     "Invalid email or password."
@@ -602,8 +682,12 @@ namespace IPOInvestmentManagement.Controllers
                 return View("~/Views/Home/Login.cshtml");
             }
 
+            storedUser.FailedLoginAttempts = 0;
+            storedUser.LockoutEndsAt = null;
+            await _context.SaveChangesAsync();
+
             Company? companyRequest = await _context.Companies.FirstOrDefaultAsync(company =>
-                company.User_id == user.User_id &&
+                company.User_id == storedUser.User_id &&
                 (company.Approval_status == "Pending" || company.Approval_status == "Denied"));
 
             if (companyRequest is not null)
@@ -619,22 +703,22 @@ namespace IPOInvestmentManagement.Controllers
             // Store user information in session
             HttpContext.Session.SetInt32(
                 "User_id",
-                user.User_id
+                storedUser.User_id
             );
 
             HttpContext.Session.SetString(
                 "UserName",
-                $"{user.First_name} {user.Last_name}"
+                $"{storedUser.First_name} {storedUser.Last_name}"
             );
 
             HttpContext.Session.SetString(
                 "UserEmail",
-                user.Email
+                storedUser.Email
             );
 
             HttpContext.Session.SetString(
                 "UserRole",
-                user.Role ?? "User"
+                storedUser.Role ?? "User"
             );
 
             return RedirectToAction("Index", "Dashboard");
@@ -648,6 +732,19 @@ namespace IPOInvestmentManagement.Controllers
             HttpContext.Session.Clear();
 
             return RedirectToAction("Login");
+        }
+
+        private bool CanResendOtp(string prefix)
+        {
+            int resendCount = HttpContext.Session.GetInt32($"{prefix}Resends") ?? 0;
+            if (resendCount >= MaxOtpResends)
+            {
+                return false;
+            }
+
+            string? lastSentValue = HttpContext.Session.GetString($"{prefix}LastSent");
+            return !long.TryParse(lastSentValue, out long lastSent) ||
+                DateTimeOffset.UtcNow.ToUnixTimeSeconds() - lastSent >= OtpResendCooldownSeconds;
         }
     }
 }

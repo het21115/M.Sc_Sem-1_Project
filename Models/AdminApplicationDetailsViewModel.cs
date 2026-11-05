@@ -6,5 +6,6 @@ namespace IPOInvestmentManagement.Models
         public User? Investor { get; set; }
         public IPO Ipo { get; set; } = new();
         public IPOAllotment? Allotment { get; set; }
+        public PaymentRecord? Payment { get; set; }
     }
 }

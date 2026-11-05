@@ -24,6 +24,8 @@ namespace IPOInvestmentManagement.Data
         public DbSet<InvestmentTransaction> InvestmentTransactions { get; set; }
         public DbSet<IPOWatchlist> IPOWatchlists { get; set; }
         public DbSet<SystemNotification> SystemNotifications { get; set; }
+        public DbSet<PaymentRecord> PaymentRecords { get; set; }
+        public DbSet<AuditLog> AuditLogs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -147,6 +149,33 @@ namespace IPOInvestmentManagement.Data
                 .WithMany()
                 .HasForeignKey(w => w.IPO_id)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PaymentRecord>()
+                .HasIndex(payment => payment.RazorpayOrderId)
+                .IsUnique();
+            modelBuilder.Entity<PaymentRecord>()
+                .HasIndex(payment => payment.RazorpayPaymentId)
+                .IsUnique()
+                .HasFilter("[RazorpayPaymentId] IS NOT NULL");
+
+            modelBuilder.Entity<IPOApplication>()
+                .HasIndex(application => application.Razorpay_order_id)
+                .IsUnique()
+                .HasFilter("[Razorpay_order_id] IS NOT NULL");
+            modelBuilder.Entity<IPOApplication>()
+                .HasIndex(application => application.Razorpay_payment_id)
+                .IsUnique()
+                .HasFilter("[Razorpay_payment_id] IS NOT NULL");
+            modelBuilder.Entity<User>()
+                .HasIndex(user => user.Email)
+                .IsUnique();
+            modelBuilder.Entity<IPOApplication>()
+                .HasIndex(application => application.Application_number)
+                .IsUnique()
+                .HasFilter("[Application_number] IS NOT NULL");
+            modelBuilder.Entity<IPOWatchlist>()
+                .HasIndex(watchlist => new { watchlist.User_id, watchlist.IPO_id })
+                .IsUnique();
         }
     }
 }

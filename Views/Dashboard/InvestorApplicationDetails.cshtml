@@ -1,0 +1,66 @@
+@model IPOInvestmentManagement.Models.AdminApplicationDetailsViewModel
+@{
+    ViewData["Title"] = "Application Details";
+    var application = Model.Application;
+    var ipo = Model.Ipo;
+    var allotment = Model.Allotment;
+    bool canCancel = allotment is null &&
+        string.Equals(application.Status, "Submitted", StringComparison.OrdinalIgnoreCase) &&
+        DateTime.UtcNow.AddHours(5.5).Date < ipo.Close_date.Date;
+}
+
+<div class="registration-form-shell">
+    <div class="registration-form-intro registration-form-intro-investor">
+        <p class="gateway-kicker"><span></span> Application history</p>
+        <h1>@ipo.IPO_name</h1>
+        <p>Review your application, payment reference, and allotment outcome.</p>
+    </div>
+    <div class="card registration-form-card">
+        <div class="card-body p-4 p-lg-5">
+            @if (TempData["InvestorMessage"] is string message)
+            {
+                <div class="alert alert-info" role="alert">@message</div>
+            }
+            <div class="investor-payment-summary">
+                <p><span>Application number</span><strong>@(application.Application_number ?? $"#{application.Application_id}")</strong></p>
+                <p><span>Application status</span><strong>@(application.Status ?? "Pending")</strong></p>
+                <p><span>Payment status</span><strong>@(application.Payment_status ?? "Pending Payment")</strong></p>
+                <p><span>Application date</span><strong>@application.Application_date.ToString("dd MMM yyyy, hh:mm tt")</strong></p>
+                <p><span>Lots / shares</span><strong>@application.Applied_lots / @application.Applied_shares</strong></p>
+                <p><span>Bid price</span><strong>₹@((application.Bid_price ?? 0m).ToString("N2"))</strong></p>
+                <p><span>Application amount</span><strong>₹@((application.Application_amount ?? 0m).ToString("N2"))</strong></p>
+                <p><span>Razorpay order ID</span><strong>@(application.Razorpay_order_id ?? "Not recorded")</strong></p>
+                <p><span>Razorpay payment ID</span><strong>@(application.Razorpay_payment_id ?? application.Payment_reference ?? "Not recorded")</strong></p>
+            </div>
+            @if (allotment is not null)
+            {
+                <div class="alert alert-info">
+                    Allotment: <strong>@allotment.Status</strong> &middot;
+                    @allotment.Allotted_lots lot(s) / @allotment.Allotted_shares share(s)
+                </div>
+            }
+            @if (application.Status == "Cancelled")
+            {
+                <div class="alert alert-warning">
+                    Cancelled on @application.Cancellation_date?.ToString("dd MMM yyyy, hh:mm tt").
+                    Reason: @application.Cancellation_reason
+                </div>
+            }
+            @if (canCancel)
+            {
+                <form asp-controller="Dashboard" asp-action="CancelInvestorApplication" method="post" class="mt-4">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="ApplicationId" value="@application.Application_id" />
+                    <label class="form-label" for="cancellation-reason">Cancellation reason</label>
+                    <textarea class="form-control mb-3" id="cancellation-reason" name="Reason" minlength="5" maxlength="500" required></textarea>
+                    <button class="btn btn-outline-danger" type="submit">Cancel application</button>
+                </form>
+            }
+            else if (application.Status == "Submitted" && allotment is null)
+            {
+                <p class="text-muted mt-4">Cancellation is available only before the IPO closing date.</p>
+            }
+            <a class="registration-back-link" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a>
+        </div>
+    </div>
+</div>

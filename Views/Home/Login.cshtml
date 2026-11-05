@@ -16,6 +16,12 @@
 
                 <form asp-controller="Account" asp-action="Login" method="post">
                     <div asp-validation-summary="All" class="text-danger mb-3"></div>
+                    @if (ViewData["LockoutSeconds"] is int lockoutSeconds)
+                    {
+                        <div id="login-lockout-timer" class="alert alert-warning" role="status" data-seconds="@lockoutSeconds">
+                            Account temporarily locked. You can try again in <strong>02:00</strong>.
+                        </div>
+                    }
 
                     <div class="mb-3">
                         <label for="Email" class="form-label">Email address</label>
@@ -31,7 +37,7 @@
                         <a asp-controller="Account" asp-action="ForgotPassword">Forgot password?</a>
                     </div>
 
-                    <button type="submit" class="btn registration-submit auth-submit w-100">Sign in <span aria-hidden="true">&rarr;</span></button>
+                    <button id="login-submit" type="submit" class="btn registration-submit auth-submit w-100" @(ViewData["LockoutSeconds"] is int ? "disabled" : null)>Sign in <span aria-hidden="true">&rarr;</span></button>
                 </form>
 
                 <p class="text-center mt-4 mb-0">
@@ -39,6 +45,30 @@
                     <a asp-controller="Account" asp-action="Register">Create an account</a>
                 </p>
             </div>
+            @if (ViewData["LockoutSeconds"] is int)
+            {
+                <script>
+                    (() => {
+                        const timer = document.getElementById("login-lockout-timer");
+                        const submit = document.getElementById("login-submit");
+                        let remaining = Number(timer.dataset.seconds);
+                        const update = () => {
+                            const minutes = Math.floor(remaining / 60).toString().padStart(2, "0");
+                            const seconds = (remaining % 60).toString().padStart(2, "0");
+                            timer.querySelector("strong").textContent = `${minutes}:${seconds}`;
+                            if (remaining <= 0) {
+                                timer.textContent = "The lockout has ended. You can try to sign in again.";
+                                timer.classList.replace("alert-warning", "alert-success");
+                                submit.disabled = false;
+                                return;
+                            }
+                            remaining -= 1;
+                            window.setTimeout(update, 1000);
+                        };
+                        update();
+                    })();
+                </script>
+            }
         </div>
     </div>
 </div>

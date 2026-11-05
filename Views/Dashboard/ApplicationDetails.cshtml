@@ -28,6 +28,14 @@
                 <div><span>Demat account</span><strong>@(Model.Application.Demat_account_number ?? "Not recorded")</strong></div>
                 <div><span>UPI ID</span><strong>@(Model.Application.Upi_id ?? "Not recorded")</strong></div>
                 <div><span>Payment status</span><strong>@(Model.Application.Payment_status ?? "Not recorded")</strong></div>
+                <div><span>Razorpay order ID</span><strong>@(Model.Application.Razorpay_order_id ?? "Not recorded")</strong></div>
+                <div><span>Razorpay payment ID</span><strong>@(Model.Application.Razorpay_payment_id ?? Model.Application.Payment_reference ?? "Not recorded")</strong></div>
+                <div><span>Payment amount</span><strong>₹@((Model.Application.Payment_amount ?? 0m).ToString("N2"))</strong></div>
+                <div><span>Refund / unblock</span><strong>@(Model.Payment?.RefundStatus ?? "Not applicable")</strong></div>
+                @if (Model.Payment?.UnblockedAmount > 0)
+                {
+                    <div><span>Amount to unblock</span><strong>₹@Model.Payment.UnblockedAmount.ToString("N2")</strong></div>
+                }
                 @if (application.Cancellation_date.HasValue)
                 {
                     <div><span>Cancellation date</span><strong>@application.Cancellation_date.Value.ToString("dd MMM yyyy, hh:mm tt")</strong></div>
@@ -42,8 +50,19 @@
                     <div><span>Allotment price</span><strong>₹@allotment.Allotment_price.ToString("N2")</strong></div>
                 }
             </div>
+            @if (Model.Payment?.UnblockedAmount > 0 && Model.Payment.RefundStatus != "Completed")
+            {
+                <form asp-controller="Dashboard" asp-action="SimulateUnblock" method="post" class="mb-3">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="applicationId" value="@application.Application_id" />
+                    <button class="btn btn-outline-warning" type="submit">Simulate refund / unblock</button>
+                </form>
+            }
             <div class="company-request-actions admin-detail-actions">
                 @if (allotment is null &&
+                    DateTime.UtcNow.AddHours(5.5).Date < ipo.Close_date.Date &&
+                    string.Equals(application.Status, "Submitted", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(application.Payment_status, "Verified", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(application.Status, "Allotted", StringComparison.OrdinalIgnoreCase) &&
@@ -56,15 +75,15 @@
                         <button class="btn btn-outline-danger" type="submit">Cancel application</button>
                     </form>
                 }
-                @if (allotment is null && DateTime.UtcNow.AddHours(5.5).Date > ipo.Close_date.Date && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+                @if (allotment is null && DateTime.UtcNow.AddHours(5.5).Date > ipo.Close_date.Date && string.Equals(application.Status, "Submitted", StringComparison.OrdinalIgnoreCase) && string.Equals(application.Payment_status, "Verified", StringComparison.OrdinalIgnoreCase))
                 {
-                    <form asp-controller="Dashboard" asp-action="ProcessAllotment" method="post" class="admin-allotment-form">
+                    <form asp-controller="Dashboard" asp-action="PreviewAllotment" method="get" class="admin-allotment-form">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="applicationId" value="@application.Application_id" />
                         <label>Allotted lots<input type="number" name="allottedLots" min="0" max="@application.Applied_lots" value="@application.Applied_lots" required /></label>
                         <label>Allotted shares<input type="number" name="allottedShares" min="0" max="@application.Applied_shares" value="@application.Applied_shares" required /></label>
                         <label>Allotment price <small>(optional)</small><input type="number" name="allotmentPrice" min="0" step="0.01" placeholder="Application price" /></label>
-                        <button class="btn btn-primary" type="submit">Process allotment</button>
+                        <button class="btn btn-primary" type="submit">Preview allotment</button>
                     </form>
                 }
                 else if (allotment is null && ipo.Close_date.Date >= DateTime.UtcNow.AddHours(5.5).Date && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))

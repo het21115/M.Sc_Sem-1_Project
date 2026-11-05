@@ -9,6 +9,7 @@ namespace IPOInvestmentManagement.Models
         public decimal TotalAmount { get; set; }
         public List<AdminApplicationListItem> Applications { get; set; } = new();
         public List<IPO> AvailableIpos { get; set; } = new();
+        public List<AdminApplicationListItem> EligibleApplications { get; set; } = new();
     }
 
     public class AdminApplicationListItem

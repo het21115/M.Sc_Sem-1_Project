@@ -57,9 +57,12 @@ namespace IPOInvestmentManagement.Models
         public Dictionary<int, IPOAllotment> ApplicationAllotments { get; set; } = new();
         public List<IPOApplication> PendingApplications { get; set; } = new();
         public List<Investment> Investments { get; set; } = new();
+        public List<PortfolioPerformancePoint> PortfolioPerformance { get; set; } = new();
         public List<SystemNotification> Notifications { get; set; } = new();
+        public List<PaymentRecord> PaymentHistory { get; set; } = new();
         public Dictionary<int, string> CompanyNames { get; set; } = new();
         public Dictionary<int, string> ApplicationIpoNames { get; set; } = new();
+        public Dictionary<int, string> PaymentIpoNames { get; set; } = new();
         public Dictionary<int, string> InvestmentIpoNames { get; set; } = new();
         public Dictionary<int, string> PendingIpoCompanyNames { get; set; } = new();
         public Dictionary<int, string> ApprovedIpoCompanyNames { get; set; } = new();

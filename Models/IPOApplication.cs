@@ -39,6 +39,15 @@ namespace IPOInvestmentManagement.Models
         [StringLength(40)]
         public string? Payment_reference { get; set; }
 
+        [StringLength(40)]
+        public string? Razorpay_order_id { get; set; }
+
+        [StringLength(40)]
+        public string? Razorpay_payment_id { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? Payment_amount { get; set; }
+
         [StringLength(20)]
         public string? Payment_status { get; set; }
 
