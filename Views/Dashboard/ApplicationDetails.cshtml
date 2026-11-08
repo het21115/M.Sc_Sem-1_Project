@@ -4,6 +4,7 @@
     var application = Model.Application;
     var ipo = Model.Ipo;
     var allotment = Model.Allotment;
+    var upiId = string.IsNullOrWhiteSpace(application.Upi_id) ? Model.Investor?.UpiId : application.Upi_id;
 }
 
 <div class="admin-console">
@@ -25,8 +26,7 @@
                 <div><span>Applied shares</span><strong>@Model.Application.Applied_shares.ToString("N0")</strong></div>
                 <div><span>Bid price</span><strong>₹@((Model.Application.Bid_price ?? 0m).ToString("N2"))</strong></div>
                 <div><span>Application amount</span><strong>₹@((Model.Application.Application_amount ?? 0m).ToString("N2"))</strong></div>
-                <div><span>Demat account</span><strong>@(Model.Application.Demat_account_number ?? "Not recorded")</strong></div>
-                <div><span>UPI ID</span><strong>@(Model.Application.Upi_id ?? "Not recorded")</strong></div>
+                <div><span>UPI ID</span><strong>@(upiId ?? "Not recorded")</strong></div>
                 <div><span>Payment status</span><strong>@(Model.Application.Payment_status ?? "Not recorded")</strong></div>
                 <div><span>Razorpay order ID</span><strong>@(Model.Application.Razorpay_order_id ?? "Not recorded")</strong></div>
                 <div><span>Razorpay payment ID</span><strong>@(Model.Application.Razorpay_payment_id ?? Model.Application.Payment_reference ?? "Not recorded")</strong></div>
@@ -60,7 +60,8 @@
             }
             <div class="company-request-actions admin-detail-actions">
                 @if (allotment is null &&
-                    DateTime.UtcNow.AddHours(5.5).Date < ipo.Close_date.Date &&
+                    ipo.Listing_date.HasValue &&
+                    DateTime.UtcNow.AddHours(5.5).Date >= ipo.Listing_date.Value.Date &&
                     string.Equals(application.Status, "Submitted", StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(application.Payment_status, "Verified", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) &&
@@ -68,10 +69,10 @@
                     !string.Equals(application.Status, "Allotted", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(application.Status, "Partially Allotted", StringComparison.OrdinalIgnoreCase))
                 {
-                    <form asp-controller="Dashboard" asp-action="CancelApplication" method="post" class="admin-allotment-form" onsubmit="return confirm('Cancel this application? This action cannot be undone.');">
+                    <form asp-controller="Dashboard" asp-action="CancelApplication" method="post" class="admin-allotment-form admin-cancellation-form" onsubmit="return confirm('Cancel this application? This action cannot be undone.');">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="ApplicationId" value="@application.Application_id" />
-                        <label>Cancellation reason<textarea name="Reason" maxlength="500" minlength="5" required placeholder="Enter the reason for cancellation"></textarea></label>
+                        <label for="cancellation-reason">Cancellation reason<textarea id="cancellation-reason" name="Reason" maxlength="500" minlength="5" required placeholder="Enter the reason for cancellation"></textarea></label>
                         <button class="btn btn-outline-danger" type="submit">Cancel application</button>
                     </form>
                 }
@@ -86,9 +87,9 @@
                         <button class="btn btn-primary" type="submit">Preview allotment</button>
                     </form>
                 }
-                else if (allotment is null && ipo.Close_date.Date >= DateTime.UtcNow.AddHours(5.5).Date && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+                else if (allotment is null && (!ipo.Listing_date.HasValue || ipo.Listing_date.Value.Date > DateTime.UtcNow.AddHours(5.5).Date) && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
                 {
-                    <p class="admin-muted">Allotment can be processed after the IPO closes on @ipo.Close_date.ToString("dd MMM yyyy").</p>
+                    <p class="admin-muted admin-allotment-note">Allotment can be processed on or after the listing date@(ipo.Listing_date.HasValue ? $" ({ipo.Listing_date.Value:dd MMM yyyy})" : " once a listing date is configured").</p>
                 }
             </div>
         </section>

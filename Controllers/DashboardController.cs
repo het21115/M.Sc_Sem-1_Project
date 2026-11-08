@@ -7,6 +7,7 @@ using System.Net.Mail;
 using System.Data;
 using System.Text.Json;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace IPOInvestmentManagement.Controllers
 {
@@ -15,15 +16,18 @@ namespace IPOInvestmentManagement.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IEmailNotificationService _emailNotificationService;
         private readonly IRazorpayPaymentService _razorpayPaymentService;
+        private readonly IStockMarketService _stockMarketService;
 
         public DashboardController(
             ApplicationDbContext context,
             IEmailNotificationService emailNotificationService,
-            IRazorpayPaymentService razorpayPaymentService)
+            IRazorpayPaymentService razorpayPaymentService,
+            IStockMarketService stockMarketService)
         {
             _context = context;
             _emailNotificationService = emailNotificationService;
             _razorpayPaymentService = razorpayPaymentService;
+            _stockMarketService = stockMarketService;
         }
 
         [HttpGet]
@@ -238,7 +242,8 @@ namespace IPOInvestmentManagement.Controllers
         public async Task<IActionResult> ConfirmIpoPayment(
             string razorpayPaymentId,
             string razorpayOrderId,
-            string razorpaySignature)
+            string razorpaySignature,
+            string upiId)
         {
             int? userId = HttpContext.Session.GetInt32("User_id");
             string? serialized = HttpContext.Session.GetString("PendingIpoApplication");
@@ -255,6 +260,13 @@ namespace IPOInvestmentManagement.Controllers
             {
                 return Forbid();
             }
+            if (string.IsNullOrWhiteSpace(upiId) ||
+                !Regex.IsMatch(upiId.Trim(), @"^[^@\s]+@[^@\s]+$"))
+            {
+                TempData["InvestorMessage"] = "Please enter a valid UPI ID before confirming payment.";
+                return RedirectToAction(nameof(IpoPayment));
+            }
+            pending.UpiId = upiId.Trim();
             bool signatureValid = false;
             try
             {
@@ -602,6 +614,69 @@ namespace IPOInvestmentManagement.Controllers
                 return View(await BuildPortfolioAsync(userId.Value));
             }
 
+            [HttpGet]
+            public async Task<IActionResult> MarketDetails(int ipoId)
+            {
+                if (!IsInvestor())
+                {
+                    return Forbid();
+                }
+
+                MarketDataViewModel? market = await _stockMarketService.GetMarketDataAsync(ipoId);
+                if (market is null)
+                {
+                    return NotFound();
+                }
+
+                return View(market);
+            }
+
+            [HttpGet]
+            public async Task<IActionResult> Trade(int ipoId, bool sell = false, int? investmentId = null)
+            {
+                int? userId = HttpContext.Session.GetInt32("User_id");
+                if (!userId.HasValue || !IsInvestor())
+                {
+                    return Forbid();
+                }
+
+                MarketDataViewModel? market = await _stockMarketService.GetMarketDataAsync(ipoId);
+                if (market is null || !market.CurrentPrice.HasValue)
+                {
+                    TempData["InvestorMessage"] = "Market data is unavailable for this stock.";
+                    return RedirectToAction(nameof(Index));
+                }
+
+                int availableQuantity = 0;
+                if (sell && investmentId.HasValue)
+                {
+                    Investment? investment = await _context.Investments.AsNoTracking()
+                        .FirstOrDefaultAsync(item => item.Investment_id == investmentId && item.User_id == userId.Value);
+                    if (investment is null || investment.IPO_id != ipoId)
+                    {
+                        return NotFound();
+                    }
+
+                    int soldQuantity = await _context.InvestmentTransactions
+                        .Where(transaction => transaction.Investment_id == investment.Investment_id && transaction.Transaction_type == "SELL")
+                        .SumAsync(transaction => (int?)transaction.Quantity) ?? 0;
+                    availableQuantity = Math.Max(0, investment.Quantity - soldQuantity);
+                }
+
+                User? investor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(user => user.User_id == userId.Value);
+                return View(new MarketTradeViewModel
+                {
+                    IpoId = ipoId,
+                    IpoName = market.IpoName,
+                    CompanyName = market.CompanyName,
+                    StockSymbol = market.StockSymbol,
+                    CurrentPrice = market.CurrentPrice.Value,
+                    AvailableQuantity = availableQuantity,
+                    CashBalance = investor?.SimulatedCashBalance ?? 0m,
+                    IsSell = sell
+                });
+            }
+
             [HttpPost]
             [ValidateAntiForgeryToken]
             public async Task<IActionResult> Buy(PortfolioTradeRequest request)
@@ -612,45 +687,73 @@ namespace IPOInvestmentManagement.Controllers
                     return Forbid();
                 }
 
-                if (request.Quantity <= 0 || request.Price <= 0)
+                if (request.Quantity <= 0)
                 {
-                    TempData["InvestorMessage"] = "Enter a positive quantity and buy price.";
+                    TempData["InvestorMessage"] = "Enter a positive quantity.";
                     return RedirectToAction(nameof(Portfolio));
                 }
 
                 IPO? ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(item =>
                     item.IPO_id == request.IpoId &&
-                    (item.Status == "Approved" || item.Status == "Published" || item.Status == "Open" || item.Status == "Listed" || item.Status == "Closed"));
-                if (ipo is null)
+                    item.Listing_date.HasValue &&
+                    item.Listing_date.Value.Date <= GetIndiaStandardTime().Date &&
+                    (item.Status == "Approved" || item.Status == "Published" || item.Status == "Listed" || item.Status == "Closed"));
+                MarketDataViewModel? marketData = ipo is null ? null : await _stockMarketService.GetMarketDataAsync(ipo.IPO_id);
+                if (ipo is null || marketData is null || !marketData.CanTrade || !marketData.CurrentPrice.HasValue)
                 {
-                    TempData["InvestorMessage"] = "The selected IPO is not available for investment.";
+                    TempData["InvestorMessage"] = "Trading is unavailable because the listed company has no current market data or the market is closed.";
                     return RedirectToAction(nameof(Portfolio));
                 }
 
-                Investment investment = new()
+                User? investor = await _context.Users.FirstOrDefaultAsync(user => user.User_id == userId.Value && user.Is_active);
+                decimal tradePrice = marketData.CurrentPrice.Value;
+                decimal totalAmount = request.Quantity * tradePrice;
+                if (investor is null || investor.SimulatedCashBalance < totalAmount)
                 {
-                    User_id = userId.Value,
-                    IPO_id = request.IpoId,
-                    Quantity = request.Quantity,
-                    Buy_price = request.Price,
-                    Investment_amount = request.Quantity * request.Price,
-                    Buy_date = DateTime.UtcNow,
-                    Current_price = request.Price,
-                    Status = "Active"
-                };
-                _context.Investments.Add(investment);
-                await _context.SaveChangesAsync();
+                    TempData["InvestorMessage"] = "Insufficient simulated cash balance for this purchase.";
+                    return RedirectToAction(nameof(Portfolio));
+                }
+
+                await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
+                    await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+                Investment? investment = await _context.Investments.FirstOrDefaultAsync(item =>
+                    item.User_id == userId.Value && item.IPO_id == request.IpoId && item.Status != "Closed");
+                if (investment is null)
+                {
+                    investment = new Investment
+                    {
+                        User_id = userId.Value,
+                        IPO_id = request.IpoId,
+                        Quantity = request.Quantity,
+                        Buy_price = tradePrice,
+                        Buy_date = GetIndiaStandardTime(),
+                        Current_price = tradePrice,
+                        Status = "Holding"
+                    };
+                    _context.Investments.Add(investment);
+                    await _context.SaveChangesAsync();
+                }
+                else
+                {
+                    decimal existingCost = investment.Investment_amount ?? ((investment.Buy_price ?? 0m) * investment.Quantity);
+                    investment.Buy_price = (existingCost + totalAmount) / (investment.Quantity + request.Quantity);
+                    investment.Quantity = checked(investment.Quantity + request.Quantity);
+                    investment.Current_price = tradePrice;
+                    investment.Status = "Holding";
+                }
+                investor.SimulatedCashBalance -= totalAmount;
                 _context.InvestmentTransactions.Add(new InvestmentTransaction
                 {
                     Investment_id = investment.Investment_id,
                     Transaction_type = "BUY",
                     Quantity = request.Quantity,
-                    Price = request.Price,
-                    Total_amount = request.Quantity * request.Price,
-                    Transaction_date = DateTime.UtcNow
+                    Price = tradePrice,
+                    Total_amount = totalAmount,
+                    Transaction_date = GetIndiaStandardTime()
                 });
                 await _context.SaveChangesAsync();
-                TempData["InvestorMessage"] = $"Bought {request.Quantity:N0} shares of {ipo.IPO_name}.";
+                await transaction.CommitAsync();
+                TempData["InvestorMessage"] = $"Bought {request.Quantity:N0} shares of {ipo.IPO_name} at ₹{tradePrice:N2} in simulated trading.";
                 return RedirectToAction(nameof(Portfolio));
             }
 
@@ -666,9 +769,10 @@ namespace IPOInvestmentManagement.Controllers
 
                 Investment? investment = await _context.Investments.FirstOrDefaultAsync(item =>
                     item.Investment_id == request.InvestmentId && item.User_id == userId.Value);
-                if (investment is null || request.Quantity <= 0 || request.Price <= 0)
+                MarketDataViewModel? marketData = investment is null ? null : await _stockMarketService.GetMarketDataAsync(investment.IPO_id);
+                if (investment is null || request.Quantity <= 0 || marketData is null || !marketData.CanTrade || !marketData.CurrentPrice.HasValue)
                 {
-                    TempData["InvestorMessage"] = "Enter a valid sell quantity and price.";
+                    TempData["InvestorMessage"] = "Selling is unavailable because the market is closed or current market data is unavailable.";
                     return RedirectToAction(nameof(Portfolio));
                 }
 
@@ -683,22 +787,34 @@ namespace IPOInvestmentManagement.Controllers
                     return RedirectToAction(nameof(Portfolio));
                 }
 
+                User? investor = await _context.Users.FirstOrDefaultAsync(user => user.User_id == userId.Value && user.Is_active);
+                decimal tradePrice = marketData.CurrentPrice.Value;
+                decimal totalAmount = request.Quantity * tradePrice;
+                if (investor is null)
+                {
+                    TempData["InvestorMessage"] = "The investor account could not be loaded.";
+                    return RedirectToAction(nameof(Portfolio));
+                }
+                await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
+                    await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
                 _context.InvestmentTransactions.Add(new InvestmentTransaction
                 {
                     Investment_id = investment.Investment_id,
                     Transaction_type = "SELL",
                     Quantity = request.Quantity,
-                    Price = request.Price,
-                    Total_amount = request.Quantity * request.Price,
-                    Transaction_date = DateTime.UtcNow
+                    Price = tradePrice,
+                    Total_amount = totalAmount,
+                    Transaction_date = GetIndiaStandardTime()
                 });
+                investor.SimulatedCashBalance += totalAmount;
                 if (request.Quantity == availableQuantity)
                 {
                     investment.Status = "Closed";
                 }
 
                 await _context.SaveChangesAsync();
-                TempData["InvestorMessage"] = $"Sold {request.Quantity:N0} shares.";
+                await transaction.CommitAsync();
+                TempData["InvestorMessage"] = $"Sold {request.Quantity:N0} shares at ₹{tradePrice:N2} in simulated trading.";
                 return RedirectToAction(nameof(Portfolio));
             }
 
@@ -1037,6 +1153,9 @@ namespace IPOInvestmentManagement.Controllers
                 Applications = applications.Select(application => new AdminApplicationListItem
                 {
                     Application = application,
+                    Ipo = ipos.GetValueOrDefault(application.IPO_id),
+                    AllotmentWindowOpen = ipos.GetValueOrDefault(application.IPO_id)?.Listing_date.HasValue == true &&
+                        GetIndiaStandardTime().Date >= ipos.GetValueOrDefault(application.IPO_id)!.Listing_date!.Value.Date,
                     Allotment = allotments.GetValueOrDefault(application.Application_id),
                     InvestorName = users.GetValueOrDefault(application.User_id) is User user
                         ? $"{user.First_name} {user.Last_name}".Trim()
@@ -1053,10 +1172,146 @@ namespace IPOInvestmentManagement.Controllers
                 .Where(item => item.Allotment is null &&
                     string.Equals(item.Application.Status, "Submitted", StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(item.Application.Payment_status, "Verified", StringComparison.OrdinalIgnoreCase) &&
-                    (item.IpoName is not null))
+                    item.AllotmentWindowOpen)
                 .ToList();
 
             return View(model);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> AutomaticAllotmentPreview(int ipoId)
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
+            try
+            {
+                (IPO ipo, List<AllotmentRequestViewModel> requests, List<IPOApplication> applications, int availableLots) =
+                    await BuildAutomaticAllotmentAsync(ipoId);
+                Dictionary<int, string> investorNames = await GetInvestorNamesAsync(applications);
+                int lotSize = ipo.Lot_size!.Value;
+                decimal price = ipo.Price_max ?? ipo.Price_min ?? 0m;
+                return View(new AutomaticAllotmentPreviewViewModel
+                {
+                    Ipo = ipo,
+                    AvailableLots = availableLots,
+                    AllocatedLots = requests.Sum(request => request.AllottedLots),
+                    LotSize = lotSize,
+                    AllotmentPrice = price,
+                    Rows = applications.Select(application =>
+                    {
+                        AllotmentRequestViewModel request = requests.First(item => item.ApplicationId == application.Application_id);
+                        return new AutomaticAllotmentPreviewRow
+                        {
+                            Application = application,
+                            InvestorName = investorNames.GetValueOrDefault(application.User_id, "Investor"),
+                            AllottedLots = request.AllottedLots,
+                            AllottedShares = request.AllottedShares
+                        };
+                    }).ToList()
+                });
+            }
+            catch (InvalidOperationException exception)
+            {
+                TempData["AdminMessage"] = exception.Message;
+                return RedirectToAction(nameof(Applications), new { ipoId });
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ConfirmAutomaticAllotment(int ipoId)
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
+            try
+            {
+                (IPO _, List<AllotmentRequestViewModel> requests, _, _) = await BuildAutomaticAllotmentAsync(ipoId);
+                string[] statuses = await ProcessAllotmentsAsync(requests, false, ipoId);
+                TempData["AdminMessage"] = $"{statuses.Length} automatic allotment(s) confirmed.";
+            }
+            catch (InvalidOperationException exception)
+            {
+                TempData["AdminMessage"] = exception.Message;
+            }
+
+            return RedirectToAction(nameof(Applications), new { ipoId });
+        }
+
+        private async Task<(IPO Ipo, List<AllotmentRequestViewModel> Requests, List<IPOApplication> Applications, int AvailableLots)> BuildAutomaticAllotmentAsync(int ipoId)
+        {
+            IPO? ipo = await _context.IPOs.FirstOrDefaultAsync(item => item.IPO_id == ipoId);
+            if (ipo is null)
+            {
+                throw new InvalidOperationException("The selected IPO could not be found.");
+            }
+
+            DateTime today = GetIndiaStandardTime().Date;
+            if (!ipo.Listing_date.HasValue || today < ipo.Listing_date.Value.Date)
+            {
+                throw new InvalidOperationException($"Automatic allotment can be processed on or after the listing date: {ipo.Listing_date?.ToString("dd MMM yyyy") ?? "not configured"}.");
+            }
+            if (!ipo.Lot_size.HasValue || ipo.Lot_size.Value <= 0)
+            {
+                throw new InvalidOperationException("Automatic allotment requires a valid IPO lot size.");
+            }
+
+            List<IPOApplication> applications = await _context.IPOApplications
+                .AsNoTracking()
+                .Where(application => application.IPO_id == ipoId &&
+                    application.Status == "Submitted" &&
+                    application.Payment_status == "Verified" &&
+                    !_context.IPOAllotments.Any(allotment => allotment.Application_id == application.Application_id))
+                .OrderBy(application => application.Application_date)
+                .ThenBy(application => application.Application_id)
+                .ToListAsync();
+            long alreadyAllocatedShares = await _context.IPOAllotments
+                .Where(allotment => allotment.IPO_id == ipoId)
+                .SumAsync(allotment => (long)allotment.Allotted_shares);
+            long remainingShares = ipo.Total_shares.HasValue
+                ? Math.Max(0, ipo.Total_shares.Value - alreadyAllocatedShares)
+                : applications.Sum(application => (long)application.Applied_shares);
+            int availableLots = (int)Math.Min(int.MaxValue, remainingShares / ipo.Lot_size.Value);
+            int[] allottedLots = new int[applications.Count];
+            int allocatedLots = 0;
+            bool assignedLot;
+            do
+            {
+                assignedLot = false;
+                for (int index = 0; index < applications.Count && allocatedLots < availableLots; index++)
+                {
+                    if (allottedLots[index] < applications[index].Applied_lots)
+                    {
+                        allottedLots[index]++;
+                        allocatedLots++;
+                        assignedLot = true;
+                    }
+                }
+            }
+            while (assignedLot && allocatedLots < availableLots);
+
+            List<AllotmentRequestViewModel> requests = applications.Select((application, index) => new AllotmentRequestViewModel
+            {
+                ApplicationId = application.Application_id,
+                AllottedLots = allottedLots[index],
+                AllottedShares = checked(allottedLots[index] * ipo.Lot_size.Value),
+                AllotmentPrice = ipo.Price_max ?? ipo.Price_min ?? 0m
+            }).ToList();
+            return (ipo, requests, applications, availableLots);
+        }
+
+        private async Task<Dictionary<int, string>> GetInvestorNamesAsync(IEnumerable<IPOApplication> applications)
+        {
+            int[] userIds = applications.Select(application => application.User_id).Distinct().ToArray();
+            return await _context.Users
+                .AsNoTracking()
+                .Where(user => userIds.Contains(user.User_id))
+                .ToDictionaryAsync(user => user.User_id, user => $"{user.First_name} {user.Last_name}".Trim());
         }
 
         [HttpGet]
@@ -1454,9 +1709,14 @@ namespace IPOInvestmentManagement.Controllers
                     throw new InvalidOperationException("The selected IPO could not be found.");
                 }
 
-                if (ipo.Close_date.Date >= GetIndiaStandardTime().Date)
+                DateTime today = GetIndiaStandardTime().Date;
+                if (ipo.Listing_date is null)
                 {
-                    throw new InvalidOperationException("Allotment can be processed only after the IPO closing date.");
+                    throw new InvalidOperationException("Allotment cannot be processed until the IPO listing date is configured.");
+                }
+                if (today < ipo.Listing_date.Value.Date)
+                {
+                    throw new InvalidOperationException($"Allotment can be processed on or after the listing date: {ipo.Listing_date.Value:dd MMM yyyy}.");
                 }
 
                 if (!ipo.Lot_size.HasValue || ipo.Lot_size.Value <= 0)
@@ -1520,8 +1780,20 @@ namespace IPOInvestmentManagement.Controllers
                     User? investor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(user => user.User_id == application.User_id);
                     if (investor is not null)
                     {
-                        await TrySendEventEmailAsync(investor, $"{ipo.IPO_name} allotment result",
-                            $"{ipo.IPO_name}: your application #{application.Application_id} result is {application.Status}. Review the details in your investor dashboard.");
+                        bool successfullyAllotted = string.Equals(application.Status, "Allotted", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(application.Status, "Partially Allotted", StringComparison.OrdinalIgnoreCase);
+                        IPOAllotment? allotment = await _context.IPOAllotments
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(item => item.Application_id == application.Application_id);
+                        int allottedResultShares = allotment?.Allotted_shares ?? 0;
+                        decimal allotmentResultPrice = allotment?.Allotment_price ?? 0m;
+                        string subject = successfullyAllotted
+                            ? $"{ipo.IPO_name} IPO allotment successful"
+                            : $"{ipo.IPO_name} IPO allotment result";
+                        string message = successfullyAllotted
+                            ? $"{ipo.IPO_name}: your IPO application #{application.Application_id} was successfully allotted {allottedResultShares:N0} share(s) at ₹{allotmentResultPrice:N2}. Please log in to your investor dashboard to view the complete result."
+                            : $"{ipo.IPO_name}: no shares were allotted for your application #{application.Application_id}. Please log in to your investor dashboard to view the result.";
+                        await TrySendEventEmailAsync(investor, subject, message);
                     }
                 }
             return applications.Select(application => application.Status ?? "Not Allotted").ToArray();
@@ -2157,6 +2429,7 @@ namespace IPOInvestmentManagement.Controllers
             int[]? compareIpoIds)
         {
             model.Notifications = await LoadNotificationsAsync(userId);
+            model.Market = await _stockMarketService.GetDashboardAsync();
             model.PaymentHistory = await _context.PaymentRecords
                 .AsNoTracking()
                 .Where(record => record.UserId == userId)
@@ -2384,6 +2657,7 @@ namespace IPOInvestmentManagement.Controllers
                 .AsNoTracking()
                 .Where(listing => ipoIds.Contains(listing.IPO_id))
                 .ToDictionaryAsync(listing => listing.IPO_id);
+            MarketDashboardViewModel market = await _stockMarketService.GetDashboardAsync();
 
             List<PortfolioHoldingViewModel> holdings = new();
             decimal realizedProfitLoss = 0m;
@@ -2405,7 +2679,8 @@ namespace IPOInvestmentManagement.Controllers
                     continue;
                 }
 
-                decimal currentPrice = investment.Current_price
+                decimal currentPrice = market.Listings.FirstOrDefault(row => row.IpoId == investment.IPO_id)?.CurrentPrice
+                    ?? investment.Current_price
                     ?? (listings.TryGetValue(investment.IPO_id, out IPOListing? listing)
                         ? listing.NSE_closing_price ?? listing.NSE_listing_price ?? listing.BSE_closing_price ?? listing.BSE_listing_price
                         : null)
@@ -2490,7 +2765,8 @@ namespace IPOInvestmentManagement.Controllers
                 Holdings = holdings,
                 Transactions = transactionRows,
                 Allocation = allocation,
-                Performance = performance
+                Performance = performance,
+                Market = market
             };
         }
 
@@ -2698,6 +2974,11 @@ namespace IPOInvestmentManagement.Controllers
         private bool IsAdmin()
         {
             return string.Equals(HttpContext.Session.GetString("UserRole"), "Admin", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsInvestor()
+        {
+            return string.Equals(HttpContext.Session.GetString("UserRole"), "Investor", StringComparison.OrdinalIgnoreCase);
         }
 
 

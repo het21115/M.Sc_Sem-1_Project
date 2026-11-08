@@ -37,6 +37,7 @@ namespace IPOInvestmentManagement.Services
                 Body = $"Hello {recipientName},\n\n{body}\n\nIPO Investment Management",
                 IsBodyHtml = false
             };
+            message.ReplyToList.Add(new MailAddress(fromEmail, fromName));
             message.To.Add(new MailAddress(recipientEmail, recipientName));
 
             using var smtpClient = new SmtpClient(host, port)

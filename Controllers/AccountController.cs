@@ -1,10 +1,9 @@
 using IPOInvestmentManagement.Data;
 using IPOInvestmentManagement.Models;
+using IPOInvestmentManagement.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Net;
-using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -20,20 +19,20 @@ namespace IPOInvestmentManagement.Controllers
         private static readonly TimeSpan LoginLockoutDuration = TimeSpan.FromMinutes(2);
         private readonly ApplicationDbContext _context;
         private readonly PasswordHasher<User> _passwordHasher;
-        private readonly IConfiguration _configuration;
         private readonly ILogger<AccountController> _logger;
         private readonly IWebHostEnvironment _environment;
+        private readonly IEmailNotificationService _emailNotificationService;
 
         public AccountController(
             ApplicationDbContext context,
-            IConfiguration configuration,
             ILogger<AccountController> logger,
-            IWebHostEnvironment environment)
+            IWebHostEnvironment environment,
+            IEmailNotificationService emailNotificationService)
         {
             _context = context;
-            _configuration = configuration;
             _logger = logger;
             _environment = environment;
+            _emailNotificationService = emailNotificationService;
             _passwordHasher = new PasswordHasher<User>();
         }
 
@@ -368,48 +367,11 @@ namespace IPOInvestmentManagement.Controllers
 
         private async Task SendOtpEmailAsync(string email, string firstName, string otp)
         {
-            string host = _configuration["Smtp:Host"] ?? string.Empty;
-            int port = _configuration.GetValue<int>("Smtp:Port", 587);
-            bool enableSsl = _configuration.GetValue("Smtp:EnableSsl", true);
-            string username = _configuration["Smtp:Username"] ?? string.Empty;
-            string password = (_configuration["Smtp:Password"] ?? string.Empty).Replace(" ", "");
-            string fromEmail = _configuration["Smtp:FromEmail"] ?? string.Empty;
-            string fromName = _configuration["Smtp:FromName"] ?? "IPO Investment Management";
-
-            if (string.IsNullOrWhiteSpace(host) ||
-                string.IsNullOrWhiteSpace(username) ||
-                string.IsNullOrWhiteSpace(password) ||
-                string.IsNullOrWhiteSpace(fromEmail))
-            {
-                throw new InvalidOperationException("SMTP username, password, and FromEmail must be configured.");
-            }
-
-            if (username.Contains("your-email", StringComparison.OrdinalIgnoreCase) ||
-                password.Contains("your-email", StringComparison.OrdinalIgnoreCase) ||
-                fromEmail.Contains("your-email", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("Replace the placeholder SMTP credentials with a real Gmail address and App Password.");
-            }
-
-            using var message = new MailMessage
-            {
-                From = new MailAddress(fromEmail, fromName),
-                Subject = "Your IPO Investment Management verification code",
-                Body = $"Hello {firstName},\n\nYour verification code is {otp}. It expires in 10 minutes.\n\nIf you did not request this, you can ignore this email.",
-                IsBodyHtml = false
-            };
-            message.To.Add(email);
-
-            using var smtpClient = new SmtpClient(host, port)
-            {
-                EnableSsl = enableSsl,
-                UseDefaultCredentials = false,
-                Credentials = new NetworkCredential(username, password),
-                DeliveryMethod = SmtpDeliveryMethod.Network,
-                Timeout = 15000
-            };
-
-            await smtpClient.SendMailAsync(message);
+            await _emailNotificationService.SendAsync(
+                email,
+                firstName,
+                "Your IPO Investment Management verification code",
+                $"Your verification code is {otp}. It expires in 10 minutes.\n\nIf you did not request this code, you can ignore this email.");
         }
 
         private static string HashOtp(string otp)

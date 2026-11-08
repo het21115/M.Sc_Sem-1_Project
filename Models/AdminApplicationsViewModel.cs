@@ -19,5 +19,7 @@ namespace IPOInvestmentManagement.Models
         public string InvestorName { get; set; } = "Investor";
         public string InvestorEmail { get; set; } = string.Empty;
         public string IpoName { get; set; } = "IPO";
+        public IPO? Ipo { get; set; }
+        public bool AllotmentWindowOpen { get; set; }
     }
 }

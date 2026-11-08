@@ -26,6 +26,8 @@ namespace IPOInvestmentManagement.Data
         public DbSet<SystemNotification> SystemNotifications { get; set; }
         public DbSet<PaymentRecord> PaymentRecords { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
+        public DbSet<StockMarketData> StockMarketData { get; set; }
+        public DbSet<MarketTradingHoliday> MarketTradingHolidays { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -176,6 +178,24 @@ namespace IPOInvestmentManagement.Data
             modelBuilder.Entity<IPOWatchlist>()
                 .HasIndex(watchlist => new { watchlist.User_id, watchlist.IPO_id })
                 .IsUnique();
+            modelBuilder.Entity<StockMarketData>()
+                .HasIndex(data => new { data.IPOId, data.Exchange })
+                .IsUnique();
+            modelBuilder.Entity<StockMarketData>()
+                .HasIndex(data => data.StockSymbol);
+            modelBuilder.Entity<MarketTradingHoliday>()
+                .HasIndex(holiday => holiday.HolidayDate)
+                .IsUnique();
+            modelBuilder.Entity<StockMarketData>()
+                .HasOne<IPO>()
+                .WithMany()
+                .HasForeignKey(data => data.IPOId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<StockMarketData>()
+                .HasOne<Company>()
+                .WithMany()
+                .HasForeignKey(data => data.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

@@ -1,0 +1,59 @@
+@model IPOInvestmentManagement.Models.AutomaticAllotmentPreviewViewModel
+@{
+    ViewData["Title"] = "Automatic Allotment Preview";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar">
+        <button type="button" class="admin-back-button" data-admin-back="@Url.Action("Applications", "Dashboard", new { ipoId = Model.Ipo.IPO_id })">&#8592; Back</button>
+        <div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div>
+        <span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span>
+    </header>
+    <main class="admin-main">
+        <div class="admin-heading">
+            <div>
+                <span class="admin-overline">AUTOMATIC ALLOTMENT PREVIEW</span>
+                <h1>@Model.Ipo.IPO_name</h1>
+                <p>Equal-lot allocation distributes one lot per eligible application in application-date order, repeating until demand or available shares are exhausted.</p>
+            </div>
+        </div>
+        <div class="alert alert-warning mt-3">Review carefully. No allotments are saved until you click “Confirm automatic allotment”.</div>
+        <section class="admin-application-panel">
+            <div class="admin-application-stats">
+                <div><span>Available lots</span><strong>@Model.AvailableLots.ToString("N0")</strong><small>@Model.AvailableShares.ToString("N0") shares</small></div>
+                <div><span>Calculated lots</span><strong>@Model.AllocatedLots.ToString("N0")</strong><small>@Model.AllocatedShares.ToString("N0") shares</small></div>
+                <div><span>Lot size / price</span><strong>@Model.LotSize.ToString("N0")</strong><small>₹@Model.AllotmentPrice.ToString("N2") per share</small></div>
+            </div>
+            @if (Model.Rows.Count == 0)
+            {
+                <div class="admin-empty">No submitted applications with verified payment are eligible.</div>
+            }
+            else
+            {
+                <div class="admin-application-list">
+                    @foreach (var row in Model.Rows)
+                    {
+                        <div class="admin-application-row">
+                            <div>
+                                <strong>@row.InvestorName</strong>
+                                <small>@(row.Application.Application_number ?? $"#{row.Application.Application_id}") &middot; Applied @row.Application.Applied_lots.ToString("N0") lot(s) / @row.Application.Applied_shares.ToString("N0") shares</small>
+                            </div>
+                            <div class="admin-application-row-meta">
+                                <span class="admin-application-status">@row.Result</span>
+                                <strong>@row.AllottedLots.ToString("N0") lot(s) / @row.AllottedShares.ToString("N0") shares</strong>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="company-request-actions admin-detail-actions">
+                    <form asp-controller="Dashboard" asp-action="ConfirmAutomaticAllotment" method="post" onsubmit="return confirm('Confirm and save all calculated allotments for this IPO?');">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" />
+                        <button class="btn btn-primary" type="submit">Confirm automatic allotment</button>
+                        <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Applications" asp-route-ipoId="@Model.Ipo.IPO_id">Cancel</a>
+                    </form>
+                </div>
+            }
+        </section>
+    </main>
+</div>

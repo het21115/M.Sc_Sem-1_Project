@@ -5,6 +5,7 @@ namespace IPOInvestmentManagement.Models
         public string UserName { get; set; } = string.Empty;
         public string InvestorDematAccountNumber { get; set; } = string.Empty;
         public string InvestorUpiId { get; set; } = string.Empty;
+        public MarketDashboardViewModel Market { get; set; } = new();
         public string Role { get; set; } = string.Empty;
         public int OpenIpoCount { get; set; }
         public int ApplicationCount { get; set; }

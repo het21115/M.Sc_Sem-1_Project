@@ -1362,6 +1362,12 @@ body {
   .admin-deactivate-form .btn { font-size: .68rem; font-weight: 700; }
   .admin-inactive-notice { color: #9a5a45; font-size: .72rem; margin: 24px 0 0; }
   .admin-detail-actions { border-top: 1px solid var(--admin-line); margin-top: 24px; padding-top: 20px; }
+  .admin-cancellation-form { align-items: end; display: grid; gap: 14px; grid-template-columns: minmax(280px, 1fr) auto; width: 100%; }
+  .admin-cancellation-form label { color: var(--admin-navy); display: flex; flex-direction: column; font-size: .68rem; font-weight: 700; gap: 7px; }
+  .admin-cancellation-form textarea { border: 1px solid #b9ccda; border-radius: 5px; color: var(--admin-ink); min-height: 78px; padding: 9px 10px; resize: vertical; width: 100%; }
+  .admin-cancellation-form textarea:focus { border-color: var(--admin-blue); box-shadow: 0 0 0 3px rgba(31, 139, 174, .12); outline: 0; }
+  .admin-cancellation-form .btn { align-self: end; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+  .admin-allotment-note { flex-basis: 100%; margin: 14px 0 0; }
   .admin-status-form { align-items: center; border-top: 1px solid var(--admin-line); display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; padding-top: 20px; }
   .admin-status-form label { color: var(--admin-navy); font-size: .68rem; font-weight: 700; margin-right: auto; }
   .admin-status-form select { border: 1px solid #b9ccda; border-radius: 5px; color: var(--admin-ink); font-size: .7rem; min-width: 125px; padding: 7px 9px; }
@@ -1467,6 +1473,8 @@ body {
   @media (max-width: 650px) {
     .company-request-row { align-items: flex-start; flex-direction: column; }
     .admin-user-detail-grid { grid-template-columns: 1fr; }
+    .admin-cancellation-form { grid-template-columns: 1fr; }
+    .admin-cancellation-form .btn { justify-self: start; }
   }
   .admin-footer { color: #88939b; display: flex; font-size: .57rem; justify-content: space-between; letter-spacing: .12em; margin-top: 35px; }
 

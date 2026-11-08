@@ -12,6 +12,7 @@ namespace IPOInvestmentManagement.Models
         public List<PortfolioTransactionViewModel> Transactions { get; set; } = new();
         public List<PortfolioAllocationViewModel> Allocation { get; set; } = new();
         public List<PortfolioPerformancePoint> Performance { get; set; } = new();
+        public MarketDashboardViewModel Market { get; set; } = new();
     }
 
     public sealed class PortfolioHoldingViewModel

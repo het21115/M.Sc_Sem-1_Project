@@ -57,5 +57,8 @@ namespace IPOInvestmentManagement.Models
         public int FailedLoginAttempts { get; set; }
 
         public DateTime? LockoutEndsAt { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal SimulatedCashBalance { get; set; } = 100000m;
     }
 }

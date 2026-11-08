@@ -1,0 +1,38 @@
+@model IPOInvestmentManagement.Models.MarketDataViewModel
+@{
+    ViewData["Title"] = "Market Details";
+}
+
+<div class="investor-terminal">
+    <main class="terminal-main">
+        <div class="terminal-heading">
+            <div><span class="terminal-overline">SIMULATED MARKET</span><h1>@Model.CompanyName</h1><p>@Model.IpoName &middot; @Model.StockSymbol @Model.Exchange</p></div>
+            <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a>
+        </div>
+        <section class="portfolio-card">
+            <div class="admin-user-detail-grid">
+                <div><span>Current price</span><strong>₹@(Model.CurrentPrice?.ToString("N2") ?? "Market data unavailable")</strong></div>
+                <div><span>Previous close</span><strong>₹@(Model.PreviousClose?.ToString("N2") ?? "-")</strong></div>
+                <div><span>Change</span><strong class="@(Model.PriceChange >= 0 ? "profit" : "loss")">@(Model.PriceChange?.ToString("+0.00;-0.00;0.00") ?? "-") (@(Model.PriceChangePercentage?.ToString("+0.00;-0.00;0.00") ?? "-")%)</strong></div>
+                <div><span>Day high / low</span><strong>₹@(Model.DayHigh?.ToString("N2") ?? "-") / ₹@(Model.DayLow?.ToString("N2") ?? "-")</strong></div>
+                <div><span>Volume</span><strong>@(Model.Volume?.ToString("N0") ?? "-")</strong></div>
+                <div><span>Last updated</span><strong>@(Model.LastUpdated?.ToString("dd MMM yyyy HH:mm:ss") ?? "Not updated")</strong></div>
+            </div>
+            @if (!Model.IsAvailable)
+            {
+                <div class="alert alert-warning mt-4">Market data unavailable. Buy and sell are disabled until a configured provider supplies a verified quote.</div>
+            }
+            else if (!Model.IsMarketOpen)
+            {
+                <div class="alert alert-secondary mt-4">Market is closed. The latest available price is shown; simulated buy and sell orders are disabled.</div>
+            }
+            else
+            {
+                <div class="company-request-actions admin-detail-actions">
+                    <a class="btn btn-success" asp-controller="Dashboard" asp-action="Trade" asp-route-ipoId="@Model.IpoId">Buy</a>
+                    <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="Portfolio">Sell from portfolio</a>
+                </div>
+            }
+        </section>
+    </main>
+</div>

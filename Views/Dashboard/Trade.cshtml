@@ -1,0 +1,41 @@
+@model IPOInvestmentManagement.Models.MarketTradeViewModel
+@{
+    ViewData["Title"] = Model.IsSell ? "Sell Shares" : "Buy Shares";
+}
+
+<div class="registration-form-shell">
+    <div class="registration-form-intro registration-form-intro-investor">
+        <p class="gateway-kicker"><span></span> Simulated trading</p>
+        <h1>@(Model.IsSell ? "Sell shares." : "Buy shares.")</h1>
+        <p>@Model.CompanyName &middot; @Model.StockSymbol. The server will use the latest verified market price.</p>
+    </div>
+    <div class="card registration-form-card">
+        <div class="card-body p-4 p-lg-5">
+            <div class="investor-payment-summary">
+                <p><span>Current market price</span><strong>₹@Model.CurrentPrice.ToString("N2")</strong></p>
+                @if (Model.IsSell)
+                {
+                    <p><span>Available shares</span><strong>@Model.AvailableQuantity.ToString("N0")</strong></p>
+                }
+                else
+                {
+                    <p><span>Simulated cash balance</span><strong>₹@Model.CashBalance.ToString("N2")</strong></p>
+                }
+            </div>
+            <form asp-controller="Dashboard" asp-action="@(Model.IsSell ? "Sell" : "Buy")" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="IpoId" value="@Model.IpoId" />
+                @if (Model.IsSell)
+                {
+                    <input type="hidden" name="InvestmentId" value="@Context.Request.Query["investmentId"]" />
+                }
+                <input type="hidden" name="Price" value="0" />
+                <label class="form-label" for="trade-quantity">Quantity</label>
+                <input class="form-control mb-3" id="trade-quantity" name="Quantity" type="number" min="1" max="@(Model.IsSell ? Model.AvailableQuantity : int.MaxValue)" required />
+                <p class="form-text">Estimated total: calculated from the latest quote. Final price and amount are revalidated on the server.</p>
+                <button class="btn @(Model.IsSell ? "btn-outline-danger" : "btn-success")" type="submit">Continue and confirm</button>
+                <a class="registration-back-link" asp-controller="Dashboard" asp-action="MarketDetails" asp-route-ipoId="@Model.IpoId">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>

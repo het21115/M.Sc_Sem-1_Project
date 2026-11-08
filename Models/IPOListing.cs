@@ -34,5 +34,11 @@ namespace IPOInvestmentManagement.Models
         public decimal? Listing_gain_percentage { get; set; }
 
         public DateTime? Listing_date { get; set; }
+
+        [StringLength(30)]
+        public string? StockSymbol { get; set; }
+
+        [StringLength(10)]
+        public string? Exchange { get; set; }
     }
 }
