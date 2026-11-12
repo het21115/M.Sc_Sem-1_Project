@@ -1,7 +1,9 @@
 using IPOInvestmentManagement.Data;
+using IPOInvestmentManagement.Hubs;
 using IPOInvestmentManagement.Models;
 using IPOInvestmentManagement.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Mail;
 using System.Data;
@@ -17,17 +19,20 @@ namespace IPOInvestmentManagement.Controllers
         private readonly IEmailNotificationService _emailNotificationService;
         private readonly IRazorpayPaymentService _razorpayPaymentService;
         private readonly IStockMarketService _stockMarketService;
+        private readonly IHubContext<MarketHub> _hubContext;
 
         public DashboardController(
             ApplicationDbContext context,
             IEmailNotificationService emailNotificationService,
             IRazorpayPaymentService razorpayPaymentService,
-            IStockMarketService stockMarketService)
+            IStockMarketService stockMarketService,
+            IHubContext<MarketHub> hubContext)
         {
             _context = context;
             _emailNotificationService = emailNotificationService;
             _razorpayPaymentService = razorpayPaymentService;
             _stockMarketService = stockMarketService;
+            _hubContext = hubContext;
         }
 
         [HttpGet]
@@ -670,10 +675,14 @@ namespace IPOInvestmentManagement.Controllers
                     IpoName = market.IpoName,
                     CompanyName = market.CompanyName,
                     StockSymbol = market.StockSymbol,
+                    Exchange = "NSE",
                     CurrentPrice = market.CurrentPrice.Value,
+                    NsePrice = market.NsePrice ?? market.CurrentPrice.Value,
+                    BsePrice = market.BsePrice ?? market.CurrentPrice.Value,
                     AvailableQuantity = availableQuantity,
                     CashBalance = investor?.SimulatedCashBalance ?? 0m,
-                    IsSell = sell
+                    IsSell = sell,
+                    InvestmentId = investmentId
                 });
             }
 
@@ -693,11 +702,11 @@ namespace IPOInvestmentManagement.Controllers
                     return RedirectToAction(nameof(Portfolio));
                 }
 
+                string exchange = string.Equals(request.Exchange, "BSE", StringComparison.OrdinalIgnoreCase) ? "BSE" : "NSE";
+
                 IPO? ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(item =>
                     item.IPO_id == request.IpoId &&
-                    item.Listing_date.HasValue &&
-                    item.Listing_date.Value.Date <= GetIndiaStandardTime().Date &&
-                    (item.Status == "Approved" || item.Status == "Published" || item.Status == "Listed" || item.Status == "Closed"));
+                    (item.Status == "Approved" || item.Status == "Published" || item.Status == "Listed" || item.Status == "Closed" || item.Status == "Open"));
                 MarketDataViewModel? marketData = ipo is null ? null : await _stockMarketService.GetMarketDataAsync(ipo.IPO_id);
                 if (ipo is null || marketData is null || !marketData.CanTrade || !marketData.CurrentPrice.HasValue)
                 {
@@ -706,11 +715,11 @@ namespace IPOInvestmentManagement.Controllers
                 }
 
                 User? investor = await _context.Users.FirstOrDefaultAsync(user => user.User_id == userId.Value && user.Is_active);
-                decimal tradePrice = marketData.CurrentPrice.Value;
+                decimal tradePrice = exchange == "BSE" ? (marketData.BsePrice ?? marketData.CurrentPrice.Value) : (marketData.NsePrice ?? marketData.CurrentPrice.Value);
                 decimal totalAmount = request.Quantity * tradePrice;
                 if (investor is null || investor.SimulatedCashBalance < totalAmount)
                 {
-                    TempData["InvestorMessage"] = "Insufficient simulated cash balance for this purchase.";
+                    TempData["InvestorMessage"] = $"Insufficient simulated cash balance for this purchase. Required ₹{totalAmount:N2}, available ₹{investor?.SimulatedCashBalance:N2}.";
                     return RedirectToAction(nameof(Portfolio));
                 }
 
@@ -753,7 +762,28 @@ namespace IPOInvestmentManagement.Controllers
                 });
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
-                TempData["InvestorMessage"] = $"Bought {request.Quantity:N0} shares of {ipo.IPO_name} at ₹{tradePrice:N2} in simulated trading.";
+
+                string investorName = $"{investor.First_name} {investor.Last_name}".Trim();
+                try
+                {
+                    await _hubContext.Clients.All.SendAsync("ReceiveTradeNotification", new
+                    {
+                        stockName = ipo.IPO_name,
+                        exchange = exchange,
+                        tradeType = "BUY",
+                        quantity = request.Quantity,
+                        price = tradePrice,
+                        totalAmount = totalAmount,
+                        user = string.IsNullOrWhiteSpace(investorName) ? "Investor" : investorName,
+                        timestamp = DateTime.Now.ToString("hh:mm:ss tt")
+                    });
+                }
+                catch
+                {
+                    // Ignore SignalR dispatch failure if client disconnected
+                }
+
+                TempData["InvestorMessage"] = $"Bought {request.Quantity:N0} shares of {ipo.IPO_name} on {exchange} at ₹{tradePrice:N2} in simulated trading.";
                 return RedirectToAction(nameof(Portfolio));
             }
 
@@ -776,6 +806,8 @@ namespace IPOInvestmentManagement.Controllers
                     return RedirectToAction(nameof(Portfolio));
                 }
 
+                string exchange = string.Equals(request.Exchange, "BSE", StringComparison.OrdinalIgnoreCase) ? "BSE" : "NSE";
+
                 int soldQuantity = await _context.InvestmentTransactions
                     .Where(transaction => transaction.Investment_id == investment.Investment_id &&
                         string.Equals(transaction.Transaction_type, "SELL", StringComparison.OrdinalIgnoreCase))
@@ -788,7 +820,7 @@ namespace IPOInvestmentManagement.Controllers
                 }
 
                 User? investor = await _context.Users.FirstOrDefaultAsync(user => user.User_id == userId.Value && user.Is_active);
-                decimal tradePrice = marketData.CurrentPrice.Value;
+                decimal tradePrice = exchange == "BSE" ? (marketData.BsePrice ?? marketData.CurrentPrice.Value) : (marketData.NsePrice ?? marketData.CurrentPrice.Value);
                 decimal totalAmount = request.Quantity * tradePrice;
                 if (investor is null)
                 {
@@ -814,8 +846,103 @@ namespace IPOInvestmentManagement.Controllers
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
-                TempData["InvestorMessage"] = $"Sold {request.Quantity:N0} shares at ₹{tradePrice:N2} in simulated trading.";
+
+                string investorName = $"{investor.First_name} {investor.Last_name}".Trim();
+                try
+                {
+                    await _hubContext.Clients.All.SendAsync("ReceiveTradeNotification", new
+                    {
+                        stockName = marketData.IpoName,
+                        exchange = exchange,
+                        tradeType = "SELL",
+                        quantity = request.Quantity,
+                        price = tradePrice,
+                        totalAmount = totalAmount,
+                        user = string.IsNullOrWhiteSpace(investorName) ? "Investor" : investorName,
+                        timestamp = DateTime.Now.ToString("hh:mm:ss tt")
+                    });
+                }
+                catch
+                {
+                    // Ignore SignalR dispatch failure if client disconnected
+                }
+
+                TempData["InvestorMessage"] = $"Sold {request.Quantity:N0} shares of {marketData.IpoName} on {exchange} at ₹{tradePrice:N2} in simulated trading.";
                 return RedirectToAction(nameof(Portfolio));
+            }
+
+            [HttpPost]
+            [ValidateAntiForgeryToken]
+            public async Task<IActionResult> ResetSimulatedCash()
+            {
+                int? userId = HttpContext.Session.GetInt32("User_id");
+                if (!userId.HasValue || !IsInvestor())
+                {
+                    return Forbid();
+                }
+
+                User? user = await _context.Users.FindAsync(userId.Value);
+                if (user != null)
+                {
+                    user.SimulatedCashBalance = 100000m;
+                    await _context.SaveChangesAsync();
+                    TempData["InvestorMessage"] = "Your simulated cash balance has been replenished to ₹100,000.00.";
+                }
+
+                return RedirectToAction(nameof(Portfolio));
+            }
+
+            [HttpPost]
+            [ValidateAntiForgeryToken]
+            public async Task<IActionResult> AdminBroadcast(string title, string message, string category)
+            {
+                if (!IsAdmin())
+                {
+                    return Forbid();
+                }
+
+                if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(message))
+                {
+                    TempData["AdminMessage"] = "Broadcast title and message are required.";
+                    return RedirectToAction(nameof(Index));
+                }
+
+                DateTime now = DateTime.UtcNow;
+                var activeInvestors = await _context.Users
+                    .AsNoTracking()
+                    .Where(u => u.Role == "Investor" && u.Is_active)
+                    .Select(u => u.User_id)
+                    .ToListAsync();
+
+                var notifications = activeInvestors.Select(id => new SystemNotification
+                {
+                    User_id = id,
+                    Title = title.Trim(),
+                    Message = message.Trim(),
+                    Created_at = now,
+                    Is_read = false
+                });
+
+                _context.SystemNotifications.AddRange(notifications);
+                await _context.SaveChangesAsync();
+
+                try
+                {
+                    await _hubContext.Clients.All.SendAsync("ReceiveBroadcastMessage", new
+                    {
+                        title = title.Trim(),
+                        message = message.Trim(),
+                        category = string.IsNullOrWhiteSpace(category) ? "Announcement" : category,
+                        timestamp = DateTime.Now.ToString("hh:mm:ss tt"),
+                        date = DateTime.Now.ToString("dd MMM yyyy")
+                    });
+                }
+                catch
+                {
+                }
+
+                TempData["AdminMessage"] = $"Broadcast message successfully sent to {activeInvestors.Count} investors.";
+                return RedirectToAction(nameof(Index));
             }
 
             [HttpGet]
@@ -2679,25 +2806,32 @@ namespace IPOInvestmentManagement.Controllers
                     continue;
                 }
 
+                listings.TryGetValue(investment.IPO_id, out IPOListing? listing);
                 decimal currentPrice = market.Listings.FirstOrDefault(row => row.IpoId == investment.IPO_id)?.CurrentPrice
                     ?? investment.Current_price
-                    ?? (listings.TryGetValue(investment.IPO_id, out IPOListing? listing)
-                        ? listing.NSE_closing_price ?? listing.NSE_listing_price ?? listing.BSE_closing_price ?? listing.BSE_listing_price
-                        : null)
+                    ?? listing?.NSE_closing_price
+                    ?? listing?.NSE_listing_price
+                    ?? listing?.BSE_closing_price
+                    ?? listing?.BSE_listing_price
                     ?? ipo.Price_max
                     ?? ipo.Price_min
                     ?? averageBuyPrice;
                 decimal investedAmount = quantity * averageBuyPrice;
                 decimal currentValue = quantity * currentPrice;
+                var marketRow = market.Listings.FirstOrDefault(row => row.IpoId == investment.IPO_id);
                 holdings.Add(new PortfolioHoldingViewModel
                 {
                     InvestmentId = investment.Investment_id,
                     IpoId = ipo.IPO_id,
                     IpoName = ipo.IPO_name,
                     CompanyName = companies.GetValueOrDefault(ipo.Company_id, "Company"),
+                    StockSymbol = marketRow?.StockSymbol ?? listing?.StockSymbol ?? "STOCK",
+                    Exchange = "NSE",
                     Quantity = quantity,
                     AverageBuyPrice = averageBuyPrice,
                     CurrentPrice = currentPrice,
+                    NsePrice = marketRow?.NsePrice ?? currentPrice,
+                    BsePrice = marketRow?.BsePrice ?? currentPrice,
                     InvestedAmount = investedAmount,
                     CurrentValue = currentValue,
                     UnrealizedProfitLoss = currentValue - investedAmount
@@ -2722,6 +2856,7 @@ namespace IPOInvestmentManagement.Controllers
                     {
                         IpoName = ipos[ipoId].IPO_name,
                         TransactionType = transaction.Transaction_type ?? "TRADE",
+                        Exchange = "NSE",
                         Quantity = transaction.Quantity,
                         Price = transaction.Price ?? 0m,
                         TotalAmount = transaction.Total_amount ?? transaction.Quantity * (transaction.Price ?? 0m),
@@ -2754,6 +2889,8 @@ namespace IPOInvestmentManagement.Controllers
                     };
                 }).ToList();
 
+            User? investorUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.User_id == userId);
+
             return new PortfolioViewModel
             {
                 InvestedAmount = totalInvested,
@@ -2762,6 +2899,7 @@ namespace IPOInvestmentManagement.Controllers
                 UnrealizedProfitLoss = unrealizedProfitLoss,
                 TotalReturn = totalReturn,
                 ReturnPercentage = totalInvested == 0m ? 0m : totalReturn / totalInvested * 100m,
+                SimulatedCashBalance = investorUser?.SimulatedCashBalance ?? 100000m,
                 Holdings = holdings,
                 Transactions = transactionRows,
                 Allocation = allocation,
@@ -3076,6 +3214,7 @@ namespace IPOInvestmentManagement.Controllers
 
         private async Task LoadMarketDataAsync(DashboardViewModel model)
         {
+            model.Market = await _stockMarketService.GetDashboardAsync();
             List<IPO> publishedIpos = await _context.IPOs
                 .AsNoTracking()
                 .Where(ipo => ipo.Status == "Approved" || ipo.Status == "Published" || ipo.Status == "Open" || ipo.Status == "Listed" || ipo.Status == "Closed")

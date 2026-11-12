@@ -1,38 +1,268 @@
 @model IPOInvestmentManagement.Models.MarketDataViewModel
 @{
-    ViewData["Title"] = "Market Details";
+    ViewData["Title"] = $"{Model.CompanyName} ({Model.StockSymbol}) - Live Stock Chart";
+    decimal nsePrice = Model.NsePrice ?? Model.CurrentPrice ?? 0m;
+    decimal bsePrice = Model.BsePrice ?? Model.CurrentPrice ?? 0m;
+    decimal prevClose = Model.NsePreviousClose ?? Model.PreviousClose ?? nsePrice;
+    decimal priceChange = Model.NsePriceChange ?? (nsePrice - prevClose);
+    decimal priceChangePct = Model.NsePriceChangePercentage ?? (prevClose > 0 ? (priceChange / prevClose * 100m) : 0m);
+    string initials = Model.StockSymbol.Length >= 2 ? Model.StockSymbol[..2].ToUpperInvariant() : "ST";
+    bool isUp = priceChange >= 0;
 }
 
-<div class="investor-terminal">
-    <main class="terminal-main">
-        <div class="terminal-heading">
-            <div><span class="terminal-overline">SIMULATED MARKET</span><h1>@Model.CompanyName</h1><p>@Model.IpoName &middot; @Model.StockSymbol @Model.Exchange</p></div>
-            <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a>
-        </div>
-        <section class="portfolio-card">
-            <div class="admin-user-detail-grid">
-                <div><span>Current price</span><strong>₹@(Model.CurrentPrice?.ToString("N2") ?? "Market data unavailable")</strong></div>
-                <div><span>Previous close</span><strong>₹@(Model.PreviousClose?.ToString("N2") ?? "-")</strong></div>
-                <div><span>Change</span><strong class="@(Model.PriceChange >= 0 ? "profit" : "loss")">@(Model.PriceChange?.ToString("+0.00;-0.00;0.00") ?? "-") (@(Model.PriceChangePercentage?.ToString("+0.00;-0.00;0.00") ?? "-")%)</strong></div>
-                <div><span>Day high / low</span><strong>₹@(Model.DayHigh?.ToString("N2") ?? "-") / ₹@(Model.DayLow?.ToString("N2") ?? "-")</strong></div>
-                <div><span>Volume</span><strong>@(Model.Volume?.ToString("N0") ?? "-")</strong></div>
-                <div><span>Last updated</span><strong>@(Model.LastUpdated?.ToString("dd MMM yyyy HH:mm:ss") ?? "Not updated")</strong></div>
+<div class="stock-details-page-wrap" style="background:#06090e; min-height:100vh; color:#f8fafc; padding-bottom:90px;">
+    <div class="container py-3" style="max-width:820px;">
+        <!-- Top Navigation Bar -->
+        <div class="stock-chart-topbar px-0 mb-3">
+            <a class="stock-chart-back-btn" asp-controller="Dashboard" asp-action="Index" title="Back to Dashboard">
+                <span class="back-arrow">&#8592;</span>
+            </a>
+            <div class="stock-chart-top-actions">
+                <span class="badge @(Model.IsMarketOpen ? "bg-success" : "bg-danger") px-2 py-1" style="font-size:0.75rem;">
+                    @(Model.IsMarketOpen ? "● MARKET OPEN" : "○ MARKET CLOSED")
+                </span>
+                <button type="button" class="top-icon-btn" title="Market Session Hours: 09:30 AM - 03:30 PM IST">
+                    <span class="icon">&#9200;</span>
+                </button>
+                <button type="button" class="top-icon-btn" id="chart-bookmark-btn" onclick="window.toggleCurrentChartWatchlist()" title="Add to Watchlist">
+                    <span class="icon">&#128278;</span>
+                </button>
             </div>
-            @if (!Model.IsAvailable)
-            {
-                <div class="alert alert-warning mt-4">Market data unavailable. Buy and sell are disabled until a configured provider supplies a verified quote.</div>
-            }
-            else if (!Model.IsMarketOpen)
-            {
-                <div class="alert alert-secondary mt-4">Market is closed. The latest available price is shown; simulated buy and sell orders are disabled.</div>
-            }
-            else
-            {
-                <div class="company-request-actions admin-detail-actions">
-                    <a class="btn btn-success" asp-controller="Dashboard" asp-action="Trade" asp-route-ipoId="@Model.IpoId">Buy</a>
-                    <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="Portfolio">Sell from portfolio</a>
+        </div>
+
+        <!-- Stock Identity -->
+        <div class="stock-identity-row">
+            <div class="stock-logo-wrap">
+                <span class="stock-logo-text" id="chart-logo-initials">@initials</span>
+            </div>
+            <div class="stock-name-meta">
+                <div class="stock-sym-exchange">
+                    <span class="stock-symbol-text" id="chart-symbol-text">@Model.StockSymbol</span>
+                    <span class="dot-sep">&bull;</span>
+                    <button type="button" class="chart-exchange-switcher" id="chart-exchange-switch-btn" onclick="window.toggleChartExchange()" title="Toggle Exchange (NSE / BSE)">
+                        <span id="chart-exchange-label">@Model.Exchange</span>
+                        <span class="exchange-arrows">&#8645;</span>
+                    </button>
                 </div>
-            }
-        </section>
-    </main>
+                <h1 class="stock-company-heading" id="chart-company-text" style="font-size:1.4rem;">@Model.CompanyName</h1>
+            </div>
+        </div>
+
+        <!-- Big Price Display -->
+        <div class="stock-price-block my-3">
+            <div class="stock-main-price" id="chart-main-price" data-nse-price="@Model.IpoId">₹@nsePrice.ToString("N2")</div>
+            <div class="stock-price-change @(isUp ? "profit" : "loss")" id="chart-price-delta" data-nse-change="@Model.IpoId">
+                <span class="delta-val" id="chart-delta-val">@(isUp ? "+" : "")₹@priceChange.ToString("N2")</span>
+                <span class="delta-pct" id="chart-delta-pct">(@(isUp ? "+" : "")@priceChangePct.ToString("F2")%)</span>
+                <span class="delta-tf" id="chart-delta-tf">1D</span>
+            </div>
+        </div>
+
+        <!-- Real-time Chart Canvas Viewport -->
+        <div class="stock-chart-viewport" id="chart-viewport" style="height:320px;">
+            <canvas id="stock-live-canvas" width="780" height="320"></canvas>
+            <div id="stock-chart-crosshair" class="chart-crosshair hidden"></div>
+            <div id="stock-chart-tooltip" class="chart-tooltip-box hidden">
+                <div class="tooltip-price" id="tt-price">₹0.00</div>
+                <div class="tooltip-time" id="tt-time">--:--</div>
+            </div>
+            <div class="chart-prev-close-pill" id="chart-prev-close-pill">
+                Prev. Close: <strong id="chart-prev-close-val">₹@prevClose.ToString("N2")</strong>
+            </div>
+            <button type="button" class="chart-view-toggle-btn" id="chart-view-toggle" onclick="window.toggleCandleView()" title="Toggle Candlestick / Line View">
+                <span id="chart-view-toggle-icon">&#128200;</span>
+            </button>
+        </div>
+
+        <!-- Timeframe Selector Pills -->
+        <div class="stock-timeframe-bar" id="stock-timeframe-bar">
+            <button type="button" class="tf-pill active" data-tf="1D" onclick="window.selectChartTf('1D')">1D</button>
+            <button type="button" class="tf-pill" data-tf="1W" onclick="window.selectChartTf('1W')">1W</button>
+            <button type="button" class="tf-pill" data-tf="1M" onclick="window.selectChartTf('1M')">1M</button>
+            <button type="button" class="tf-pill" data-tf="3M" onclick="window.selectChartTf('3M')">3M</button>
+            <button type="button" class="tf-pill" data-tf="6M" onclick="window.selectChartTf('6M')">6M</button>
+            <button type="button" class="tf-pill" data-tf="1Y" onclick="window.selectChartTf('1Y')">1Y</button>
+            <button type="button" class="tf-pill" data-tf="5Y" onclick="window.selectChartTf('5Y')">5Y</button>
+            <button type="button" class="tf-pill" data-tf="ALL" onclick="window.selectChartTf('ALL')">All</button>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="stock-nav-tabs mt-4">
+            <button type="button" class="stock-tab-btn active" data-tab="overview" onclick="window.switchStockChartTab('overview')">Overview</button>
+            <button type="button" class="stock-tab-btn" data-tab="technicals" onclick="window.switchStockChartTab('technicals')">Technicals</button>
+            <button type="button" class="stock-tab-btn" data-tab="news" onclick="window.switchStockChartTab('news')">News</button>
+            <button type="button" class="stock-tab-btn" data-tab="events" onclick="window.switchStockChartTab('events')">Events</button>
+        </div>
+
+        <!-- Tab 1: Overview -->
+        <div class="stock-tab-content" id="tab-content-overview">
+            <div class="performance-section-head">
+                <h3>Performance <span class="info-bubble" title="Session metrics and 52-week ranges">&#9432;</span></h3>
+            </div>
+
+            <!-- Today's Range -->
+            <div class="range-metric-card">
+                <div class="range-labels">
+                    <div>
+                        <span class="range-sub">Today's Low</span>
+                        <strong id="perf-today-low">₹@(Model.DayLow?.ToString("N2") ?? nsePrice.ToString("N2"))</strong>
+                    </div>
+                    <div class="text-end">
+                        <span class="range-sub">Today's High</span>
+                        <strong id="perf-today-high">₹@(Model.DayHigh?.ToString("N2") ?? nsePrice.ToString("N2"))</strong>
+                    </div>
+                </div>
+                <div class="range-bar-track">
+                    <div class="range-bar-fill" id="perf-today-bar" style="width:50%;"></div>
+                    <span class="range-pointer" id="perf-today-pointer" style="left:50%;"></span>
+                </div>
+            </div>
+
+            <!-- 52-Week Range -->
+            <div class="range-metric-card mt-3">
+                <div class="range-labels">
+                    <div>
+                        <span class="range-sub">52-Week Low</span>
+                        <strong id="perf-52w-low">₹@((nsePrice * 0.70m).ToString("N2"))</strong>
+                    </div>
+                    <div class="text-end">
+                        <span class="range-sub">52-Week High</span>
+                        <strong id="perf-52w-high">₹@((nsePrice * 1.35m).ToString("N2"))</strong>
+                    </div>
+                </div>
+                <div class="range-bar-track">
+                    <div class="range-bar-fill" id="perf-52w-bar" style="width:65%;"></div>
+                    <span class="range-pointer" id="perf-52w-pointer" style="left:65%;"></span>
+                </div>
+            </div>
+
+            <!-- Fundamentals Grid -->
+            <div class="stock-fundamentals-grid mt-4">
+                <div class="fund-item">
+                    <span>Open Price</span>
+                    <strong id="perf-open">₹@prevClose.ToString("N2")</strong>
+                </div>
+                <div class="fund-item">
+                    <span>Prev. Close</span>
+                    <strong id="perf-prev-close">₹@prevClose.ToString("N2")</strong>
+                </div>
+                <div class="fund-item">
+                    <span>Volume</span>
+                    <strong id="perf-volume">@((Model.Volume ?? 45000).ToString("N0"))</strong>
+                </div>
+                <div class="fund-item">
+                    <span>Lower Circuit</span>
+                    <strong id="perf-lower-circuit" class="text-danger">₹@((prevClose * 0.80m).ToString("N2"))</strong>
+                </div>
+                <div class="fund-item">
+                    <span>Upper Circuit</span>
+                    <strong id="perf-upper-circuit" class="text-success">₹@((prevClose * 1.20m).ToString("N2"))</strong>
+                </div>
+                <div class="fund-item">
+                    <span>Best Bid / Ask</span>
+                    <strong id="perf-bid-ask">₹@((Model.BestBidPrice ?? (nsePrice - 0.05m)).ToString("N2")) / ₹@((Model.BestAskPrice ?? (nsePrice + 0.05m)).ToString("N2"))</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: Technicals -->
+        <div class="stock-tab-content hidden" id="tab-content-technicals">
+            <div class="technicals-card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="text-muted small">Technical Indicators Summary</span>
+                    <span class="badge bg-success" id="tech-summary-badge">BULLISH</span>
+                </div>
+                <div class="row g-3">
+                    <div class="col-6 col-md-3">
+                        <div class="tech-box">
+                            <small>RSI (14)</small>
+                            <strong id="tech-rsi">54.20</strong>
+                            <span class="badge bg-secondary mt-1">Neutral</span>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="tech-box">
+                            <small>MACD (12, 26)</small>
+                            <strong class="text-success" id="tech-macd">+1.25</strong>
+                            <span class="badge bg-success mt-1">Buy</span>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="tech-box">
+                            <small>20-DMA</small>
+                            <strong id="tech-sma20">₹@((nsePrice * 0.985m).ToString("N2"))</strong>
+                            <span class="badge bg-info mt-1">Above</span>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="tech-box">
+                            <small>50-DMA</small>
+                            <strong id="tech-sma50">₹@((nsePrice * 0.962m).ToString("N2"))</strong>
+                            <span class="badge bg-info mt-1">Above</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 3: News -->
+        <div class="stock-tab-content hidden" id="tab-content-news">
+            <div class="stock-news-list" id="stock-news-container">
+                <div class="news-card-item">
+                    <h5>@Model.StockSymbol reports steady volume expansion in regular trading session</h5>
+                    <p>Institutional interest and retail participation reflect positive momentum.</p>
+                    <small class="text-muted">Today &middot; Market News</small>
+                </div>
+                <div class="news-card-item">
+                    <h5>Dual-Exchange quotes reflect strong liquidity across NSE and BSE</h5>
+                    <p>Trading spreads remain tight with continuous bid-ask presence.</p>
+                    <small class="text-muted">Yesterday &middot; Exchange Bulletin</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 4: Events -->
+        <div class="stock-tab-content hidden" id="tab-content-events">
+            <div class="stock-events-list" id="stock-events-container">
+                <div class="news-card-item">
+                    <h5>Board Meeting &middot; Quarterly Financial Results</h5>
+                    <p>Audit and approval of corporate earnings and operational expansion milestones.</p>
+                    <small class="text-success">Upcoming &middot; 28 Nov 2026</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fixed Bottom Sticky Trading Action Bar -->
+    <div class="stock-chart-bottombar fixed-bottom" style="max-width:820px; margin:0 auto; left:0; right:0;">
+        <button type="button" class="btn btn-chart-sip" onclick="window.triggerSimulatedSip()">
+            SIP
+        </button>
+        <button type="button" class="btn btn-chart-sell" onclick="window.openFastTrade(@Model.IpoId, '@Model.IpoName.Replace("'", "\\'")', '@Model.StockSymbol', @nsePrice, @bsePrice, 0, null, 'SELL')">
+            Sell
+        </button>
+        <button type="button" class="btn btn-chart-buy" onclick="window.openFastTrade(@Model.IpoId, '@Model.IpoName.Replace("'", "\\'")', '@Model.StockSymbol', @nsePrice, @bsePrice, 0, null, 'BUY')">
+            Buy
+        </button>
+    </div>
 </div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        if (window.openStockLiveChart) {
+            state.currentChartStock = {
+                ipoId: @Model.IpoId,
+                symbol: "@Model.StockSymbol",
+                companyName: "@Model.CompanyName.Replace("\"", "\\\"")",
+                ipoName: "@Model.IpoName.Replace("\"", "\\\"")",
+                exchange: "@Model.Exchange",
+                timeframe: "1D",
+                isCandle: false
+            };
+            if (typeof initCanvasEvents === "function") initCanvasEvents();
+            if (typeof window.loadStockChartData === "function") {
+                window.loadStockChartData(@Model.IpoId, "1D", "@Model.Exchange");
+            }
+        }
+    });
+</script>

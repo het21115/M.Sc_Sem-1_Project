@@ -1,5 +1,6 @@
 using IPOInvestmentManagement.Data;
 using IPOInvestmentManagement.Filters;
+using IPOInvestmentManagement.Hubs;
 using IPOInvestmentManagement.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,10 +19,13 @@ builder.Services.AddSession(options =>
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
     options.Cookie.SameSite = SameSiteMode.Lax;
 });
+builder.Services.AddSignalR();
+builder.Services.AddHttpClient();
 builder.Services.AddScoped<IEmailNotificationService, SmtpEmailNotificationService>();
 builder.Services.AddScoped<IMarketTradingCalendar, MarketTradingCalendar>();
 builder.Services.AddScoped<IStockMarketService, StockMarketService>();
-builder.Services.AddScoped<IMarketDataProvider, UnavailableMarketDataProvider>();
+builder.Services.AddSingleton<IMarketDataProvider, RealTimeStockMarketDataProvider>();
+builder.Services.AddHostedService<StockPriceBroadcastingService>();
 builder.Services.AddHttpClient<IRazorpayPaymentService, RazorpayPaymentService>(client =>
 {
     client.BaseAddress = new Uri("https://api.razorpay.com/v1/");
@@ -222,6 +226,9 @@ app.UseSession();
 app.UseAuthorization();
 
 app.MapStaticAssets();
+
+app.MapHub<MarketHub>("/hubs/market");
+app.MapControllers();
 
 app.MapControllerRoute(
     name: "default",

@@ -8,6 +8,7 @@ namespace IPOInvestmentManagement.Models
         public decimal UnrealizedProfitLoss { get; set; }
         public decimal TotalReturn { get; set; }
         public decimal ReturnPercentage { get; set; }
+        public decimal SimulatedCashBalance { get; set; } = 100000m;
         public List<PortfolioHoldingViewModel> Holdings { get; set; } = new();
         public List<PortfolioTransactionViewModel> Transactions { get; set; } = new();
         public List<PortfolioAllocationViewModel> Allocation { get; set; } = new();
@@ -21,9 +22,13 @@ namespace IPOInvestmentManagement.Models
         public int IpoId { get; set; }
         public string IpoName { get; set; } = string.Empty;
         public string CompanyName { get; set; } = string.Empty;
+        public string StockSymbol { get; set; } = string.Empty;
+        public string Exchange { get; set; } = "NSE";
         public int Quantity { get; set; }
         public decimal AverageBuyPrice { get; set; }
         public decimal CurrentPrice { get; set; }
+        public decimal? NsePrice { get; set; }
+        public decimal? BsePrice { get; set; }
         public decimal InvestedAmount { get; set; }
         public decimal CurrentValue { get; set; }
         public decimal UnrealizedProfitLoss { get; set; }
@@ -34,6 +39,7 @@ namespace IPOInvestmentManagement.Models
     {
         public string IpoName { get; set; } = string.Empty;
         public string TransactionType { get; set; } = string.Empty;
+        public string Exchange { get; set; } = "NSE";
         public int Quantity { get; set; }
         public decimal Price { get; set; }
         public decimal TotalAmount { get; set; }
@@ -56,6 +62,7 @@ namespace IPOInvestmentManagement.Models
     public sealed class PortfolioTradeRequest
     {
         public int IpoId { get; set; }
+        public string Exchange { get; set; } = "NSE";
         public int Quantity { get; set; }
         public decimal Price { get; set; }
     }
@@ -63,6 +70,7 @@ namespace IPOInvestmentManagement.Models
     public sealed class PortfolioSellRequest
     {
         public int InvestmentId { get; set; }
+        public string Exchange { get; set; } = "NSE";
         public int Quantity { get; set; }
         public decimal Price { get; set; }
     }

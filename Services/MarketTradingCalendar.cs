@@ -27,8 +27,10 @@ namespace IPOInvestmentManagement.Services
                 return false;
             }
 
-            TimeSpan opening = configuration.GetValue("MarketTrading:OpeningTime", new TimeSpan(9, 30, 0));
-            TimeSpan closing = configuration.GetValue("MarketTrading:ClosingTime", new TimeSpan(15, 30, 0));
+            string? openStr = configuration["MarketTrading:OpeningTime"];
+            string? closeStr = configuration["MarketTrading:ClosingTime"];
+            TimeSpan opening = TimeSpan.TryParse(openStr, out var ot) ? ot : new TimeSpan(9, 30, 0);
+            TimeSpan closing = TimeSpan.TryParse(closeStr, out var ct) ? ct : new TimeSpan(15, 30, 0);
             return now.TimeOfDay >= opening && now.TimeOfDay < closing;
         }
     }

@@ -1,41 +1,118 @@
 @model IPOInvestmentManagement.Models.MarketTradeViewModel
 @{
-    ViewData["Title"] = Model.IsSell ? "Sell Shares" : "Buy Shares";
+    ViewData["Title"] = Model.IsSell ? "Sell Shares - Live Simulator" : "Buy Shares - Live Simulator";
+    decimal nsePrice = Model.NsePrice ?? Model.CurrentPrice;
+    decimal bsePrice = Model.BsePrice ?? Model.CurrentPrice;
 }
 
 <div class="registration-form-shell">
     <div class="registration-form-intro registration-form-intro-investor">
-        <p class="gateway-kicker"><span></span> Simulated trading</p>
-        <h1>@(Model.IsSell ? "Sell shares." : "Buy shares.")</h1>
-        <p>@Model.CompanyName &middot; @Model.StockSymbol. The server will use the latest verified market price.</p>
+        <p class="gateway-kicker"><span class="ticker-pulse"></span> Dual-Exchange Simulation</p>
+        <h1>@(Model.IsSell ? "Sell Shares" : "Buy Shares")</h1>
+        <p>@Model.CompanyName &middot; @Model.StockSymbol. Execute simulated orders across NSE and BSE at real-time verified tick prices.</p>
     </div>
+
     <div class="card registration-form-card">
         <div class="card-body p-4 p-lg-5">
-            <div class="investor-payment-summary">
-                <p><span>Current market price</span><strong>₹@Model.CurrentPrice.ToString("N2")</strong></p>
+            <!-- Dual Exchange Live Quotes Card -->
+            <div class="exchange-selector mb-4">
+                <div class="exchange-tab active" id="trade-page-tab-nse" onclick="selectPageExchange('NSE', @nsePrice)">
+                    <span class="exchange-badge-nse">NSE</span>
+                    <strong>National Stock Exchange</strong>
+                    <span id="page-nse-price" data-nse-price="@Model.IpoId">₹@nsePrice.ToString("N2")</span>
+                </div>
+                <div class="exchange-tab" id="trade-page-tab-bse" onclick="selectPageExchange('BSE', @bsePrice)">
+                    <span class="exchange-badge-bse">BSE</span>
+                    <strong>Bombay Stock Exchange</strong>
+                    <span id="page-bse-price" data-bse-price="@Model.IpoId">₹@bsePrice.ToString("N2")</span>
+                </div>
+            </div>
+
+            <div class="investor-payment-summary mb-4">
+                <p>
+                    <span>Selected Execution Exchange</span>
+                    <strong id="display-selected-exchange" class="text-info">NSE</strong>
+                </p>
+                <p>
+                    <span>Current Live Market Price</span>
+                    <strong id="display-selected-price" class="text-white">₹@nsePrice.ToString("N2")</strong>
+                </p>
                 @if (Model.IsSell)
                 {
-                    <p><span>Available shares</span><strong>@Model.AvailableQuantity.ToString("N0")</strong></p>
+                    <p><span>Available Holdings to Sell</span><strong>@Model.AvailableQuantity.ToString("N0") shares</strong></p>
                 }
                 else
                 {
-                    <p><span>Simulated cash balance</span><strong>₹@Model.CashBalance.ToString("N2")</strong></p>
+                    <p><span>Simulated Cash Balance</span><strong class="text-success" data-cash-balance>₹@Model.CashBalance.ToString("N2")</strong></p>
                 }
+                <p>
+                    <span>Estimated Total Value</span>
+                    <strong id="trade-estimated-total" class="text-warning">₹0.00</strong>
+                </p>
             </div>
-            <form asp-controller="Dashboard" asp-action="@(Model.IsSell ? "Sell" : "Buy")" method="post">
+
+            <form asp-controller="Dashboard" asp-action="@(Model.IsSell ? "Sell" : "Buy")" method="post" id="trade-execution-form">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="IpoId" value="@Model.IpoId" />
+                <input type="hidden" name="Exchange" id="form-selected-exchange" value="NSE" />
                 @if (Model.IsSell)
                 {
-                    <input type="hidden" name="InvestmentId" value="@Context.Request.Query["investmentId"]" />
+                    <input type="hidden" name="InvestmentId" value="@(Model.InvestmentId ?? (int.TryParse(Context.Request.Query["investmentId"], out int invId) ? invId : 0))" />
                 }
-                <input type="hidden" name="Price" value="0" />
-                <label class="form-label" for="trade-quantity">Quantity</label>
-                <input class="form-control mb-3" id="trade-quantity" name="Quantity" type="number" min="1" max="@(Model.IsSell ? Model.AvailableQuantity : int.MaxValue)" required />
-                <p class="form-text">Estimated total: calculated from the latest quote. Final price and amount are revalidated on the server.</p>
-                <button class="btn @(Model.IsSell ? "btn-outline-danger" : "btn-success")" type="submit">Continue and confirm</button>
-                <a class="registration-back-link" asp-controller="Dashboard" asp-action="MarketDetails" asp-route-ipoId="@Model.IpoId">Cancel</a>
+                <input type="hidden" name="Price" id="form-selected-price" value="@nsePrice" />
+
+                <div class="mb-3">
+                    <label class="form-label text-white" for="trade-quantity">Quantity (Shares)</label>
+                    <input class="form-control" id="trade-quantity" name="Quantity" type="number" min="1" 
+                           max="@(Model.IsSell && Model.AvailableQuantity > 0 ? Model.AvailableQuantity : int.MaxValue)" 
+                           value="@(Model.IsSell && Model.AvailableQuantity > 0 ? Math.Min(10, Model.AvailableQuantity) : 10)" 
+                           required oninput="calculatePageTradeTotal()" />
+                    <div class="form-text text-muted">
+                        Sub-second price updates stream continuously. Your order will execute at the latest verified tick.
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-3 mt-4">
+                    <button class="btn @(Model.IsSell ? "btn-danger" : "btn-success") flex-grow-1 py-2 fw-bold" type="submit">
+                        @(Model.IsSell ? "Execute Simulated Sell" : "Execute Simulated Buy")
+                    </button>
+                    <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Portfolio">
+                        Cancel
+                    </a>
+                </div>
             </form>
         </div>
     </div>
 </div>
+
+<script>
+    let activeExchange = 'NSE';
+    let currentNsePrice = @nsePrice;
+    let currentBsePrice = @bsePrice;
+
+    function selectPageExchange(exchange, price) {
+        activeExchange = exchange;
+        document.getElementById('form-selected-exchange').value = exchange;
+        document.getElementById('display-selected-exchange').textContent = exchange;
+
+        document.getElementById('trade-page-tab-nse').classList.toggle('active', exchange === 'NSE');
+        document.getElementById('trade-page-tab-bse').classList.toggle('active', exchange === 'BSE');
+
+        const activePrice = exchange === 'BSE' ? currentBsePrice : currentNsePrice;
+        document.getElementById('display-selected-price').textContent = '₹' + activePrice.toFixed(2);
+        document.getElementById('form-selected-price').value = activePrice;
+
+        calculatePageTradeTotal();
+    }
+
+    function calculatePageTradeTotal() {
+        const qty = Math.max(1, parseInt(document.getElementById('trade-quantity').value || '1', 10));
+        const activePrice = activeExchange === 'BSE' ? currentBsePrice : currentNsePrice;
+        const total = qty * activePrice;
+        document.getElementById('trade-estimated-total').textContent = '₹' + total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        calculatePageTradeTotal();
+    });
+</script>

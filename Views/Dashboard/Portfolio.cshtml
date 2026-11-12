@@ -1,23 +1,304 @@
 @model IPOInvestmentManagement.Models.PortfolioViewModel
 @{
-    ViewData["Title"] = "My Portfolio";
+    ViewData["Title"] = "My Portfolio - Real-Time Simulation";
     decimal maximumAllocation = Model.Allocation.Count == 0 ? 1m : Model.Allocation.Max(item => item.Percentage);
 }
 
 <div class="investor-terminal portfolio-page">
-    <header class="terminal-bar"><a class="terminal-logo" asp-controller="Dashboard" asp-action="Index"><span></span> IPO / <strong>INVEST</strong></a><nav aria-label="Investor navigation"><a asp-controller="Dashboard" asp-action="Index">Dashboard</a><a class="active" href="#portfolio-top">Portfolio</a><a asp-controller="Dashboard" asp-action="Index" asp-route-marketStatus="Listed">Market</a></nav><div class="terminal-user"><span>Investor</span><i></i><a class="investor-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
+    <header class="terminal-bar">
+        <a class="terminal-logo" asp-controller="Dashboard" asp-action="Index"><span></span> IPO / <strong>INVEST</strong></a>
+        <nav aria-label="Investor navigation">
+            <a asp-controller="Dashboard" asp-action="Index">Dashboard</a>
+            <a class="active" href="#portfolio-top">Portfolio</a>
+            <a href="#live-market-modal" data-bs-toggle="modal" data-bs-target="#live-market-modal">Live Market</a>
+        </nav>
+        <div class="terminal-user">
+            <span class="d-flex align-items-center gap-2">
+                <span class="ticker-pulse" style="width:6px; height:6px;"></span>
+                <span class="text-white">Cash: <strong data-cash-balance>₹@Model.SimulatedCashBalance.ToString("N2")</strong></span>
+            </span>
+            <i></i>
+            <a class="investor-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a>
+        </div>
+    </header>
+
     <main class="terminal-main" id="portfolio-top">
-        <div class="terminal-heading"><div><span class="terminal-overline">PERSONAL MARKET TERMINAL / 02</span><h1>My portfolio</h1><p class="portfolio-intro">Track holdings, transactions, allocation, and performance in one place.</p></div><div class="portfolio-actions"><a class="btn portfolio-export" asp-controller="Dashboard" asp-action="ExportPortfolio">Export Excel CSV</a><a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a></div></div>
-        @if (TempData["InvestorMessage"] is string investorMessage) { <div class="alert alert-info investor-dashboard-alert" role="alert">@investorMessage</div> }
-        <section class="portfolio-summary" aria-label="Portfolio summary"><div><span>TOTAL INVESTED</span><small>Cost of currently held shares</small><strong>₹@Model.InvestedAmount.ToString("N2")</strong></div><div><span>CURRENT VALUE</span><small>Current price × available shares</small><strong>₹@Model.CurrentValue.ToString("N2")</strong></div><div><span>REALIZED P/L</span><small>Profit or loss from sold shares</small><strong class="@(Model.RealizedProfitLoss >= 0 ? "profit" : "loss")">@(Model.RealizedProfitLoss >= 0 ? "+" : "-")₹@Math.Abs(Model.RealizedProfitLoss).ToString("N2")</strong></div><div><span>UNREALIZED P/L</span><small>Profit or loss on unsold shares</small><strong class="@(Model.UnrealizedProfitLoss >= 0 ? "profit" : "loss")">@(Model.UnrealizedProfitLoss >= 0 ? "+" : "-")₹@Math.Abs(Model.UnrealizedProfitLoss).ToString("N2")</strong></div><div><span>TOTAL RETURN</span><small>Realized + unrealized P/L</small><strong class="@(Model.TotalReturn >= 0 ? "profit" : "loss")">@(Model.TotalReturn >= 0 ? "+" : "-")₹@Math.Abs(Model.TotalReturn).ToString("N2")</strong></div><div><span>RETURN %</span><small>Total return ÷ invested capital</small><strong class="@(Model.ReturnPercentage >= 0 ? "profit" : "loss")">@(Model.ReturnPercentage >= 0 ? "+" : "-")@Math.Abs(Model.ReturnPercentage).ToString("N2")%</strong></div></section>
+        <div class="terminal-heading">
+            <div>
+                <span class="terminal-overline">PERSONAL MARKET TERMINAL / 02 · REAL-TIME SIMULATOR</span>
+                <h1>My Portfolio &amp; Trading Simulator</h1>
+                <p class="portfolio-intro">Live NSE and BSE price streaming, automated P&amp;L updates, and instant buy-sell simulation.</p>
+            </div>
+            <div class="portfolio-actions">
+                <button type="button" class="btn btn-outline-warning btn-sm" onclick="window.resetSimulatedCashBalance()">
+                    &#8635; Reset Capital (₹100,000)
+                </button>
+                <a class="btn portfolio-export" asp-controller="Dashboard" asp-action="ExportPortfolio">Export CSV</a>
+                <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a>
+            </div>
+        </div>
+
+        @if (TempData["InvestorMessage"] is string investorMessage)
+        {
+            <div class="alert alert-info investor-dashboard-alert" role="alert">@investorMessage</div>
+        }
+
+        <section class="portfolio-summary" aria-label="Portfolio summary">
+            <div>
+                <span>TOTAL INVESTED</span>
+                <small>Capital in active positions</small>
+                <strong>₹@Model.InvestedAmount.ToString("N2")</strong>
+            </div>
+            <div>
+                <span>CURRENT VALUE</span>
+                <small>Auto-updating at live tick prices</small>
+                <strong data-portfolio-current-value>₹@Model.CurrentValue.ToString("N2")</strong>
+            </div>
+            <div>
+                <span>REALIZED P/L</span>
+                <small>Profit / Loss from sold trades</small>
+                <strong data-portfolio-realized-pl data-value="@Model.RealizedProfitLoss" class="@(Model.RealizedProfitLoss >= 0 ? "profit" : "loss")">
+                    @(Model.RealizedProfitLoss >= 0 ? "+" : "-")₹@Math.Abs(Model.RealizedProfitLoss).ToString("N2")
+                </strong>
+            </div>
+            <div>
+                <span>UNREALIZED P/L</span>
+                <small>Real-time mark-to-market</small>
+                <strong data-portfolio-unrealized-pl class="@(Model.UnrealizedProfitLoss >= 0 ? "profit" : "loss")">
+                    @(Model.UnrealizedProfitLoss >= 0 ? "+" : "-")₹@Math.Abs(Model.UnrealizedProfitLoss).ToString("N2")
+                </strong>
+            </div>
+            <div>
+                <span>TOTAL RETURN</span>
+                <small>Realized + unrealized P/L</small>
+                <strong data-portfolio-total-return class="@(Model.TotalReturn >= 0 ? "profit" : "loss")">
+                    @(Model.TotalReturn >= 0 ? "+" : "-")₹@Math.Abs(Model.TotalReturn).ToString("N2")
+                </strong>
+            </div>
+            <div>
+                <span>SIMULATED CASH</span>
+                <small>Available virtual balance</small>
+                <strong class="text-info" data-cash-balance>₹@Model.SimulatedCashBalance.ToString("N2")</strong>
+            </div>
+        </section>
+
         <div class="portfolio-grid">
-            <section class="portfolio-card portfolio-holdings"><div class="terminal-section-head"><div><span class="terminal-overline">01 / HOLDINGS</span><h2>Current positions</h2></div><span class="investor-library-note">@Model.Holdings.Count positions</span></div>@if (Model.Holdings.Count == 0) { <div class="terminal-empty">No active holdings yet. Use the trade panel to record a buy.</div> } else { <div class="portfolio-table"><div class="portfolio-table-head"><span>IPO / COMPANY</span><span>QTY</span><span>AVG BUY</span><span>CURRENT</span><span>VALUE</span><span>P/L</span><span></span></div>@foreach (var holding in Model.Holdings) { <div class="portfolio-table-row"><div><strong>@holding.IpoName</strong><small>@holding.CompanyName</small></div><span>@holding.Quantity.ToString("N0")</span><span>₹@holding.AverageBuyPrice.ToString("N2")</span><span>₹@holding.CurrentPrice.ToString("N2")</span><span>₹@holding.CurrentValue.ToString("N2")</span><em class="@(holding.UnrealizedProfitLoss >= 0 ? "profit" : "loss")">@(holding.UnrealizedProfitLoss >= 0 ? "+" : "-")₹@Math.Abs(holding.UnrealizedProfitLoss).ToString("N2")</em><form asp-controller="Dashboard" asp-action="Sell" method="post">@Html.AntiForgeryToken()<input type="hidden" name="InvestmentId" value="@holding.InvestmentId" /><input class="portfolio-quantity-input" type="number" name="Quantity" min="1" max="@holding.Quantity" value="1" /><input type="hidden" name="Price" value="@holding.CurrentPrice" /><button class="portfolio-sell-button" type="submit">Sell</button></form></div> }</div> }</section>
-            <section class="portfolio-card portfolio-chart"><div class="terminal-section-head"><div><span class="terminal-overline">02 / ALLOCATION</span><h2>By company</h2></div></div>@if (Model.Allocation.Count == 0) { <div class="terminal-empty">Allocation appears after your first purchase.</div> } else { <div class="allocation-bars">@foreach (var item in Model.Allocation) { <div class="allocation-row"><div><strong>@item.Label</strong><span>@item.Percentage.ToString("N1")%</span></div><div class="allocation-track"><i style="width:@((item.Percentage / maximumAllocation * 100m).ToString("N2", System.Globalization.CultureInfo.InvariantCulture))%"></i></div><small>₹@item.Value.ToString("N2")</small></div> }</div> }</section>
+            <section class="portfolio-card portfolio-holdings">
+                <div class="terminal-section-head">
+                    <div>
+                        <span class="terminal-overline">01 / LIVE POSITIONS</span>
+                        <h2>Current Positions</h2>
+                    </div>
+                    <span class="investor-library-note">@Model.Holdings.Count positions · Live NSE/BSE Tracking</span>
+                </div>
+
+                @if (Model.Holdings.Count == 0)
+                {
+                    <div class="terminal-empty">No active holdings yet. Use the simulated trading panel below or Explore Live Market to execute your first order.</div>
+                }
+                else
+                {
+                    <div class="portfolio-table">
+                        <div class="portfolio-table-head">
+                            <span>IPO / COMPANY</span>
+                            <span>QTY</span>
+                            <span>AVG BUY</span>
+                            <span>CURRENT</span>
+                            <span>VALUE</span>
+                            <span>UNREALIZED P/L</span>
+                            <span>ACTIONS</span>
+                        </div>
+                        @foreach (var holding in Model.Holdings)
+                        {
+                            decimal nseVal = holding.NsePrice ?? holding.CurrentPrice;
+                            decimal bseVal = holding.BsePrice ?? holding.CurrentPrice;
+
+                            <div class="portfolio-table-row" data-holding-id="@holding.InvestmentId" data-ipo-id="@holding.IpoId" data-holding-qty="@holding.Quantity" data-holding-avg-buy="@holding.AverageBuyPrice">
+                                <div>
+                                    <strong>@holding.IpoName</strong>
+                                    <small>
+                                        @holding.CompanyName &middot;
+                                        <span class="exchange-badge-nse">NSE</span> <span data-nse-price="@holding.IpoId">₹@nseVal.ToString("N2")</span>
+                                        <span class="exchange-badge-bse">BSE</span> <span data-bse-price="@holding.IpoId">₹@bseVal.ToString("N2")</span>
+                                    </small>
+                                </div>
+                                <span>@holding.Quantity.ToString("N0")</span>
+                                <span>₹@holding.AverageBuyPrice.ToString("N2")</span>
+                                <span class="holding-live-price" data-live-price="@holding.IpoId">₹@holding.CurrentPrice.ToString("N2")</span>
+                                <span class="holding-live-value">₹@holding.CurrentValue.ToString("N2")</span>
+                                <em class="holding-live-pl @(holding.UnrealizedProfitLoss >= 0 ? "profit" : "loss")">
+                                    @(holding.UnrealizedProfitLoss >= 0 ? "+" : "-")₹@Math.Abs(holding.UnrealizedProfitLoss).ToString("N2")
+                                </em>
+                                <div class="d-flex align-items-center gap-1">
+                                    <button type="button" class="btn btn-sm btn-success px-2 py-1"
+                                            onclick="window.openFastTrade(@holding.IpoId, '@holding.IpoName.Replace("'", "\\'")', '@holding.StockSymbol', @nseVal, @bseVal, @holding.Quantity, @holding.InvestmentId, 'BUY')"
+                                            title="Buy more shares">
+                                        + Buy
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger px-2 py-1"
+                                            onclick="window.openFastTrade(@holding.IpoId, '@holding.IpoName.Replace("'", "\\'")', '@holding.StockSymbol', @nseVal, @bseVal, @holding.Quantity, @holding.InvestmentId, 'SELL')"
+                                            title="Sell shares">
+                                        Sell
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="portfolio-card portfolio-chart">
+                <div class="terminal-section-head">
+                    <div>
+                        <span class="terminal-overline">02 / ALLOCATION</span>
+                        <h2>By Company</h2>
+                    </div>
+                </div>
+                @if (Model.Allocation.Count == 0)
+                {
+                    <div class="terminal-empty">Allocation breakdown appears after your first purchase.</div>
+                }
+                else
+                {
+                    <div class="allocation-bars">
+                        @foreach (var item in Model.Allocation)
+                        {
+                            <div class="allocation-row">
+                                <div>
+                                    <strong>@item.Label</strong>
+                                    <span>@item.Percentage.ToString("N1")%</span>
+                                </div>
+                                <div class="allocation-track">
+                                    <i style="width:@((item.Percentage / maximumAllocation * 100m).ToString("N2", System.Globalization.CultureInfo.InvariantCulture))%"></i>
+                                </div>
+                                <small>₹@item.Value.ToString("N2")</small>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
         </div>
+
         <div class="portfolio-grid portfolio-lower-grid">
-            <section class="portfolio-card"><div class="terminal-section-head"><div><span class="terminal-overline">03 / SIMULATED TRADING</span><h2>Buy listed shares</h2></div></div><form class="portfolio-trade-form" asp-controller="Dashboard" asp-action="Buy" method="post">@Html.AntiForgeryToken()<label>Listed company<select name="IpoId" required><option value="">Select listed stock</option>@foreach (var row in Model.Market.Listings.Where(row => row.CanTrade)) { <option value="@row.IpoId">@row.CompanyName (@row.StockSymbol) · ₹@row.CurrentPrice?.ToString("N2")</option> }</select></label><label>Quantity<input type="number" name="Quantity" min="1" required /></label><input type="hidden" name="Price" value="0" /><button class="btn portfolio-buy-button" type="submit">Buy at live price</button></form><small class="portfolio-note">SIMULATED TRADING ONLY. The server fetches and validates the latest market price.</small></section>
-            <section class="portfolio-card"><div class="terminal-section-head"><div><span class="terminal-overline">04 / ACTIVITY</span><h2>Transaction history</h2></div><span class="investor-library-note">@Model.Transactions.Count records</span></div>@if (Model.Transactions.Count == 0) { <div class="terminal-empty">No transactions recorded yet.</div> } else { <div class="transaction-list">@foreach (var transaction in Model.Transactions) { <div><span class="transaction-badge @transaction.TransactionType.ToLowerInvariant()">@transaction.TransactionType</span><strong>@transaction.IpoName</strong><small>@transaction.Quantity.ToString("N0") shares at ₹@transaction.Price.ToString("N2") &middot; @transaction.TransactionDate.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</small><b>₹@transaction.TotalAmount.ToString("N2")</b></div> }</div> }</section>
+            <section class="portfolio-card">
+                <div class="terminal-section-head">
+                    <div>
+                        <span class="terminal-overline">03 / SIMULATED TRADING ORDER</span>
+                        <h2>Buy Listed Stock (NSE / BSE)</h2>
+                    </div>
+                </div>
+
+                <form class="portfolio-trade-form" asp-controller="Dashboard" asp-action="Buy" method="post">
+                    @Html.AntiForgeryToken()
+                    <label>
+                        Listed stock
+                        <select name="IpoId" required id="portfolio-trade-select" onchange="updateSelectedStockPrice(this)">
+                            <option value="">Select listed stock</option>
+                            @foreach (var row in Model.Market.Listings.Where(row => row.CanTrade))
+                            {
+                                <option value="@row.IpoId" 
+                                        data-nse-price="@(row.NsePrice ?? row.CurrentPrice ?? 0)"
+                                        data-bse-price="@(row.BsePrice ?? row.CurrentPrice ?? 0)">
+                                    @row.CompanyName (@row.StockSymbol) · NSE: ₹@((row.NsePrice ?? row.CurrentPrice)?.ToString("N2")) | BSE: ₹@((row.BsePrice ?? row.CurrentPrice)?.ToString("N2"))
+                                </option>
+                            }
+                        </select>
+                    </label>
+
+                    <div class="d-flex gap-3 my-2">
+                        <label class="d-flex align-items-center gap-1 text-white" style="cursor:pointer;">
+                            <input type="radio" name="Exchange" value="NSE" checked />
+                            <span class="exchange-badge-nse">NSE</span> National Stock Exchange
+                        </label>
+                        <label class="d-flex align-items-center gap-1 text-white" style="cursor:pointer;">
+                            <input type="radio" name="Exchange" value="BSE" />
+                            <span class="exchange-badge-bse">BSE</span> Bombay Stock Exchange
+                        </label>
+                    </div>
+
+                    <label>
+                        Quantity
+                        <input type="number" name="Quantity" min="1" value="10" required />
+                    </label>
+                    <input type="hidden" name="Price" value="0" />
+
+                    <div class="d-flex gap-2 mt-3">
+                        <button class="btn portfolio-buy-button flex-grow-1" type="submit">
+                            Buy at verified live price
+                        </button>
+                    </div>
+                </form>
+
+                <small class="portfolio-note">
+                    SIMULATED TRADING ACTIVE. The server verifies and executes orders against real-time sub-second tick prices. Broadcast notifications stream to all active participants.
+                </small>
+            </section>
+
+            <section class="portfolio-card">
+                <div class="terminal-section-head">
+                    <div>
+                        <span class="terminal-overline">04 / ACTIVITY LOG</span>
+                        <h2>Transaction History</h2>
+                    </div>
+                    <span class="investor-library-note">@Model.Transactions.Count records</span>
+                </div>
+                @if (Model.Transactions.Count == 0)
+                {
+                    <div class="terminal-empty">No transactions recorded yet. Execute simulated buys or sells above.</div>
+                }
+                else
+                {
+                    <div class="transaction-list">
+                        @foreach (var transaction in Model.Transactions)
+                        {
+                            <div>
+                                <span class="transaction-badge @transaction.TransactionType.ToLowerInvariant()">@transaction.TransactionType</span>
+                                <strong>@transaction.IpoName</strong>
+                                <small>
+                                    @transaction.Quantity.ToString("N0") shares at ₹@transaction.Price.ToString("N2") &middot; @transaction.TransactionDate.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")
+                                </small>
+                                <b>₹@transaction.TotalAmount.ToString("N2")</b>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
         </div>
-        <section class="portfolio-card portfolio-performance"><div class="terminal-section-head"><div><span class="terminal-overline">05 / PERFORMANCE</span><h2>Transaction cash-flow trend</h2></div><span class="investor-library-note">Buy and sell activity</span></div>@if (Model.Performance.Count == 0) { <div class="terminal-empty">Performance appears after your first transaction.</div> } else { decimal chartMaximum = Math.Max(1m, Model.Performance.Max(point => Math.Abs(point.Value))); <div class="performance-chart">@foreach (var point in Model.Performance) { <div class="performance-column"><span style="height:@((Math.Abs(point.Value) / chartMaximum * 100m).ToString("N2", System.Globalization.CultureInfo.InvariantCulture))%;"></span><small>@point.Label</small></div> }</div> }</section>
+
+        <section class="portfolio-card portfolio-performance">
+            <div class="terminal-section-head">
+                <div>
+                    <span class="terminal-overline">05 / PERFORMANCE</span>
+                    <h2>Transaction Cash-Flow Trend</h2>
+                </div>
+                <span class="investor-library-note">Buy and sell activity</span>
+            </div>
+            @if (Model.Performance.Count == 0)
+            {
+                <div class="terminal-empty">Performance appears after your first transaction.</div>
+            }
+            else
+            {
+                decimal chartMaximum = Math.Max(1m, Model.Performance.Max(point => Math.Abs(point.Value)));
+                <div class="performance-chart">
+                    @foreach (var point in Model.Performance)
+                    {
+                        <div class="performance-column">
+                            <span style="height:@((Math.Abs(point.Value) / chartMaximum * 100m).ToString("N2", System.Globalization.CultureInfo.InvariantCulture))%;"></span>
+                            <small>@point.Label</small>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+
+        <!-- Live market modal partial -->
+        <partial name="_InvestorLiveMarket" model="new DashboardViewModel { Market = Model.Market }" />
     </main>
 </div>
+
+<script>
+    function updateSelectedStockPrice(select) {
+        // Selection helper
+    }
+</script>
