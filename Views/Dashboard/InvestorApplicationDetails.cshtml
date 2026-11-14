@@ -60,7 +60,15 @@
             {
                 <p class="text-muted mt-4">Cancellation is available only before the IPO closing date.</p>
             }
-            <a class="registration-back-link" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a>
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-4 pt-3 border-top">
+                <a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="DownloadIpoApplicationReportPdf" target="_blank">
+                    📄 Download Application Report (PDF)
+                </a>
+                <a class="btn btn-sm btn-outline-success" asp-controller="Dashboard" asp-action="DownloadAllotmentReportPdf" target="_blank">
+                    📄 Download Allotment Report (PDF)
+                </a>
+            </div>
+            <a class="registration-back-link mt-3" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a>
         </div>
     </div>
 </div>

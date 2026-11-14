@@ -44,5 +44,202 @@
             </div>
             <form class="admin-status-form" asp-controller="Dashboard" asp-action="ChangeIpoStatus" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><label for="status">Change IPO status</label><select id="status" name="status"><option selected="@(Model.Ipo.Status == "Pending")">Pending</option><option selected="@(Model.Ipo.Status == "Approved")">Approved</option><option selected="@(Model.Ipo.Status == "Open")">Open</option><option selected="@(Model.Ipo.Status == "Closed")">Closed</option><option selected="@(Model.Ipo.Status == "Listed")">Listed</option><option selected="@(Model.Ipo.Status == "Rejected")">Rejected</option><option selected="@(Model.Ipo.Status == "Cancelled")">Cancelled</option></select><button class="btn btn-primary" type="submit">Update status</button></form>
         </section>
+
+        <!-- GREY MARKET PREMIUM (GMP) MANAGEMENT (UNOFFICIAL) -->
+        <section class="admin-user-details-card gmp-tracker-card mt-4" id="admin-gmp-section">
+            <div class="admin-section-head d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div>
+                    <span class="admin-overline text-warning font-monospace">UNOFFICIAL MARKET DATA &middot; GREY MARKET DESK</span>
+                    <h2>Grey Market Premium (GMP) Tracking &amp; History</h2>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-warning text-dark border px-3 py-2 fw-bold">
+                        ⚠️ UNOFFICIAL &middot; INDICATIVE ONLY
+                    </span>
+                </div>
+            </div>
+
+            <!-- Prominent Unofficial Disclaimer -->
+            <div class="alert alert-warning gmp-disclaimer-box d-flex align-items-start gap-3 my-3 p-3 rounded-3">
+                <span class="fs-4">⚠️</span>
+                <div>
+                    <strong class="d-block mb-1">Administrative Advisory &amp; Statutory Disclaimer: GMP is Unofficial</strong>
+                    <small class="d-block" style="line-height: 1.45;">
+                        Grey Market Premium (GMP) quotations are strictly unofficial, unregulated peer-to-peer data. 
+                        <strong>SEBI, NSE, and BSE do not regulate, monitor, or recognize grey market transactions</strong>. 
+                        Estimated listing prices calculated here are purely indicative reference numbers and do not guarantee actual listing prices.
+                    </small>
+                </div>
+            </div>
+
+            <!-- GMP Overview Cards -->
+            <div class="gmp-metrics-grid mb-4">
+                <div class="gmp-stat-card current-gmp">
+                    <span class="gmp-stat-label">Current GMP <small class="text-muted">(Unofficial)</small></span>
+                    <div class="gmp-stat-val text-success">
+                        <span class="gmp-currency">₹</span>@(Model.CurrentGmp?.GMPPrice.ToString("N2") ?? "0.00")
+                    </div>
+                    <div class="gmp-stat-sub">
+                        @if (Model.GmpChange > 0)
+                        {
+                            <span class="badge bg-success-subtle text-success border border-success">
+                                ▲ +₹@Model.GmpChange.ToString("N2") (+@Model.GmpChangePercentage%)
+                            </span>
+                        }
+                        else if (Model.GmpChange < 0)
+                        {
+                            <span class="badge bg-danger-subtle text-danger border border-danger">
+                                ▼ -₹@Math.Abs(Model.GmpChange).ToString("N2") (@Model.GmpChangePercentage%)
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary-subtle text-secondary border">Flat (0.00)</span>
+                        }
+                        <span class="text-muted ms-1">vs prev quote</span>
+                    </div>
+                </div>
+
+                <div class="gmp-stat-card">
+                    <span class="gmp-stat-label">Previous GMP <small class="text-muted">(Last Recorded)</small></span>
+                    <div class="gmp-stat-val text-secondary">
+                        <span class="gmp-currency">₹</span>@(Model.PreviousGmp?.GMPPrice.ToString("N2") ?? Model.CurrentGmp?.GMPPrice.ToString("N2") ?? "-")
+                    </div>
+                    <div class="gmp-stat-sub text-muted">
+                        Recorded on @(Model.PreviousGmp?.RecordedDate.ToString("dd MMM yyyy") ?? Model.CurrentGmp?.RecordedDate.ToString("dd MMM yyyy") ?? "N/A")
+                    </div>
+                </div>
+
+                <div class="gmp-stat-card highlight">
+                    <span class="gmp-stat-label">Estimated Listing Price <small class="text-muted">(Unofficial)</small></span>
+                    <div class="gmp-stat-val text-primary">
+                        <span class="gmp-currency">₹</span>@Model.EstimatedListingPrice.ToString("N2")
+                    </div>
+                    <div class="gmp-stat-sub">
+                        <span class="badge bg-primary-subtle text-primary border border-primary">
+                            +@Model.EstimatedGainPercentage% Est. Listing Gain
+                        </span>
+                        <small class="text-muted ms-1">Base: ₹@(Model.Ipo.Price_max?.ToString("N2") ?? Model.Ipo.Price_min?.ToString("N2") ?? "-")</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Historical Chart Viewport -->
+            <div class="gmp-chart-container mb-4">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <div>
+                        <h4 class="m-0 fs-6 fw-bold">GMP Historical Trend Line (Unofficial)</h4>
+                        <small class="text-muted">Visual movement of unofficial premium quotes over time</small>
+                    </div>
+                    <span class="badge bg-light text-dark border">
+                        @Model.GmpHistory.Count recorded quote(s)
+                    </span>
+                </div>
+                
+                <div class="gmp-chart-viewport position-relative" style="height: 240px; background: #fafbfc; border: 1px solid #e1e4e8; border-radius: 8px; padding: 10px;">
+                    <canvas id="admin-gmp-chart" style="width: 100%; height: 100%; display: block;"></canvas>
+                    <div id="admin-gmp-tooltip" class="gmp-tooltip hidden"></div>
+                </div>
+            </div>
+
+            <!-- Admin Entry Form: Add New Daily GMP Quote -->
+            <div class="card p-3 mb-4 bg-light border">
+                <h4 class="fs-6 fw-bold mb-2">Record New Daily GMP Quote (Unofficial)</h4>
+                <form asp-controller="Dashboard" asp-action="AddGmpRecord" method="post" class="row g-3 align-items-end">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" />
+                    
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Quotation Date</label>
+                        <input type="date" name="recordedDate" class="form-control form-control-sm" value="@DateTime.Now.ToString("yyyy-MM-dd")" required />
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">GMP Premium (₹ / share)</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">₹</span>
+                            <input type="number" step="0.5" name="gmpPrice" class="form-control" placeholder="e.g. 45.00" required />
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Quotation Source / Note</label>
+                        <input type="text" name="source" class="form-control form-control-sm" value="Unofficial Grey Market Desk" />
+                    </div>
+
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-sm btn-primary w-100">
+                            + Add GMP Quote
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- GMP History Log Table with Delete Option -->
+            @if (Model.GmpHistory.Count > 0)
+            {
+                <div class="gmp-history-table-container">
+                    <h4 class="fs-6 fw-bold mb-2">Recorded GMP History Log</h4>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle border mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Recorded Date</th>
+                                    <th>GMP (₹)</th>
+                                    <th>Cap Price (₹)</th>
+                                    <th>Est. Listing Price (₹)</th>
+                                    <th>Est. Gain (%)</th>
+                                    <th>Source</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var record in Model.GmpHistory.OrderByDescending(r => r.RecordedDate).ThenByDescending(r => r.Gmp_id))
+                                {
+                                    <tr>
+                                        <td><strong>@record.RecordedDate.ToString("dd MMM yyyy")</strong></td>
+                                        <td><span class="badge bg-success-subtle text-success border border-success fw-bold">₹@record.GMPPrice.ToString("N2")</span></td>
+                                        <td>₹@(Model.Ipo.Price_max?.ToString("N2") ?? Model.Ipo.Price_min?.ToString("N2") ?? "-")</td>
+                                        <td><strong>₹@(record.EstimatedListingPrice?.ToString("N2") ?? ((Model.Ipo.Price_max ?? 0) + record.GMPPrice).ToString("N2"))</strong></td>
+                                        <td>
+                                            <span class="text-success fw-bold">+@(record.ExpectedListingGainPercentage?.ToString("N2") ?? "0.00")%</span>
+                                        </td>
+                                        <td><small class="text-muted">@(record.Source ?? "Unofficial Desk")</small></td>
+                                        <td class="text-end">
+                                            <form asp-controller="Dashboard" asp-action="DeleteGmpRecord" method="post" class="d-inline" onsubmit="return confirm('Delete this GMP record?');">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="gmpId" value="@record.Gmp_id" />
+                                                <input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" />
+                                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">
+                                                    Delete
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        </section>
     </main>
 </div>
+
+<script src="~/js/gmp-tracker.js" asp-append-version="true"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        var gmpData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+            Model.GmpHistory.OrderBy(g => g.RecordedDate).ThenBy(g => g.Gmp_id).Select(g => new {
+                date = g.RecordedDate.ToString("dd MMM"),
+                fullDate = g.RecordedDate.ToString("dd MMM yyyy"),
+                gmp = g.GMPPrice,
+                estimatedPrice = g.EstimatedListingPrice ?? ((Model.Ipo.Price_max ?? Model.Ipo.Price_min ?? 0) + g.GMPPrice),
+                gainPct = g.ExpectedListingGainPercentage ?? 0m
+            })
+        ));
+        if (typeof window.initGmpHistoricalChart === "function") {
+            window.initGmpHistoricalChart("admin-gmp-chart", "admin-gmp-tooltip", gmpData);
+        }
+    });
+</script>

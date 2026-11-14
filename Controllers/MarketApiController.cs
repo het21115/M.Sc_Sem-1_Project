@@ -232,42 +232,75 @@ namespace IPOInvestmentManagement.Controllers
         [HttpPost("trade")]
         public async Task<IActionResult> ExecuteTrade([FromBody] FastTradeApiRequest request)
         {
-            int? userId = HttpContext.Session.GetInt32("User_id");
+            int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
             string? role = HttpContext.Session.GetString("UserRole");
 
             if (!userId.HasValue || !string.Equals(role, "Investor", StringComparison.OrdinalIgnoreCase))
             {
-                return Unauthorized(new { success = false, message = "Please sign in to an investor account." });
+                return Unauthorized(new { success = false, message = "Trading security policy: Secondary market trading is strictly restricted to authenticated investors." });
             }
 
-            if (request.Quantity <= 0)
+            if (request.Quantity <= 0 || request.Quantity > 500_000)
             {
-                return BadRequest(new { success = false, message = "Quantity must be greater than zero." });
+                return BadRequest(new { success = false, message = "Invalid trade quantity. Quantity must be between 1 and 500,000 shares per order." });
+            }
+
+            if (!string.Equals(request.TradeType, "BUY", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(request.TradeType, "SELL", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { success = false, message = "Invalid trade type. Only BUY and SELL orders are supported." });
             }
 
             string exchange = string.Equals(request.Exchange, "BSE", StringComparison.OrdinalIgnoreCase) ? "BSE" : "NSE";
             bool isBuy = string.Equals(request.TradeType, "BUY", StringComparison.OrdinalIgnoreCase);
 
+            // Server-side trading security: Security must exist and be actively listed
+            var ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == request.IpoId);
+            if (ipo is null)
+            {
+                return NotFound(new { success = false, message = "Security or IPO not found." });
+            }
+
+            bool isListedSecurity = string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase) ||
+                (ipo.Listing_date.HasValue && ipo.Listing_date.Value.Date <= DateTime.UtcNow.Date);
+
+            if (!isListedSecurity)
+            {
+                return BadRequest(new { success = false, message = $"Trading security policy: Secondary market trading is restricted to publicly listed stocks. '{ipo.IPO_name}' is currently in '{ipo.Status}' status." });
+            }
+
             var marketData = await _stockMarketService.GetMarketDataAsync(request.IpoId);
             if (marketData == null || !marketData.IsMarketOpen || !marketData.CanTrade)
             {
-                return BadRequest(new { success = false, message = "Market is currently closed. Trading is allowed strictly during official market hours (Monday – Friday, 09:30 AM to 03:30 PM IST)." });
+                return BadRequest(new { success = false, message = "Market is currently closed. Secondary market trading is permitted strictly during official exchange hours (Monday – Friday, 09:30 AM to 03:30 PM IST) or when market simulation is activated by an Administrator." });
             }
 
             decimal tradePrice = exchange == "BSE" ? (marketData.BsePrice ?? marketData.CurrentPrice ?? 0m) : (marketData.NsePrice ?? marketData.CurrentPrice ?? 0m);
             if (tradePrice <= 0m)
             {
-                return BadRequest(new { success = false, message = "Invalid market price." });
+                return BadRequest(new { success = false, message = "Authoritative market price is unavailable. Trade rejected for safety." });
+            }
+
+            // Circuit limit safety check
+            decimal prevClose = exchange == "BSE" ? (marketData.BsePreviousClose ?? marketData.PreviousClose ?? tradePrice) : (marketData.NsePreviousClose ?? marketData.PreviousClose ?? tradePrice);
+            if (prevClose > 0m)
+            {
+                decimal lowerCircuit = Math.Round(prevClose * 0.80m, 2);
+                decimal upperCircuit = Math.Round(prevClose * 1.20m, 2);
+                if (tradePrice < lowerCircuit || tradePrice > upperCircuit)
+                {
+                    return BadRequest(new { success = false, message = $"Trading price ₹{tradePrice:N2} breached daily circuit filter limits (₹{lowerCircuit:N2} - ₹{upperCircuit:N2})." });
+                }
             }
 
             decimal totalAmount = request.Quantity * tradePrice;
             User? investor = await _context.Users.FirstOrDefaultAsync(u => u.User_id == userId.Value && u.Is_active);
             if (investor == null)
             {
-                return NotFound(new { success = false, message = "Investor record not found." });
+                return NotFound(new { success = false, message = "Active investor account record not found." });
             }
 
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            await using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
 
             try
             {
@@ -321,6 +354,18 @@ namespace IPOInvestmentManagement.Controllers
                         Price = tradePrice,
                         Total_amount = totalAmount,
                         Transaction_date = DateTime.Now
+                    });
+
+                    _context.VirtualBalanceLedgers.Add(new VirtualBalanceLedger
+                    {
+                        UserId = userId.Value,
+                        AdminUserId = null,
+                        TransactionType = "TRADE_BUY",
+                        Amount = -totalAmount,
+                        BalanceBefore = investor.SimulatedCashBalance + totalAmount,
+                        BalanceAfter = investor.SimulatedCashBalance,
+                        Reason = $"Market purchase: {request.Quantity:N0} shares of {marketData.IpoName} ({exchange}) @ ₹{tradePrice:N2}",
+                        CreatedAt = DateTime.Now
                     });
 
                     await _context.SaveChangesAsync();
@@ -395,6 +440,18 @@ namespace IPOInvestmentManagement.Controllers
                         Transaction_date = DateTime.Now
                     });
 
+                    _context.VirtualBalanceLedgers.Add(new VirtualBalanceLedger
+                    {
+                        UserId = userId.Value,
+                        AdminUserId = null,
+                        TransactionType = "TRADE_SELL",
+                        Amount = totalAmount,
+                        BalanceBefore = investor.SimulatedCashBalance - totalAmount,
+                        BalanceAfter = investor.SimulatedCashBalance,
+                        Reason = $"Market sale: {request.Quantity:N0} shares of {marketData.IpoName} ({exchange}) @ ₹{tradePrice:N2}",
+                        CreatedAt = DateTime.Now
+                    });
+
                     remainingQty = availableQuantity - request.Quantity;
                     if (remainingQty == 0)
                     {
@@ -443,10 +500,17 @@ namespace IPOInvestmentManagement.Controllers
         [HttpPost("broadcast")]
         public async Task<IActionResult> Broadcast([FromBody] AdminBroadcastRequestDto request)
         {
+            int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
             string? role = HttpContext.Session.GetString("UserRole");
+
+            if (!userId.HasValue)
+            {
+                return Unauthorized(new { success = false, message = "Authentication required. Please sign in as an administrator." });
+            }
+
             if (!string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
             {
-                return Forbid();
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied: Only administrators are authorized to send broadcasts." });
             }
 
             if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.Message))
@@ -487,31 +551,90 @@ namespace IPOInvestmentManagement.Controllers
         }
 
         [HttpPost("reset-balance")]
-        public async Task<IActionResult> ResetCashBalance()
+        public IActionResult ResetCashBalance()
         {
-            int? userId = HttpContext.Session.GetInt32("User_id");
-            if (!userId.HasValue || !string.Equals(HttpContext.Session.GetString("UserRole"), "Investor", StringComparison.OrdinalIgnoreCase))
+            return StatusCode(StatusCodes.Status403Forbidden, new
             {
-                return Unauthorized(new { success = false, message = "Unauthorized" });
-            }
-
-            var user = await _context.Users.FindAsync(userId.Value);
-            if (user == null)
-            {
-                return NotFound();
-            }
-
-            user.SimulatedCashBalance = 100000m;
-            await _context.SaveChangesAsync();
-
-            return Ok(new { success = true, newBalance = user.SimulatedCashBalance });
+                success = false,
+                message = "Unrestricted wallet resets have been disabled. Virtual balances can only be adjusted by a platform Administrator with an auditable reason."
+            });
         }
 
         [HttpPost("toggle-simulation")]
         public IActionResult ToggleSimulation()
         {
+            int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
+            string? role = HttpContext.Session.GetString("UserRole");
+
+            if (!userId.HasValue)
+            {
+                return Unauthorized(new { success = false, message = "Authentication required. Please sign in as an administrator." });
+            }
+
+            if (!string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied: Only administrators are authorized to configure market simulation." });
+            }
+
             _marketDataProvider.IsSimulationMode = !_marketDataProvider.IsSimulationMode;
-            return Ok(new { isSimulationActive = _marketDataProvider.IsSimulationMode });
+            _logger.LogInformation("Market simulation mode toggled to {Mode} by Admin User {UserId}.", _marketDataProvider.IsSimulationMode, userId.Value);
+            return Ok(new { success = true, isSimulationActive = _marketDataProvider.IsSimulationMode });
+        }
+
+        [HttpGet("gmp/{ipoId}")]
+        public async Task<IActionResult> GetGmpData(int ipoId)
+        {
+            var ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == ipoId);
+            if (ipo is null)
+            {
+                return NotFound(new { success = false, message = "IPO not found." });
+            }
+
+            var history = await _context.IPOGMPHistories
+                .AsNoTracking()
+                .Where(g => g.IPO_id == ipoId)
+                .OrderBy(g => g.RecordedDate)
+                .ThenBy(g => g.Gmp_id)
+                .ToListAsync();
+
+            var latest = history.LastOrDefault();
+            var previous = history.Count > 1 ? history[history.Count - 2] : latest;
+
+            decimal basePrice = ipo.Price_max ?? ipo.Price_min ?? 0m;
+            decimal currentGmp = latest?.GMPPrice ?? 0m;
+            decimal prevGmp = previous?.GMPPrice ?? currentGmp;
+            decimal estListingPrice = latest?.EstimatedListingPrice ?? (basePrice + currentGmp);
+            decimal estGainPct = latest?.ExpectedListingGainPercentage ?? (basePrice > 0 ? Math.Round((currentGmp / basePrice) * 100m, 2) : 0m);
+
+            return Ok(new
+            {
+                success = true,
+                ipoId = ipo.IPO_id,
+                ipoName = ipo.IPO_name,
+                basePrice = basePrice,
+                currentGmp = currentGmp,
+                previousGmp = prevGmp,
+                gmpChange = currentGmp - prevGmp,
+                gmpChangePercentage = prevGmp > 0 ? Math.Round((currentGmp - prevGmp) / prevGmp * 100m, 2) : 0m,
+                estimatedListingPrice = estListingPrice,
+                estimatedGainPercentage = estGainPct,
+                fireRating = latest?.FireRating ?? (estGainPct >= 20 ? "Bullish" : (estGainPct >= 10 ? "Moderate" : "Neutral")),
+                isUnofficial = true,
+                disclaimer = "Grey Market Premium (GMP) is purely unofficial, unregulated, and indicative peer-to-peer data. It is not recognized or monitored by SEBI, NSE, or BSE.",
+                history = history.Select(g => new
+                {
+                    id = g.Gmp_id,
+                    date = g.RecordedDate.ToString("dd MMM"),
+                    fullDate = g.RecordedDate.ToString("dd MMM yyyy"),
+                    gmp = g.GMPPrice,
+                    estimatedPrice = g.EstimatedListingPrice ?? (basePrice + g.GMPPrice),
+                    gainPercentage = g.ExpectedListingGainPercentage ?? (basePrice > 0 ? Math.Round((g.GMPPrice / basePrice) * 100m, 2) : 0m),
+                    kostak = g.KostakRate,
+                    subjectToSauda = g.SubjectToSauda,
+                    fireRating = g.FireRating ?? "Neutral",
+                    source = g.Source ?? "Unofficial Grey Market Desk"
+                })
+            });
         }
     }
 }

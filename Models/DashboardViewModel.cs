@@ -70,5 +70,10 @@ namespace IPOInvestmentManagement.Models
         public Dictionary<int, string> PendingApplicationIpoNames { get; set; } = new();
         public Dictionary<int, string> PendingApplicationUserNames { get; set; } = new();
         public IpoSubmissionViewModel IpoSubmission { get; set; } = new();
+
+        public List<AdminSearchIpoItem> AllAdminIpos { get; set; } = new();
+        public string? AdminIpoSearchQuery { get; set; }
+        public string? AdminIpoSearchStatus { get; set; }
+        public string? AdminIpoSearchType { get; set; }
     }
 }

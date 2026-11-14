@@ -60,8 +60,7 @@
             }
             <div class="company-request-actions admin-detail-actions">
                 @if (allotment is null &&
-                    ipo.Listing_date.HasValue &&
-                    DateTime.UtcNow.AddHours(5.5).Date >= ipo.Listing_date.Value.Date &&
+                    DateTime.UtcNow.AddHours(5.5).Date <= ipo.Close_date.Date &&
                     string.Equals(application.Status, "Submitted", StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(application.Payment_status, "Verified", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) &&
@@ -76,7 +75,14 @@
                         <button class="btn btn-outline-danger" type="submit">Cancel application</button>
                     </form>
                 }
-                @if (allotment is null && DateTime.UtcNow.AddHours(5.5).Date > ipo.Close_date.Date && string.Equals(application.Status, "Submitted", StringComparison.OrdinalIgnoreCase) && string.Equals(application.Payment_status, "Verified", StringComparison.OrdinalIgnoreCase))
+                @{
+                    var todayIst = DateTime.UtcNow.AddHours(5.5).Date;
+                    bool isClosed = todayIst > ipo.Close_date.Date || string.Equals(ipo.Status, "Closed", StringComparison.OrdinalIgnoreCase) || string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase);
+                    bool hasAllotmentDate = ipo.Allotment_date.HasValue;
+                    bool isAllotmentDateReached = hasAllotmentDate && todayIst >= ipo.Allotment_date!.Value.Date;
+                    bool canProcessAllotment = isClosed && isAllotmentDateReached;
+                }
+                @if (allotment is null && canProcessAllotment && string.Equals(application.Status, "Submitted", StringComparison.OrdinalIgnoreCase) && string.Equals(application.Payment_status, "Verified", StringComparison.OrdinalIgnoreCase))
                 {
                     <form asp-controller="Dashboard" asp-action="PreviewAllotment" method="get" class="admin-allotment-form">
                         @Html.AntiForgeryToken()
@@ -87,9 +93,22 @@
                         <button class="btn btn-primary" type="submit">Preview allotment</button>
                     </form>
                 }
-                else if (allotment is null && (!ipo.Listing_date.HasValue || ipo.Listing_date.Value.Date > DateTime.UtcNow.AddHours(5.5).Date) && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+                else if (allotment is null && !canProcessAllotment && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
                 {
-                    <p class="admin-muted admin-allotment-note">Allotment can be processed on or after the listing date@(ipo.Listing_date.HasValue ? $" ({ipo.Listing_date.Value:dd MMM yyyy})" : " once a listing date is configured").</p>
+                    <p class="admin-muted admin-allotment-note">
+                        @if (!isClosed)
+                        {
+                            <text>Allotment can be processed only after the IPO bidding window closes (Closing date: @ipo.Close_date.ToString("dd MMM yyyy")).</text>
+                        }
+                        else if (!hasAllotmentDate)
+                        {
+                            <text>Allotment can be processed once an allotment date is configured on the IPO.</text>
+                        }
+                        else
+                        {
+                            <text>Allotment can be processed on or after the configured allotment date: @ipo.Allotment_date!.Value.ToString("dd MMM yyyy").</text>
+                        }
+                    </p>
                 }
             </div>
         </section>

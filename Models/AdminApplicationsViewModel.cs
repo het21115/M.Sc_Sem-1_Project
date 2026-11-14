@@ -21,5 +21,6 @@ namespace IPOInvestmentManagement.Models
         public string IpoName { get; set; } = "IPO";
         public IPO? Ipo { get; set; }
         public bool AllotmentWindowOpen { get; set; }
+        public string AllotmentTimingStatus { get; set; } = string.Empty;
     }
 }

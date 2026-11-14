@@ -24,6 +24,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<IEmailNotificationService, SmtpEmailNotificationService>();
 builder.Services.AddScoped<IMarketTradingCalendar, MarketTradingCalendar>();
 builder.Services.AddScoped<IStockMarketService, StockMarketService>();
+builder.Services.AddScoped<IInvestorReportService, InvestorReportService>();
 builder.Services.AddSingleton<IMarketDataProvider, RealTimeStockMarketDataProvider>();
 builder.Services.AddHostedService<StockPriceBroadcastingService>();
 builder.Services.AddHttpClient<IRazorpayPaymentService, RazorpayPaymentService>(client =>
@@ -200,6 +201,41 @@ using (var scope = app.Services.CreateScope())
                 [CreatedAt] datetime2 NOT NULL
             );
             CREATE INDEX [IX_AuditLogs_ActorUserId_CreatedAt] ON [AuditLogs] ([ActorUserId], [CreatedAt]);
+        END
+        IF OBJECT_ID(N'[VirtualBalanceLedgers]', N'U') IS NULL
+        BEGIN
+            CREATE TABLE [VirtualBalanceLedgers] (
+                [LedgerId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_VirtualBalanceLedgers] PRIMARY KEY,
+                [UserId] int NOT NULL,
+                [AdminUserId] int NULL,
+                [TransactionType] nvarchar(50) NOT NULL,
+                [Amount] decimal(18,2) NOT NULL,
+                [BalanceBefore] decimal(18,2) NOT NULL,
+                [BalanceAfter] decimal(18,2) NOT NULL,
+                [Reason] nvarchar(500) NOT NULL,
+                [CreatedAt] datetime2 NOT NULL,
+                CONSTRAINT [FK_VirtualBalanceLedgers_Users] FOREIGN KEY ([UserId]) REFERENCES [Users] ([User_id])
+            );
+            CREATE INDEX [IX_VirtualBalanceLedgers_UserId_CreatedAt] ON [VirtualBalanceLedgers] ([UserId], [CreatedAt]);
+            CREATE INDEX [IX_VirtualBalanceLedgers_AdminUserId] ON [VirtualBalanceLedgers] ([AdminUserId]);
+        END
+        IF OBJECT_ID(N'[IPOGMPHistory]', N'U') IS NULL
+        BEGIN
+            CREATE TABLE [IPOGMPHistory] (
+                [Gmp_id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_IPOGMPHistory] PRIMARY KEY,
+                [IPO_id] int NOT NULL,
+                [GMPPrice] decimal(18,2) NOT NULL,
+                [EstimatedListingPrice] decimal(18,2) NULL,
+                [ExpectedListingGainPercentage] decimal(10,2) NULL,
+                [KostakRate] decimal(18,2) NULL,
+                [SubjectToSauda] decimal(18,2) NULL,
+                [FireRating] nvarchar(50) NULL,
+                [Source] nvarchar(200) NULL,
+                [RecordedDate] datetime2 NOT NULL,
+                [CreatedAt] datetime2 NOT NULL,
+                CONSTRAINT [FK_IPOGMPHistory_IPOs] FOREIGN KEY ([IPO_id]) REFERENCES [IPOs] ([IPO_id]) ON DELETE CASCADE
+            );
+            CREATE INDEX [IX_IPOGMPHistory_IPO_id_RecordedDate] ON [IPOGMPHistory] ([IPO_id], [RecordedDate]);
         END
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Users_Email_Unique' AND object_id = OBJECT_ID(N'[Users]'))
             EXEC(N'CREATE UNIQUE INDEX [IX_Users_Email_Unique] ON [Users] ([Email])');

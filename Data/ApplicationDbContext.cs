@@ -28,6 +28,8 @@ namespace IPOInvestmentManagement.Data
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<StockMarketData> StockMarketData { get; set; }
         public DbSet<MarketTradingHoliday> MarketTradingHolidays { get; set; }
+        public DbSet<VirtualBalanceLedger> VirtualBalanceLedgers { get; set; }
+        public DbSet<IPOGMPHistory> IPOGMPHistories { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -196,6 +198,13 @@ namespace IPOInvestmentManagement.Data
                 .WithMany()
                 .HasForeignKey(data => data.CompanyId)
                 .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<IPOGMPHistory>()
+                .HasOne(g => g.IPO)
+                .WithMany()
+                .HasForeignKey(g => g.IPO_id)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<IPOGMPHistory>()
+                .HasIndex(g => new { g.IPO_id, g.RecordedDate });
         }
     }
 }

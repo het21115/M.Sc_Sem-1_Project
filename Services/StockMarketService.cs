@@ -12,7 +12,8 @@ namespace IPOInvestmentManagement.Services
         public async Task<MarketDashboardViewModel> GetDashboardAsync(CancellationToken cancellationToken = default)
         {
             DateTime now = GetIndiaStandardTime();
-            bool marketOpen = await calendar.IsMarketOpenAsync(now, cancellationToken);
+            bool isCalendarOpen = await calendar.IsMarketOpenAsync(now, cancellationToken);
+            bool marketOpen = isCalendarOpen || marketDataProvider.IsSimulationMode;
 
             List<MarketDataViewModel> rows = await LoadRowsAsync(null, now, marketOpen, cancellationToken);
             return new MarketDashboardViewModel
@@ -34,7 +35,8 @@ namespace IPOInvestmentManagement.Services
         public async Task<MarketDataViewModel?> GetMarketDataAsync(int ipoId, CancellationToken cancellationToken = default)
         {
             DateTime now = GetIndiaStandardTime();
-            bool marketOpen = await calendar.IsMarketOpenAsync(now, cancellationToken);
+            bool isCalendarOpen = await calendar.IsMarketOpenAsync(now, cancellationToken);
+            bool marketOpen = isCalendarOpen || marketDataProvider.IsSimulationMode;
             return (await LoadRowsAsync(ipoId, now, marketOpen, cancellationToken)).SingleOrDefault();
         }
 

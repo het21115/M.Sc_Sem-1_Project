@@ -3,17 +3,9 @@
    ========================================================================== */
 
 /* 1. Live Market Ticker Tape Header */
-.market-ticker-container {
-    display: flex;
-    align-items: center;
-    background: #0d1826;
-    border-bottom: 1px solid #1e334d;
-    height: 38px;
-    overflow: hidden;
-    position: relative;
-    font-size: 0.78rem;
-    color: #e2e8f0;
-    z-index: 100;
+.market-ticker-container,
+#market-ticker-bar {
+    display: none !important;
 }
 
 .ticker-badge {

@@ -19,6 +19,7 @@
         </div>
         <section class="admin-user-details-card">
             <div class="admin-user-detail-grid">
+                <div><span>Investor Category</span><strong>@Model.CategoryName (@Model.CategoryCode)</strong></div>
                 <div><span>Application status</span><strong>@Model.Application.Status</strong></div>
                 <div><span>Payment status</span><strong>@Model.Application.Payment_status</strong></div>
                 <div><span>Applied lots</span><strong>@Model.Application.Applied_lots.ToString("N0")</strong></div>

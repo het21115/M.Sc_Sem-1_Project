@@ -29,11 +29,62 @@
                 <h1>My Portfolio &amp; Trading Simulator</h1>
                 <p class="portfolio-intro">Live NSE and BSE price streaming, automated P&amp;L updates, and instant buy-sell simulation.</p>
             </div>
-            <div class="portfolio-actions">
-                <button type="button" class="btn btn-outline-warning btn-sm" onclick="window.resetSimulatedCashBalance()">
-                    &#8635; Reset Capital (₹100,000)
-                </button>
-                <a class="btn portfolio-export" asp-controller="Dashboard" asp-action="ExportPortfolio">Export CSV</a>
+            <div class="portfolio-actions d-flex flex-wrap align-items-center gap-2">
+                <span class="badge bg-secondary-subtle text-light border border-secondary px-2 py-1 small align-self-center" title="Virtual balances can only be adjusted by a platform Administrator with an audit reason">
+                    Balance Managed by Admin
+                </span>
+                <div class="dropdown d-inline-block">
+                    <button class="btn btn-primary dropdown-toggle shadow-sm" type="button" id="investorReportsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        📄 Advanced Reports (PDF)
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border" aria-labelledby="investorReportsDropdown">
+                        <li><h6 class="dropdown-header text-uppercase small fw-bold">Official Investor Statements</h6></li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2 py-2" asp-controller="Dashboard" asp-action="DownloadPortfolioStatementPdf" target="_blank">
+                                <span class="badge bg-primary-subtle text-primary border">PDF</span>
+                                <div>
+                                    <strong class="d-block text-dark">Portfolio Statement</strong>
+                                    <small class="text-muted">Holdings, valuation & mark-to-market</small>
+                                </div>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2 py-2" asp-controller="Dashboard" asp-action="DownloadTransactionReportPdf" target="_blank">
+                                <span class="badge bg-success-subtle text-success border">PDF</span>
+                                <div>
+                                    <strong class="d-block text-dark">Transaction Report</strong>
+                                    <small class="text-muted">Secondary market order execution audit</small>
+                                </div>
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><h6 class="dropdown-header text-uppercase small fw-bold">IPO Offering Reports</h6></li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2 py-2" asp-controller="Dashboard" asp-action="DownloadIpoApplicationReportPdf" target="_blank">
+                                <span class="badge bg-info-subtle text-info border">PDF</span>
+                                <div>
+                                    <strong class="d-block text-dark">IPO Applications Report</strong>
+                                    <small class="text-muted">Complete bid & ASBA mandate summary</small>
+                                </div>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2 py-2" asp-controller="Dashboard" asp-action="DownloadAllotmentReportPdf" target="_blank">
+                                <span class="badge bg-warning-subtle text-warning border">PDF</span>
+                                <div>
+                                    <strong class="d-block text-dark">IPO Allotment Report</strong>
+                                    <small class="text-muted">Allotment outcomes, share credits & refunds</small>
+                                </div>
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2 text-muted" asp-controller="Dashboard" asp-action="ExportPortfolio">
+                                <span>📊 Export Raw CSV Data</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
                 <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a>
             </div>
         </div>
@@ -240,7 +291,12 @@
                         <span class="terminal-overline">04 / ACTIVITY LOG</span>
                         <h2>Transaction History</h2>
                     </div>
-                    <span class="investor-library-note">@Model.Transactions.Count records</span>
+                    <div class="d-flex align-items-center gap-2">
+                        <a class="btn btn-sm btn-outline-primary py-1 px-2" asp-controller="Dashboard" asp-action="DownloadTransactionReportPdf" target="_blank" title="Export full transaction statement as PDF">
+                            📄 Download Transaction PDF
+                        </a>
+                        <span class="investor-library-note">@Model.Transactions.Count records</span>
+                    </div>
                 </div>
                 @if (Model.Transactions.Count == 0)
                 {

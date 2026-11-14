@@ -22,7 +22,123 @@
                 <div><span>Registered</span><strong>@Model.Created_at.ToString("dd MMM yyyy, hh:mm tt")</strong></div>
                 <div><span>Status</span><strong>@(Model.Is_active ? "Active" : "Inactive")</strong></div>
                 <div><span>User ID</span><strong>#@Model.User_id</strong></div>
+                @if (string.Equals(Model.Role, "Investor", StringComparison.OrdinalIgnoreCase))
+                {
+                    <div class="admin-user-detail-highlight">
+                        <span>Virtual Cash Balance</span>
+                        <strong class="text-success" style="font-size:1.15rem;">₹@Model.SimulatedCashBalance.ToString("N2")</strong>
+                    </div>
+                }
             </div>
+
+            @if (string.Equals(Model.Role, "Investor", StringComparison.OrdinalIgnoreCase))
+            {
+                var ledger = ViewBag.BalanceLedger as List<IPOInvestmentManagement.Models.VirtualBalanceLedger> ?? new();
+                var adminNames = ViewBag.AdminNames as Dictionary<int, string> ?? new();
+
+                <div class="admin-balance-adjust-section mt-4 pt-4 border-top">
+                    <div class="admin-section-head mb-3">
+                        <div>
+                            <span class="admin-overline">VIRTUAL CAPITAL GOVERNANCE</span>
+                            <h3 class="h5 mb-1 text-white">Adjust Virtual Cash Balance</h3>
+                            <small class="text-muted">Unrestricted investor resets are disabled. Adjust balance with a mandatory audit record.</small>
+                        </div>
+                    </div>
+
+                    <form asp-controller="Dashboard" asp-action="AdjustVirtualBalance" method="post" class="admin-adjust-form p-3" style="background:#0c1524; border:1px solid #1e334d; border-radius:8px;">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="userId" value="@Model.User_id" />
+
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label text-muted small fw-semibold">Adjustment Action</label>
+                                <select name="adjustmentType" class="form-select form-select-sm" style="background:#132032; border-color:#2a4365; color:#f8fafc;" required>
+                                    <option value="Credit">Credit / Add Funds (+)</option>
+                                    <option value="Debit">Debit / Deduct Funds (-)</option>
+                                    <option value="Set">Set Exact Balance (=)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-muted small fw-semibold">Amount (₹)</label>
+                                <input type="number" step="0.01" min="0.01" name="amount" class="form-control form-control-sm" placeholder="e.g. 50000.00" style="background:#132032; border-color:#2a4365; color:#f8fafc;" required />
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button type="submit" class="btn btn-sm btn-primary w-100" onclick="return confirm('Commit this virtual balance adjustment? This action writes to the audit log and financial ledger.');">
+                                    &#128176; Commit Balance Adjustment
+                                </button>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label text-muted small fw-semibold">Audit Reason / Justification <span class="text-danger">*</span></label>
+                                <textarea name="reason" rows="2" class="form-control form-control-sm" placeholder="Provide a detailed audit explanation for this adjustment (e.g. System compensation, trial tier upgrade, demo allocation)..." style="background:#132032; border-color:#2a4365; color:#f8fafc;" required></textarea>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div class="admin-ledger-section mt-4">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <h4 class="h6 mb-0 text-white">&#128220; Virtual Balance Transaction Ledger</h4>
+                            <span class="badge bg-secondary">@ledger.Count record(s)</span>
+                        </div>
+
+                        @if (ledger.Count == 0)
+                        {
+                            <div class="p-3 text-center text-muted" style="background:#0c1524; border:1px solid #1e334d; border-radius:6px; font-size:0.85rem;">
+                                No virtual balance transactions or adjustments have been recorded for this investor yet.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                                <table class="table table-sm table-dark table-striped align-middle mb-0" style="font-size:0.82rem; background:#0c1524;">
+                                    <thead>
+                                        <tr style="border-bottom:1px solid #2a4365; color:#94a3b8;">
+                                            <th>Date &amp; Time</th>
+                                            <th>Transaction Type</th>
+                                            <th>Amount</th>
+                                            <th>Previous Balance</th>
+                                            <th>New Balance</th>
+                                            <th>Audit Reason</th>
+                                            <th>Recorded By</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var entry in ledger)
+                                        {
+                                            bool isCredit = entry.Amount >= 0;
+                                            string badgeClass = entry.TransactionType switch
+                                            {
+                                                "ADMIN_CREDIT" => "bg-success",
+                                                "ADMIN_DEBIT" => "bg-danger",
+                                                "ADMIN_SET" => "bg-info text-dark",
+                                                "TRADE_BUY" => "bg-warning text-dark",
+                                                "TRADE_SELL" => "bg-success",
+                                                _ => "bg-secondary"
+                                            };
+                                            string recordedBy = entry.AdminUserId.HasValue 
+                                                ? adminNames.GetValueOrDefault(entry.AdminUserId.Value, $"Admin #{entry.AdminUserId.Value}") 
+                                                : "Trading Engine";
+
+                                            <tr>
+                                                <td class="text-white">@entry.CreatedAt.ToString("dd MMM yyyy, hh:mm tt")</td>
+                                                <td><span class="badge @badgeClass">@entry.TransactionType</span></td>
+                                                <td class="fw-bold @(isCredit ? "text-success" : "text-danger")">
+                                                    @(isCredit ? "+" : "")₹@entry.Amount.ToString("N2")
+                                                </td>
+                                                <td>₹@entry.BalanceBefore.ToString("N2")</td>
+                                                <td class="fw-bold text-white">₹@entry.BalanceAfter.ToString("N2")</td>
+                                                <td style="max-width: 250px; word-break: break-word;">@entry.Reason</td>
+                                                <td><span class="badge bg-dark border border-secondary text-light">@recordedBy</span></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <div class="mt-4 pt-3 border-top">
             @if (Model.Is_active)
             {
                 <form class="admin-deactivate-form" asp-controller="Dashboard" asp-action="DeactivateUser" method="post">

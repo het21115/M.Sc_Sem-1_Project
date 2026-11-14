@@ -23,5 +23,10 @@ namespace IPOInvestmentManagement.Models
     {
         public IPO Ipo { get; set; } = new();
         public string CompanyName { get; set; } = "Company";
+        public int ApplicationCount { get; set; }
+        public decimal? CurrentGmp { get; set; }
+        public decimal? EstimatedListingPrice { get; set; }
+        public decimal? ExpectedGainPercentage { get; set; }
+        public bool AllotmentWindowOpen { get; set; }
     }
 }

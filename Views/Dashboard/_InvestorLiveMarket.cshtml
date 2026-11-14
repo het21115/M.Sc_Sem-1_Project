@@ -1,40 +1,5 @@
 @model IPOInvestmentManagement.Models.DashboardViewModel
 
-<div class="investor-live-market-card">
-    <div class="live-market-copy">
-        <span class="terminal-overline">
-            @if (Model.Market.IsMarketOpen)
-            {
-                <i class="ticker-pulse"></i><span>REAL-TIME NSE · BSE MARKET (LIVE SESSION)</span>
-            }
-            else
-            {
-                <i class="ticker-pulse" style="background:#ef4444; box-shadow:0 0 8px rgba(239, 68, 68, 0.4);"></i><span>REAL-TIME NSE · BSE MARKET (CLOSED)</span>
-            }
-        </span>
-        <strong>Live Market Pulse & Dual-Exchange Feed</strong>
-        <small>Real-time tick streaming, automatic pricing updates, and instant buy-sell simulation (09:30 AM &ndash; 03:30 PM IST).</small>
-    </div>
-    <div class="live-market-highlights" aria-label="Live market summary">
-        <span class="live-market-stat-offers"><b>@Model.Market.Listings.Count</b><small>Listed stocks</small></span>
-        <span class="live-market-stat-listed"><b>@Model.Market.TopGainers.Count</b><small>Top gainers</small></span>
-        <span class="live-market-stat-open">
-            @if (Model.Market.IsMarketOpen)
-            {
-                <b class="live-market-positive"><i></i> Open</b>
-            }
-            else
-            {
-                <b class="live-market-negative"><i style="background:#ef4444;"></i> Closed</b>
-            }
-            <small>Market status (09:30 - 15:30 IST)</small>
-        </span>
-    </div>
-    <button type="button" class="btn investor-live-market-button" data-bs-toggle="modal" data-bs-target="#live-market-modal">
-        Live Market <span aria-hidden="true">&#8594;</span>
-    </button>
-</div>
-
 <div class="modal fade investor-modal" id="live-market-modal" tabindex="-1" aria-labelledby="live-market-modal-title" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">

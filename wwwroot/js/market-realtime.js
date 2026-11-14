@@ -34,7 +34,7 @@
 
     // Initialize Real-time services on DOM Ready
     document.addEventListener("DOMContentLoaded", function () {
-        initTickerBar();
+        // initTickerBar(); // Disabled: NSE/BSE live headlines ticker bar removed from all dashboards
         initBroadcastContainer();
         initTradeModal();
         startRealtimeConnection();
@@ -293,28 +293,11 @@
     // =========================================================================
 
     function initTickerBar() {
-        if (document.getElementById("market-ticker-bar")) return;
-
-        const header = document.querySelector(".investor-terminal .terminal-bar, .admin-console .admin-topbar");
-        if (!header) return;
-
-        const ticker = document.createElement("div");
-        ticker.id = "market-ticker-bar";
-        ticker.className = "market-ticker-container";
-        ticker.innerHTML = `
-            <div class="ticker-badge">
-                <span class="ticker-pulse"></span>
-                <strong>NSE · BSE LIVE</strong>
-            </div>
-            <div class="ticker-track" id="ticker-track">
-                <span class="ticker-loading">Connecting to live market stream...</span>
-            </div>
-            <div class="ticker-controls">
-                <span class="market-stream-label">● LIVE FEED</span>
-            </div>
-        `;
-
-        header.insertAdjacentElement("afterend", ticker);
+        // Disabled: NSE/BSE live headlines ticker bar removed from all dashboards
+        const existing = document.getElementById("market-ticker-bar");
+        if (existing) {
+            existing.remove();
+        }
     }
 
     function updateTickerTape(stocks) {
@@ -839,20 +822,7 @@
     };
 
     window.resetSimulatedCashBalance = function () {
-        if (!confirm("Replenish your simulated trading wallet to ₹100,000.00?")) return;
-
-        fetch("/api/market/reset-balance", { method: "POST" })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    document.querySelectorAll("[data-cash-balance]").forEach(el => {
-                        el.textContent = formatINR(data.newBalance);
-                    });
-                    alert("Virtual balance replenished to ₹100,000.00!");
-                    window.location.reload();
-                }
-            })
-            .catch(e => alert("Could not replenish balance."));
+        alert("Unrestricted investor wallet resets are disabled. Virtual balances can only be adjusted by a platform Administrator with an auditable reason.");
     };
 
     // =========================================================================

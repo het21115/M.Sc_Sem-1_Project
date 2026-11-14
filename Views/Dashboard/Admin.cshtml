@@ -6,10 +6,9 @@
 <div class="admin-console">
     <header class="admin-topbar"><button type="button" class="admin-back-button" data-admin-back="@Url.Action("Index", "Home")" title="Go back">&#8592; Back</button><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@Model.UserName</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
     <main class="admin-main">
-        <div class="admin-page-actions"><a class="btn btn-primary" asp-controller="Dashboard" asp-action="Search">Search system</a><a class="btn btn-primary" asp-controller="Dashboard" asp-action="CreateNotification">Create notification</a><a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="EditProfile">Edit profile</a></div>
+        <div class="admin-page-actions"><a class="btn btn-primary" href="#admin-search-ipos">Search IPOs</a><a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="Search">Search system</a><a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="CreateNotification">Create notification</a><a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="EditProfile">Edit profile</a></div>
         <div class="admin-heading"><div><span class="admin-overline">OPERATIONS CENTER / 01</span><h1>Platform control</h1><p>Monitor the IPO marketplace and clear the work that needs attention.</p></div><div class="admin-status"><i></i> All systems operational</div></div>
         <section class="admin-kpis" aria-label="Platform summary"><div class="admin-kpi-primary"><span>Total Investors</span><strong>@Model.UserCount</strong><small>Active investor accounts</small></div><div><span>Total Companies</span><strong>@Model.CompanyCount</strong><small>Company profiles</small></div><div><span>Total IPOs</span><strong>@Model.IpoCount</strong><small>Across all companies</small></div><div><span>Pending Approvals</span><strong>@(Model.PendingCompanyCount + Model.PendingIpoCount + Model.PendingApplicationCount)</strong><small>Items requiring action</small></div><div><span>Active IPOs</span><strong>@Model.ActiveIpoCount</strong><small>Currently accepting activity</small></div><div><span>Listed IPOs</span><strong>@Model.ListedIpoCount</strong><small>Available on the market</small></div></section>
-        <partial name="_InvestorLiveMarket" model="Model" />
         @if (TempData["AdminMessage"] is string adminMessage)
         {
             <div class="alert alert-info mt-3" role="alert">@adminMessage</div>
@@ -105,6 +104,247 @@
                 </div>
             }
         </section>
+
+        <!-- SEARCH & MANAGE IPOS SECTION -->
+        <section class="admin-user-details-card mt-4 mb-4" id="admin-search-ipos" style="border-top: 4px solid #0284c7;">
+            <div class="admin-section-head d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div>
+                    <span class="admin-overline" style="color: #0284c7;">03 / IPO DIRECTORY &amp; SEARCH</span>
+                    <h2>Search &amp; Manage IPOs</h2>
+                    <p class="mb-0 text-muted">Filter, inspect, and take action on all registered IPO offerings across all statuses.</p>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="admin-ipo-count-badge" class="badge bg-primary px-3 py-2">
+                        Showing @Model.AllAdminIpos.Count IPO@(Model.AllAdminIpos.Count == 1 ? "" : "s")
+                    </span>
+                </div>
+            </div>
+
+            <!-- Search and Filter Bar -->
+            <div class="p-3 my-3 bg-light rounded-3 border">
+                <form id="admin-ipo-search-form" asp-controller="Dashboard" asp-action="Index" method="get" class="row g-2 align-items-end">
+                    <div class="col-md-5">
+                        <label class="form-label small fw-bold text-secondary mb-1">Search IPO or Company Name</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-white">&#128269;</span>
+                            <input type="text" id="admin-ipo-query-input" name="adminIpoQuery" value="@Model.AdminIpoSearchQuery" 
+                                   class="form-control" placeholder="Type IPO name or company..." autocomplete="off" />
+                            <button type="button" id="admin-ipo-clear-btn" class="btn btn-outline-secondary" title="Clear search" style="display:none;">&times;</button>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold text-secondary mb-1">Filter by Status</label>
+                        <select id="admin-ipo-status-filter" name="adminIpoStatus" class="form-select form-select-sm">
+                            <option value="">All Statuses</option>
+                            @foreach (var st in new[] { "Pending", "Approved", "Open", "Closed", "Listed", "Rejected", "Cancelled" })
+                            {
+                                <option value="@st" selected="@(string.Equals(Model.AdminIpoSearchStatus, st, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@st</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold text-secondary mb-1">Issue Type</label>
+                        <select id="admin-ipo-type-filter" name="adminIpoType" class="form-select form-select-sm">
+                            <option value="">All Types</option>
+                            @foreach (var type in new[] { "Book Built", "Fixed Price", "SME" })
+                            {
+                                <option value="@type" selected="@(string.Equals(Model.AdminIpoSearchType, type, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@type</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex gap-2">
+                        <button type="submit" class="btn btn-sm btn-primary flex-grow-1">Filter</button>
+                        <a asp-controller="Dashboard" asp-action="Index" asp-fragment="admin-search-ipos" class="btn btn-sm btn-outline-secondary" title="Reset all filters">Reset</a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Search Results Table -->
+            <div class="table-responsive">
+                <table class="table table-hover align-middle border mb-0" id="admin-ipos-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th>IPO Name &amp; Company</th>
+                            <th>Status</th>
+                            <th>Price Band / Size</th>
+                            <th>Bidding Dates</th>
+                            <th>Allotment &amp; Listing</th>
+                            <th>Demand &amp; GMP</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-ipos-table-body">
+                        @if (Model.AllAdminIpos.Count == 0)
+                        {
+                            <tr id="admin-ipo-no-results-row">
+                                <td colspan="7" class="text-center py-4 text-muted">
+                                    <em>No IPOs found matching your search criteria.</em>
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var item in Model.AllAdminIpos)
+                            {
+                                string statusBadgeClass = item.Ipo.Status switch
+                                {
+                                    "Pending" => "bg-warning text-dark border",
+                                    "Approved" => "bg-info text-dark border",
+                                    "Open" => "bg-success",
+                                    "Closed" => "bg-secondary",
+                                    "Listed" => "bg-primary",
+                                    "Rejected" => "bg-danger",
+                                    "Cancelled" => "bg-dark",
+                                    _ => "bg-light text-dark border"
+                                };
+
+                                <tr class="admin-ipo-row" 
+                                    data-ipo-name="@item.Ipo.IPO_name.ToLower()" 
+                                    data-company-name="@item.CompanyName.ToLower()"
+                                    data-status="@(item.Ipo.Status ?? "")"
+                                    data-type="@(item.Ipo.IPO_type ?? "")">
+                                    <td>
+                                        <div>
+                                            <a class="fw-bold text-decoration-none text-navy" asp-controller="Dashboard" asp-action="IpoDetails" asp-route-ipoId="@item.Ipo.IPO_id">
+                                                @item.Ipo.IPO_name
+                                            </a>
+                                            <div class="small text-muted">@item.CompanyName &middot; <span class="badge bg-light text-secondary border">@(item.Ipo.IPO_type ?? "Equity")</span></div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge @statusBadgeClass">
+                                            @(item.Ipo.Status ?? "Draft")
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="small">
+                                            <strong>₹@(item.Ipo.Price_min?.ToString("N2") ?? "-") - ₹@(item.Ipo.Price_max?.ToString("N2") ?? "-")</strong>
+                                            <div class="text-muted">Lot: @(item.Ipo.Lot_size?.ToString("N0") ?? "-") shs &middot; ₹@((item.Ipo.Issue_size ?? 0).ToString("N2"))</div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="small">
+                                            <span>Opens: <strong>@item.Ipo.Open_date.ToString("dd MMM yyyy")</strong></span>
+                                            <div class="text-muted">Closes: @item.Ipo.Close_date.ToString("dd MMM yyyy")</div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="small">
+                                            <span>Allotment: <strong>@(item.Ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "TBA")</strong></span>
+                                            <div class="text-muted">Listing: @(item.Ipo.Listing_date?.ToString("dd MMM yyyy") ?? "TBA")</div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="small">
+                                            <div>Bids: <strong>@item.ApplicationCount</strong></div>
+                                            @if (item.CurrentGmp.HasValue)
+                                            {
+                                                <div class="badge bg-warning-subtle text-warning-emphasis border border-warning" style="font-size:0.7rem;" title="Unofficial Grey Market Premium">
+                                                    GMP: ₹@item.CurrentGmp.Value.ToString("N2") (+@item.ExpectedGainPercentage%)
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted" style="font-size:0.75rem;">No GMP quote</span>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="btn-group btn-group-sm">
+                                            <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="IpoDetails" asp-route-ipoId="@item.Ipo.IPO_id" title="View details and GMP">
+                                                Manage
+                                            </a>
+                                            <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Applications" asp-route-ipoId="@item.Ipo.IPO_id" title="View applications">
+                                                Bids (@item.ApplicationCount)
+                                            </a>
+                                            @if (item.AllotmentWindowOpen)
+                                            {
+                                                <a class="btn btn-outline-success" asp-controller="Dashboard" asp-action="AutomaticAllotmentPreview" asp-route-ipoId="@item.Ipo.IPO_id" title="Process Allotment">
+                                                    Allot
+                                                </a>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                            <tr id="admin-ipo-client-empty-row" style="display: none;">
+                                <td colspan="7" class="text-center py-4 text-muted">
+                                    <em>No IPOs match your search or filter keywords.</em>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                const queryInput = document.getElementById("admin-ipo-query-input");
+                const statusFilter = document.getElementById("admin-ipo-status-filter");
+                const typeFilter = document.getElementById("admin-ipo-type-filter");
+                const clearBtn = document.getElementById("admin-ipo-clear-btn");
+                const badge = document.getElementById("admin-ipo-count-badge");
+                const rows = document.querySelectorAll(".admin-ipo-row");
+                const emptyRow = document.getElementById("admin-ipo-client-empty-row");
+
+                function filterRows() {
+                    const query = (queryInput ? queryInput.value.trim().toLowerCase() : "");
+                    const status = (statusFilter ? statusFilter.value : "");
+                    const type = (typeFilter ? typeFilter.value : "");
+
+                    if (clearBtn) {
+                        clearBtn.style.display = query.length > 0 ? "inline-block" : "none";
+                    }
+
+                    let visibleCount = 0;
+                    rows.forEach(row => {
+                        const ipoName = row.getAttribute("data-ipo-name") || "";
+                        const companyName = row.getAttribute("data-company-name") || "";
+                        const rowStatus = row.getAttribute("data-status") || "";
+                        const rowType = row.getAttribute("data-type") || "";
+
+                        const matchesQuery = !query || ipoName.includes(query) || companyName.includes(query);
+                        const matchesStatus = !status || rowStatus.toLowerCase() === status.toLowerCase();
+                        const matchesType = !type || rowType.toLowerCase().includes(type.toLowerCase());
+
+                        if (matchesQuery && matchesStatus && matchesType) {
+                            row.style.display = "";
+                            visibleCount++;
+                        } else {
+                            row.style.display = "none";
+                        }
+                    });
+
+                    if (badge) {
+                        badge.textContent = `Showing ${visibleCount} of ${rows.length} IPO${rows.length === 1 ? "" : "s"}`;
+                    }
+                    if (emptyRow) {
+                        emptyRow.style.display = (visibleCount === 0 && rows.length > 0) ? "" : "none";
+                    }
+                }
+
+                if (queryInput) {
+                    queryInput.addEventListener("input", filterRows);
+                    if (queryInput.value.trim().length > 0) {
+                        filterRows();
+                    }
+                }
+                if (statusFilter) {
+                    statusFilter.addEventListener("change", filterRows);
+                }
+                if (typeFilter) {
+                    typeFilter.addEventListener("change", filterRows);
+                }
+                if (clearBtn) {
+                    clearBtn.addEventListener("click", function () {
+                        queryInput.value = "";
+                        filterRows();
+                        queryInput.focus();
+                    });
+                }
+            });
+        </script>
         <section class="company-requests" id="company-requests"><div class="admin-section-head"><div><span class="admin-overline">05 / COMPANY REQUESTS</span><h2>Pending Companies</h2></div><span class="admin-muted">Approval required</span></div>@if (Model.PendingCompanies.Count == 0) { <div class="admin-empty">There are no pending Company registrations.</div> } else { foreach (var company in Model.PendingCompanies) { <div class="company-request-row"><div><strong>Company: @company.Company_name</strong><small>CIN: @(company.CIN ?? "Not provided")<br />Email: @(company.Email ?? "Not provided")<br />Status: @(company.Approval_status ?? "Pending")</small></div><div class="company-request-actions"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="CompanyDetails" asp-route-companyId="@company.Company_id">View</a><form asp-controller="Dashboard" asp-action="ApproveCompany" method="post"><input type="hidden" name="companyId" value="@company.Company_id" /><button type="submit" class="btn btn-sm btn-success">Approve</button></form><form asp-controller="Dashboard" asp-action="DenyCompany" method="post"><input type="hidden" name="companyId" value="@company.Company_id" /><button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Reject this Company registration request?');">Reject</button></form></div></div> } }</section>
         <section class="company-requests ipo-requests" id="ipo-requests"><div class="admin-section-head"><div><span class="admin-overline">04 / IPO REQUESTS</span><h2>Pending IPO submissions</h2></div><span class="admin-muted">Approval required before publication</span></div>@if (Model.PendingIpos.Count == 0) { <div class="admin-empty">There are no pending IPO submissions.</div> } else { foreach (var ipo in Model.PendingIpos) { <div class="company-request-row"><div><strong>@ipo.IPO_name</strong><small>@(Model.PendingIpoCompanyNames.GetValueOrDefault(ipo.Company_id, "Company")) &middot; Submitted @ipo.Created_at.ToString("dd MMM yyyy") &middot; ₹@((ipo.Issue_size ?? 0).ToString("N2"))</small></div><div class="company-request-actions"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="IpoDetails" asp-route-ipoId="@ipo.IPO_id">View IPO</a><form asp-controller="Dashboard" asp-action="ApproveIpo" method="post"><input type="hidden" name="ipoId" value="@ipo.IPO_id" /><button type="submit" class="btn btn-sm btn-success">Approve</button></form><form asp-controller="Dashboard" asp-action="DenyIpo" method="post"><input type="hidden" name="ipoId" value="@ipo.IPO_id" /><button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Reject this IPO submission?');">Reject</button></form></div></div> } }</section>
         <section class="company-requests application-requests" id="application-requests"><div class="admin-section-head"><div><span class="admin-overline">05 / INVESTOR APPLICATIONS</span><h2>Submitted Investor applications</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Applications">View all applications &#8594;</a></div>@if (Model.PendingApplications.Count == 0) { <div class="admin-empty">There are no submitted Investor applications.</div> } else { foreach (var application in Model.PendingApplications) { <div class="company-request-row"><div><strong>@Model.PendingApplicationUserNames.GetValueOrDefault(application.User_id, "Investor")</strong><small>@Model.PendingApplicationIpoNames.GetValueOrDefault(application.IPO_id, "IPO") &middot; @application.Applied_lots lot(s) / @application.Applied_shares share(s) &middot; Submitted @application.Application_date.ToString("dd MMM yyyy")</small></div><div class="company-request-actions"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@application.Application_id">View details</a></div></div> } }</section>
