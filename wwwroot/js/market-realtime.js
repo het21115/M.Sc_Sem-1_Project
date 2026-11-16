@@ -82,6 +82,10 @@
                 handleBroadcastMessage(data);
             });
 
+            state.signalrConnection.on("ReceiveIpoStatusChange", function (data) {
+                handleIpoStatusChange(data);
+            });
+
             state.signalrConnection.start()
                 .then(function () {
                     console.log("[Realtime] Connected to SignalR MarketHub.");
@@ -178,6 +182,17 @@
                 b.innerHTML = '<i style="background:#ef4444;"></i> Closed';
             }
         });
+
+        const modalSource = document.getElementById("modal-data-source-badge");
+        if (modalSource && data.dataSource) {
+            modalSource.textContent = data.dataSource;
+        }
+
+        const modalFeed = document.getElementById("modal-feed-status-badge");
+        if (modalFeed) {
+            modalFeed.textContent = data.isSimulation ? "SIMULATED (DEV)" : (data.isStale ? "STALE / OFFLINE" : "LIVE FEED");
+            modalFeed.className = "badge px-2 py-1 " + (data.isSimulation ? "bg-warning text-dark" : (data.isStale ? "bg-warning text-dark" : "bg-success text-white"));
+        }
 
         if (!state.isMarketOpen) {
             updateConnectionStatus(false, "○ MARKET CLOSED (09:30 - 15:30 IST)");
@@ -392,6 +407,43 @@
                 setTimeout(() => toast.remove(), 400);
             }
         }, 9000);
+    }
+
+    function handleIpoStatusChange(data) {
+        if (!data) return;
+        const status = data.status || "";
+        let category = "IPO " + status.toUpperCase();
+        let toastTitle = `${data.ipoName} is now ${status.toUpperCase()}`;
+        let toastMsg = `Status changed from ${data.previousStatus || "Previous"} to ${status}.`;
+
+        if (status === "Open") {
+            category = "IPO OPENING";
+            toastTitle = `IPO Bidding Open: ${data.ipoName}`;
+            toastMsg = `Subscription is now open until ${data.closingDateTime || "closing time"} IST. Submit your bid now!`;
+        } else if (status === "Closed") {
+            category = "IPO CLOSING";
+            toastTitle = `IPO Bidding Closed: ${data.ipoName}`;
+            toastMsg = `Bidding window has closed. Allotment processing underway.`;
+        } else if (status === "Listed") {
+            category = "IPO LISTED";
+            toastTitle = `IPO Listed: ${data.ipoName}`;
+            toastMsg = `Now officially listed on NSE & BSE with live secondary trading active.`;
+        }
+
+        handleBroadcastMessage({
+            category: category,
+            title: toastTitle,
+            message: toastMsg,
+            timestamp: data.timestamp || "Just now"
+        });
+
+        // Dynamically update any status badges in the DOM
+        if (data.ipoId) {
+            document.querySelectorAll(`[data-status-for="${data.ipoId}"]`).forEach(el => {
+                el.textContent = status;
+                el.className = `badge ${status === "Open" ? "bg-success" : status === "Closed" ? "bg-danger" : status === "Listed" ? "bg-primary" : "bg-secondary"} ms-1`;
+            });
+        }
     }
 
     function handleTradeNotification(data) {
@@ -1044,6 +1096,26 @@
         const sma50El = document.getElementById("tech-sma50");
         if (sma20El) sma20El.textContent = formatINR(data.currentPrice * 0.985);
         if (sma50El) sma50El.textContent = formatINR(data.currentPrice * 0.962);
+
+        // Data Notice & Source pill
+        const noticeEl = document.getElementById("chart-data-notice-text");
+        if (noticeEl) noticeEl.textContent = data.dataNotice || (data.isSimulation ? "Simulation Mode: Realistic continuous prices within Indian circuit limits (±20%)." : "Exchange Live Market Data.");
+
+        const pillEl = document.getElementById("chart-data-source-pill");
+        if (pillEl) {
+            pillEl.textContent = data.isSimulation ? "SIMULATED" : (data.isStale ? "STALE / OFFLINE" : "EXCHANGE FEED");
+            pillEl.className = "badge " + (data.isSimulation ? "bg-dark text-warning border border-warning" : (data.isStale ? "bg-dark text-warning border border-warning" : "bg-dark text-success border border-success"));
+        }
+
+        const sourceBadge = document.getElementById("chart-source-badge");
+        if (sourceBadge && data.dataSource) {
+            sourceBadge.textContent = data.dataSource;
+        }
+
+        const lastUpText = document.getElementById("chart-last-updated-text");
+        if (lastUpText && data.lastUpdated) {
+            lastUpText.textContent = `Updated: ${data.lastUpdated}`;
+        }
     }
 
     function renderStockCanvas(data) {
@@ -1336,17 +1408,33 @@
             deltaContainer.className = "stock-price-change " + (isUp ? "profit" : "loss");
         }
 
-        if (chartCachedData && state.currentChartStock.timeframe === "1D") {
+        // Update Today's High / Low in Performance tab
+        const todayLow = isBse ? stock.bseLow : stock.nseLow;
+        const todayHigh = isBse ? stock.bseHigh : stock.nseHigh;
+        const todayLowEl = document.getElementById("perf-today-low");
+        const todayHighEl = document.getElementById("perf-today-high");
+        if (todayLowEl && todayLow) todayLowEl.textContent = formatINR(todayLow);
+        if (todayHighEl && todayHigh) todayHighEl.textContent = formatINR(todayHigh);
+
+        if (todayHigh && todayLow && todayHigh > todayLow) {
+            const todaySpan = Math.max(0.1, todayHigh - todayLow);
+            const todayPct = Math.min(100, Math.max(0, (newPrice - todayLow) / todaySpan * 100));
+            const todayPointer = document.getElementById("perf-today-pointer");
+            const todayBar = document.getElementById("perf-today-bar");
+            if (todayPointer) todayPointer.style.left = `${todayPct}%`;
+            if (todayBar) todayBar.style.width = `${todayPct}%`;
+        }
+
+        if (chartCachedData) {
             chartCachedData.currentPrice = newPrice;
             chartCachedData.priceChange = newChange;
             chartCachedData.priceChangePercentage = newPct;
 
-            if (chartCachedData.points && chartCachedData.points.length > 0) {
+            if (state.currentChartStock.timeframe === "1D" && chartCachedData.points && chartCachedData.points.length > 0) {
                 // Update latest point on curve
                 chartCachedData.points[chartCachedData.points.length - 1].price = newPrice;
+                renderStockCanvas(chartCachedData);
             }
-
-            renderStockCanvas(chartCachedData);
         }
     }
 

@@ -21,6 +21,9 @@ namespace IPOInvestmentManagement.Controllers
         private readonly IStockMarketService _stockMarketService;
         private readonly IHubContext<MarketHub> _hubContext;
         private readonly IInvestorReportService _investorReportService;
+        private readonly IIpoClock _clock;
+        private readonly IIpoStatusService _ipoStatusService;
+        private readonly IConfiguration _configuration;
 
         public DashboardController(
             ApplicationDbContext context,
@@ -28,7 +31,10 @@ namespace IPOInvestmentManagement.Controllers
             IRazorpayPaymentService razorpayPaymentService,
             IStockMarketService stockMarketService,
             IHubContext<MarketHub> hubContext,
-            IInvestorReportService investorReportService)
+            IInvestorReportService investorReportService,
+            IIpoClock clock,
+            IIpoStatusService ipoStatusService,
+            IConfiguration configuration)
         {
             _context = context;
             _emailNotificationService = emailNotificationService;
@@ -36,6 +42,9 @@ namespace IPOInvestmentManagement.Controllers
             _stockMarketService = stockMarketService;
             _hubContext = hubContext;
             _investorReportService = investorReportService;
+            _clock = clock;
+            _ipoStatusService = ipoStatusService;
+            _configuration = configuration;
         }
 
         [HttpGet]
@@ -101,29 +110,20 @@ namespace IPOInvestmentManagement.Controllers
 
             User? investor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(user => user.User_id == userId.Value && user.Is_active);
             IPO? ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(item => item.IPO_id == request.IpoId);
+            if (ipo is null)
+            {
+                TempData["InvestorMessage"] = "Selected IPO was not found.";
+                return RedirectToAction(nameof(Index));
+            }
+
             DateTime indiaNow = GetIndiaStandardTime();
-            DateTime today = indiaNow.Date;
-            if (ipo is null ||
-                string.Equals(ipo.Status, "Rejected", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(ipo.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) ||
-                (!string.Equals(ipo.Status, "Approved", StringComparison.OrdinalIgnoreCase) &&
-                 !string.Equals(ipo.Status, "Published", StringComparison.OrdinalIgnoreCase) &&
-                 !string.Equals(ipo.Status, "Open", StringComparison.OrdinalIgnoreCase) &&
-                 !string.Equals(ipo.Status, "Closed", StringComparison.OrdinalIgnoreCase) &&
-                 !string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase)) ||
-                ipo.Open_date.Date > today || ipo.Close_date.Date < today)
+            var (canApply, applyError) = _ipoStatusService.CanApply(ipo, indiaNow);
+            if (!canApply)
             {
-                ModelState.AddModelError(string.Empty, "This IPO is not currently open for applications.");
+                ModelState.AddModelError(string.Empty, applyError ?? "This IPO is not currently open for applications.");
             }
 
-            TimeSpan marketOpen = new(9, 30, 0);
-            TimeSpan marketClose = new(15, 30, 0);
-            if (indiaNow.TimeOfDay < marketOpen || indiaNow.TimeOfDay >= marketClose)
-            {
-                ModelState.AddModelError(string.Empty, "IPO applications are accepted only during market hours, 9:30 AM to 3:30 PM IST.");
-            }
-
-            if (request.AppliedLots <= 0 || ipo is null || !ipo.Lot_size.HasValue || ipo.Lot_size.Value <= 0)
+            if (request.AppliedLots <= 0 || !ipo.Lot_size.HasValue || ipo.Lot_size.Value <= 0)
             {
                 ModelState.AddModelError(nameof(request.AppliedLots), "Number of lots must be at least one.");
             }
@@ -334,15 +334,19 @@ namespace IPOInvestmentManagement.Controllers
             await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
                 await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             IPO? ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(item => item.IPO_id == ipoId);
-            DateTime today = GetIndiaStandardTime().Date;
-            if (ipo is null ||
-                ipo.Open_date.Date > today ||
-                ipo.Close_date.Date < today ||
-                string.Equals(ipo.Status, "Rejected", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(ipo.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+            if (ipo is null)
             {
                 HttpContext.Session.Remove("PendingIpoApplication");
-                TempData["InvestorMessage"] = "This IPO is no longer open for applications.";
+                TempData["InvestorMessage"] = "Selected IPO was not found.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            DateTime indiaNow = GetIndiaStandardTime();
+            var (canApply, applyError) = _ipoStatusService.CanApply(ipo, indiaNow);
+            if (!canApply)
+            {
+                HttpContext.Session.Remove("PendingIpoApplication");
+                TempData["InvestorMessage"] = applyError ?? "This IPO is no longer open for applications.";
                 return RedirectToAction(nameof(Index));
             }
 
@@ -388,8 +392,37 @@ namespace IPOInvestmentManagement.Controllers
                 Application_date = DateTime.UtcNow,
                 Status = "Submitted"
             });
+            _context.SystemNotifications.Add(new SystemNotification
+            {
+                User_id = userId.Value,
+                Title = $"Payment Confirmed - {ipo.IPO_name} IPO",
+                Message = $"Payment of ₹{payment.Amount:N2} (Ref: {payment.PaymentId}) verified and captured successfully for application #{pending.ApplicationNumber}. Your bid for {pending.AppliedShares} share(s) ({pending.AppliedLots} lot(s)) has been submitted.",
+                Created_at = DateTime.UtcNow,
+                Is_read = false
+            });
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            User? payingInvestor = await _context.Users.FindAsync(userId.Value);
+            if (payingInvestor != null)
+            {
+                string emailSubject = $"Payment Receipt & Application Confirmed: {ipo.IPO_name}";
+                string emailBody = $"Dear {payingInvestor.First_name},\n\nYour payment for {ipo.IPO_name} IPO application #{pending.ApplicationNumber} has been verified and captured successfully.\n\nTransaction Summary:\n- Application Number: {pending.ApplicationNumber}\n- IPO Name: {ipo.IPO_name}\n- Applied Lots: {pending.AppliedLots}\n- Applied Shares: {pending.AppliedShares}\n- Bid Price: ₹{pending.BidPrice:N2}\n- Total Amount Paid: ₹{payment.Amount:N2}\n- Payment Reference ID: {payment.PaymentId}\n- Razorpay Order ID: {payment.OrderId}\n- UPI ID: {pending.UpiId}\n- Demat Account: {pending.DematAccountNumber}\n- Payment Status: Verified (Captured)\n- Application Status: Submitted\n\nYou can track the progress of your application and allotment results from your Investor Dashboard.\n\nThank you,\nIPO Investment Management";
+                await TrySendEventEmailAsync(payingInvestor, emailSubject, emailBody);
+            }
+
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveBroadcastMessage", new
+                {
+                    category = "PAYMENT CONFIRMED",
+                    title = $"Payment Confirmed - {ipo.IPO_name}",
+                    message = $"Application #{pending.ApplicationNumber} submitted successfully with verified payment of ₹{payment.Amount:N2}.",
+                    timestamp = indiaNow.ToString("hh:mm tt")
+                });
+            }
+            catch { }
+
             HttpContext.Session.Remove("PendingIpoApplication");
             TempData["InvestorMessage"] = $"Application {pending.ApplicationNumber} submitted successfully.";
             return RedirectToAction(nameof(Index));
@@ -460,7 +493,7 @@ namespace IPOInvestmentManagement.Controllers
             }
 
             if (alreadyAllotted ||
-                cancellationDate.Date >= ipo.Close_date.Date ||
+                cancellationDate >= _ipoStatusService.GetClosingDateTime(ipo) ||
                 !string.Equals(application.Status, "Submitted", StringComparison.OrdinalIgnoreCase))
             {
                 TempData["InvestorMessage"] = "Applications can only be cancelled before the IPO closes and before allotment.";
@@ -579,7 +612,7 @@ namespace IPOInvestmentManagement.Controllers
                 .AsNoTracking()
                 .FirstOrDefaultAsync(item =>
                     item.IPO_id == ipoId &&
-                    (item.Status == "Approved" || item.Status == "Published" || item.Status == "Open" || item.Status == "Listed" || item.Status == "Closed"));
+                    (item.Status == "Approved" || item.Status == "Published" || item.Status == "Upcoming" || item.Status == "Open" || item.Status == "Listed" || item.Status == "Closed"));
             if (ipo is null)
             {
                 TempData["InvestorMessage"] = "This IPO is not available in the market.";
@@ -619,7 +652,7 @@ namespace IPOInvestmentManagement.Controllers
 
                 ViewBag.MarketIpos = await _context.IPOs
                     .AsNoTracking()
-                    .Where(ipo => ipo.Status == "Approved" || ipo.Status == "Published" || ipo.Status == "Open" || ipo.Status == "Listed" || ipo.Status == "Closed")
+                    .Where(ipo => ipo.Status == "Approved" || ipo.Status == "Published" || ipo.Status == "Upcoming" || ipo.Status == "Open" || ipo.Status == "Listed" || ipo.Status == "Closed")
                     .OrderBy(ipo => ipo.IPO_name)
                     .ToListAsync();
                 return View(await BuildPortfolioAsync(userId.Value));
@@ -628,15 +661,19 @@ namespace IPOInvestmentManagement.Controllers
             [HttpGet]
             public async Task<IActionResult> MarketDetails(int ipoId)
             {
-                if (!IsInvestor())
+                int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
+                if (!userId.HasValue)
                 {
-                    return Forbid();
+                    return RedirectToAction("Login", "Account");
                 }
 
                 MarketDataViewModel? market = await _stockMarketService.GetMarketDataAsync(ipoId);
                 if (market is null)
                 {
-                    return NotFound();
+                    TempData["AdminMessage"] = "Stock or market data not found.";
+                    TempData["CompanyMessage"] = "Stock or market data not found.";
+                    TempData["InvestorMessage"] = "Stock or market data not found.";
+                    return RedirectToAction(nameof(Index));
                 }
 
                 return View(market);
@@ -646,9 +683,16 @@ namespace IPOInvestmentManagement.Controllers
             public async Task<IActionResult> Trade(int ipoId, bool sell = false, int? investmentId = null)
             {
                 int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
-                if (!userId.HasValue || !IsInvestor())
+                if (!userId.HasValue)
                 {
-                    return Forbid();
+                    return RedirectToAction("Login", "Account");
+                }
+
+                if (!IsInvestor())
+                {
+                    TempData["AdminMessage"] = "Trading operations are available exclusively for Investor accounts.";
+                    TempData["CompanyMessage"] = "Trading operations are available exclusively for Investor accounts.";
+                    return RedirectToAction(nameof(Index));
                 }
 
                 IPO? ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(item => item.IPO_id == ipoId);
@@ -1468,6 +1512,7 @@ namespace IPOInvestmentManagement.Controllers
                     .Where(ipo => ipo.Company_id == companyId &&
                         (ipo.Status == "Approved" ||
                          ipo.Status == "Published" ||
+                         ipo.Status == "Upcoming" ||
                          ipo.Status == "Open" ||
                          ipo.Status == "Listed" ||
                          ipo.Status == "Closed"))
@@ -1504,11 +1549,19 @@ namespace IPOInvestmentManagement.Controllers
                 .ThenBy(g => g.Gmp_id)
                 .ToListAsync();
 
+            var auditLogs = await _context.AuditLogs
+                .AsNoTracking()
+                .Where(a => a.EntityType == "IPO" && a.EntityId == ipoId.ToString())
+                .OrderByDescending(a => a.CreatedAt)
+                .Take(50)
+                .ToListAsync();
+
             return View(new AdminIpoDetailsViewModel 
             { 
                 Ipo = ipo, 
                 CompanyName = companyName,
-                GmpHistory = gmpHistory 
+                GmpHistory = gmpHistory,
+                AuditHistory = auditLogs
             });
         }
 
@@ -2375,6 +2428,30 @@ namespace IPOInvestmentManagement.Controllers
         }
 
         [HttpGet]
+        public async Task<IActionResult> SearchIpos(
+            string? adminIpoQuery = null,
+            string? adminIpoStatus = null,
+            string? adminIpoType = null)
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
+            var ipoItems = await GetAdminSearchIposListAsync(adminIpoQuery, adminIpoStatus, adminIpoType);
+            var model = new AdminSearchIposViewModel
+            {
+                UserName = HttpContext.Session.GetString("UserName") ?? "Admin",
+                AdminIpoSearchQuery = adminIpoQuery,
+                AdminIpoSearchStatus = adminIpoStatus,
+                AdminIpoSearchType = adminIpoType,
+                AllAdminIpos = ipoItems
+            };
+
+            return View(model);
+        }
+
+        [HttpGet]
         public async Task<IActionResult> Search(AdminSearchViewModel model)
         {
             if (!IsAdmin())
@@ -2527,7 +2604,7 @@ namespace IPOInvestmentManagement.Controllers
             bool alreadyAllotted = await _context.IPOAllotments
                 .AnyAsync(allotment => allotment.Application_id == application.Application_id);
             if (alreadyAllotted ||
-                ipo.Close_date.Date <= GetIndiaStandardTime().Date ||
+                GetIndiaStandardTime() >= _ipoStatusService.GetClosingDateTime(ipo) ||
                 string.Equals(application.Status, "Allotted", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(application.Status, "Partially Allotted", StringComparison.OrdinalIgnoreCase))
             {
@@ -2557,13 +2634,23 @@ namespace IPOInvestmentManagement.Controllers
             _context.SystemNotifications.Add(new SystemNotification
             {
                 User_id = application.User_id,
-                Title = "IPO application cancelled",
-                Message = $"Your IPO application #{application.Application_id} was cancelled by the administrator. Reason: {application.Cancellation_reason}",
+                Title = "IPO Application Cancelled & Refund Initiated",
+                Message = $"Your application #{application.Application_id} for {ipo.IPO_name} was cancelled by administrator (Reason: {application.Cancellation_reason}). Full refund of ₹{application.Payment_amount:N2} has been initiated to your UPI ID {application.Upi_id}.",
                 Created_at = cancellationDate,
                 Is_read = false
             });
 
             await _context.SaveChangesAsync();
+
+            User? cancelledApplicant = await _context.Users.FindAsync(application.User_id);
+            if (cancelledApplicant != null)
+            {
+                await TrySendEventEmailAsync(
+                    cancelledApplicant,
+                    $"IPO Application Cancelled: {ipo.IPO_name}",
+                    $"Dear {cancelledApplicant.First_name},\n\nYour IPO application #{application.Application_id} for {ipo.IPO_name} has been cancelled by the platform administrator.\n\nCancellation Details:\n- Reason: {application.Cancellation_reason}\n- Refund Amount: ₹{application.Payment_amount:N2}\n- Refund Method: UPI ID {application.Upi_id}\n\nThe funds will be refunded back to your registered source account.\n\nBest regards,\nIPO Investment Management");
+            }
+
             TempData["AdminMessage"] = $"Application #{application.Application_id} was cancelled and the investor was notified.";
             return RedirectToAction(nameof(ApplicationDetails), new { applicationId = model.ApplicationId });
         }
@@ -2749,15 +2836,29 @@ namespace IPOInvestmentManagement.Controllers
                             .FirstOrDefaultAsync(item => item.Application_id == application.Application_id);
                         int allottedResultShares = allotment?.Allotted_shares ?? 0;
                         decimal allotmentResultPrice = allotment?.Allotment_price ?? 0m;
+                        string listingDateStr = ipo.Listing_date.HasValue ? ipo.Listing_date.Value.ToString("dd MMM yyyy") : "To be announced";
                         string subject = successfullyAllotted
-                            ? $"{ipo.IPO_name} IPO allotment successful"
-                            : $"{ipo.IPO_name} IPO allotment result";
+                            ? $"{ipo.IPO_name} IPO Allotment Successful"
+                            : $"{ipo.IPO_name} IPO Allotment Result: Not Allotted";
                         string message = successfullyAllotted
-                            ? $"{ipo.IPO_name}: your IPO application #{application.Application_id} was successfully allotted {allottedResultShares:N0} share(s) at ₹{allotmentResultPrice:N2}. Please log in to your investor dashboard to view the complete result."
-                            : $"{ipo.IPO_name}: no shares were allotted for your application #{application.Application_id}. Please log in to your investor dashboard to view the result.";
+                            ? $"{ipo.IPO_name}: Your IPO application #{application.Application_id} was successfully allotted {allottedResultShares:N0} share(s) at ₹{allotmentResultPrice:N2}. Expected listing date on NSE/BSE: {listingDateStr}. Shares will be credited to Demat account: {application.Demat_account_number}. Please log in to your investor dashboard to view the complete result."
+                            : $"{ipo.IPO_name}: No shares were allotted for your application #{application.Application_id}. The full amount of ₹{application.Payment_amount:N2} will be unblocked/refunded to your UPI account ({application.Upi_id}). Please log in to your investor dashboard to view the result.";
                         await TrySendEventEmailAsync(investor, subject, message);
                     }
                 }
+
+                try
+                {
+                    await _hubContext.Clients.All.SendAsync("ReceiveBroadcastMessage", new
+                    {
+                        category = "ALLOTMENT RESULTS",
+                        title = $"Allotment Finalized: {ipo.IPO_name}",
+                        message = $"Allotment results for {ipo.IPO_name} have been finalized and published. Check 'My Applications' on your Investor Dashboard.",
+                        timestamp = GetIndiaStandardTime().ToString("hh:mm tt")
+                    });
+                }
+                catch { }
+
             return applications.Select(application => application.Status ?? "Not Allotted").ToArray();
         }
 
@@ -2839,8 +2940,8 @@ namespace IPOInvestmentManagement.Controllers
                 _context.SystemNotifications.Add(new SystemNotification
                 {
                     User_id = application.User_id,
-                    Title = "IPO allotment result",
-                    Message = $"{ipo.IPO_name}: no shares were allotted for application #{application.Application_id}.",
+                    Title = $"IPO Allotment Result: {ipo.IPO_name}",
+                    Message = $"{ipo.IPO_name}: No shares were allotted for application #{application.Application_id}. The full amount of ₹{application.Payment_amount:N2} has been unblocked/refunded to your UPI account ({application.Upi_id}).",
                     Created_at = allotmentDate,
                     Is_read = false
                 });
@@ -2887,11 +2988,12 @@ namespace IPOInvestmentManagement.Controllers
                 Total_amount = allottedShares * price,
                 Transaction_date = allotmentDate
             });
+            string expectedListing = ipo.Listing_date.HasValue ? ipo.Listing_date.Value.ToString("dd MMM yyyy") : "To be announced";
             _context.SystemNotifications.Add(new SystemNotification
             {
                 User_id = application.User_id,
-                Title = "IPO allotment confirmed",
-                Message = $"{ipo.IPO_name}: {allottedShares:N0} share(s) allotted at ₹{price:N2} for application #{application.Application_id}.",
+                Title = $"IPO Allotment Confirmed: {ipo.IPO_name}",
+                Message = $"{ipo.IPO_name}: {allottedShares:N0} share(s) allotted at ₹{price:N2} for application #{application.Application_id}. Shares will be credited to Demat: {application.Demat_account_number}. Expected listing date: {expectedListing}.",
                 Created_at = allotmentDate,
                 Is_read = false
             });
@@ -2989,6 +3091,19 @@ namespace IPOInvestmentManagement.Controllers
                     model.Title.Trim(),
                     model.Message.Trim());
             }
+
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveBroadcastMessage", new
+                {
+                    category = "ANNOUNCEMENT",
+                    title = model.Title.Trim(),
+                    message = model.Message.Trim(),
+                    timestamp = GetIndiaStandardTime().ToString("hh:mm tt")
+                });
+            }
+            catch { }
+
             return RedirectToAction(nameof(CreateNotification));
         }
 
@@ -3114,8 +3229,54 @@ namespace IPOInvestmentManagement.Controllers
                 TempData["AdminMessage"] = "Only an approved IPO can be published.";
                 return RedirectToAction(nameof(IpoDetails), new { ipoId });
             }
-            ipo.Status = "Open";
+
+            DateTime nowIst = GetIndiaStandardTime();
+            string targetStatus = _ipoStatusService.CalculateStatus(ipo, nowIst);
+            ipo.Status = targetStatus;
+
+            int? adminId = HttpContext.Session.GetInt32("User_id");
+            string adminName = HttpContext.Session.GetString("UserName") ?? "Admin";
+
+            _context.AuditLogs.Add(new AuditLog
+            {
+                ActorUserId = adminId,
+                Action = "PublishIpo",
+                EntityType = "IPO",
+                EntityId = ipo.IPO_id.ToString(),
+                Details = $"Admin #{adminId} ({adminName}) published '{ipo.IPO_name}'. Live status set to '{targetStatus}' at {nowIst:dd MMM yyyy, hh:mm:ss tt} IST. (Bidding window: {_ipoStatusService.GetOpeningDateTime(ipo):dd MMM yyyy, hh:mm tt} to {_ipoStatusService.GetClosingDateTime(ipo):dd MMM yyyy, hh:mm tt} IST).",
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                CreatedAt = DateTime.UtcNow
+            });
+
             await _context.SaveChangesAsync();
+
+            DateTime openingDt = _ipoStatusService.GetOpeningDateTime(ipo);
+            DateTime closingDt = _ipoStatusService.GetClosingDateTime(ipo);
+
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveIpoStatusChange", new
+                {
+                    ipoId = ipo.IPO_id,
+                    ipoName = ipo.IPO_name,
+                    previousStatus = "Approved",
+                    status = targetStatus,
+                    openingDateTime = openingDt.ToString("dd MMM yyyy, hh:mm tt"),
+                    closingDateTime = closingDt.ToString("dd MMM yyyy, hh:mm tt"),
+                    timestamp = nowIst.ToString("hh:mm:ss tt"),
+                    istNow = nowIst.ToString("dd MMM yyyy, hh:mm:ss tt")
+                });
+            }
+            catch { }
+
+            string notifTitle = string.Equals(targetStatus, "Open", StringComparison.OrdinalIgnoreCase)
+                ? $"IPO Bidding Open: {ipo.IPO_name}"
+                : $"Upcoming IPO Announced: {ipo.IPO_name}";
+
+            string notifMessage = string.Equals(targetStatus, "Open", StringComparison.OrdinalIgnoreCase)
+                ? $"Bidding is now OPEN for {ipo.IPO_name} (Price Band: ₹{ipo.Price_min:N2} - ₹{ipo.Price_max:N2}, Lot size: {ipo.Lot_size} shares). The bidding window closes on {closingDt:dd MMM yyyy, hh:mm tt} IST. Submit your bid now."
+                : $"{ipo.IPO_name} has been published. Bidding opens on {openingDt:dd MMM yyyy, hh:mm tt} IST (Price Band: ₹{ipo.Price_min:N2} - ₹{ipo.Price_max:N2}). Check offering details and add to watchlist.";
+
             User[] investors = await _context.Users
                 .AsNoTracking()
                 .Where(user => user.Role == "Investor" && user.Is_active)
@@ -3124,8 +3285,8 @@ namespace IPOInvestmentManagement.Controllers
             _context.SystemNotifications.AddRange(investors.Select(investor => new SystemNotification
             {
                 User_id = investor.User_id,
-                Title = "IPO Available",
-                Message = $"{ipo.IPO_name} is now available to investors.",
+                Title = notifTitle,
+                Message = notifMessage,
                 Created_at = createdAt,
                 Is_read = false
             }));
@@ -3134,10 +3295,23 @@ namespace IPOInvestmentManagement.Controllers
             {
                 await TrySendEventEmailAsync(
                     investor,
-                    "IPO Available",
-                    $"{ipo.IPO_name} is now available to investors. Log in to review the offering.");
+                    notifTitle,
+                    $"{notifMessage}\n\nLog in to your investor dashboard to review the offering.");
             }
-            TempData["AdminMessage"] = $"{ipo.IPO_name} was published and is now visible to investors.";
+
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveBroadcastMessage", new
+                {
+                    category = string.Equals(targetStatus, "Open", StringComparison.OrdinalIgnoreCase) ? "IPO OPENING" : "IPO ANNOUNCEMENT",
+                    title = notifTitle,
+                    message = notifMessage,
+                    timestamp = nowIst.ToString("hh:mm tt")
+                });
+            }
+            catch { }
+
+            TempData["AdminMessage"] = $"{ipo.IPO_name} was published and status is set to '{targetStatus}'.";
             return RedirectToAction(nameof(IpoDetails), new { ipoId });
         }
 
@@ -3177,9 +3351,119 @@ namespace IPOInvestmentManagement.Controllers
             if (!IsAdmin()) return Forbid();
             IPO? ipo = await _context.IPOs.FindAsync(ipoId);
             if (ipo is null) return NotFound();
+
+            string previousStatus = ipo.Status ?? "Unknown";
             ipo.Status = "Cancelled";
+
+            int? adminId = HttpContext.Session.GetInt32("User_id");
+            string adminName = HttpContext.Session.GetString("UserName") ?? "Admin";
+
+            _context.AuditLogs.Add(new AuditLog
+            {
+                ActorUserId = adminId,
+                Action = "CancelIpo",
+                EntityType = "IPO",
+                EntityId = ipo.IPO_id.ToString(),
+                Details = $"Admin #{adminId} ({adminName}) manually cancelled IPO '{ipo.IPO_name}' (Previous status: '{previousStatus}').",
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                CreatedAt = DateTime.UtcNow
+            });
+
             await _context.SaveChangesAsync();
+
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveIpoStatusChange", new
+                {
+                    ipoId = ipo.IPO_id,
+                    ipoName = ipo.IPO_name,
+                    previousStatus = previousStatus,
+                    status = "Cancelled",
+                    timestamp = DateTime.Now.ToString("hh:mm:ss tt")
+                });
+            }
+            catch { }
+
             TempData["AdminMessage"] = $"{ipo.IPO_name} was cancelled.";
+            return RedirectToAction(nameof(IpoDetails), new { ipoId });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> UpdateIpoSchedule(
+            int ipoId,
+            DateTime openDate,
+            string? openTime,
+            DateTime closeDate,
+            string? closeTime)
+        {
+            if (!IsAdmin()) return Forbid();
+
+            IPO? ipo = await _context.IPOs.FindAsync(ipoId);
+            if (ipo is null) return NotFound();
+
+            TimeSpan ot = TimeSpan.TryParse(openTime, out var parsedOt) ? parsedOt : _ipoStatusService.GetConfiguredOpeningTime();
+            TimeSpan ct = TimeSpan.TryParse(closeTime, out var parsedCt) ? parsedCt : _ipoStatusService.GetConfiguredClosingTime();
+
+            DateTime openingDateTime = openDate.Date.Add(ot);
+            DateTime closingDateTime = closeDate.Date.Add(ct);
+
+            if (closingDateTime <= openingDateTime)
+            {
+                TempData["AdminMessage"] = "Closing date and time must be after opening date and time.";
+                return RedirectToAction(nameof(IpoDetails), new { ipoId });
+            }
+
+            ipo.Open_date = openDate.Date;
+            ipo.Opening_time = ot;
+            ipo.Close_date = closeDate.Date;
+            ipo.Closing_time = ct;
+
+            DateTime nowIst = GetIndiaStandardTime();
+            string oldStatus = ipo.Status ?? "Upcoming";
+            string newStatus = _ipoStatusService.CalculateStatus(ipo, nowIst);
+
+            if (!string.Equals(ipo.Status, "Pending", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(ipo.Status, "Rejected", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(ipo.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase))
+            {
+                ipo.Status = newStatus;
+            }
+
+            int? adminId = HttpContext.Session.GetInt32("User_id");
+            string adminName = HttpContext.Session.GetString("UserName") ?? "Admin";
+
+            _context.AuditLogs.Add(new AuditLog
+            {
+                ActorUserId = adminId,
+                Action = "UpdateIpoSchedule",
+                EntityType = "IPO",
+                EntityId = ipo.IPO_id.ToString(),
+                Details = $"Admin #{adminId} ({adminName}) updated schedule for '{ipo.IPO_name}': Open: {openingDateTime:dd MMM yyyy, hh:mm tt} IST, Close: {closingDateTime:dd MMM yyyy, hh:mm tt} IST. Status: '{ipo.Status}'.",
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _context.SaveChangesAsync();
+
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveIpoStatusChange", new
+                {
+                    ipoId = ipo.IPO_id,
+                    ipoName = ipo.IPO_name,
+                    previousStatus = oldStatus,
+                    status = ipo.Status,
+                    openingDateTime = openingDateTime.ToString("dd MMM yyyy, hh:mm tt"),
+                    closingDateTime = closingDateTime.ToString("dd MMM yyyy, hh:mm tt"),
+                    timestamp = nowIst.ToString("hh:mm:ss tt"),
+                    istNow = nowIst.ToString("dd MMM yyyy, hh:mm:ss tt")
+                });
+            }
+            catch { }
+
+            TempData["AdminMessage"] = $"Schedule updated for {ipo.IPO_name}. Status is now '{ipo.Status}'.";
             return RedirectToAction(nameof(IpoDetails), new { ipoId });
         }
 
@@ -3188,7 +3472,7 @@ namespace IPOInvestmentManagement.Controllers
         public async Task<IActionResult> ChangeIpoStatus(int ipoId, string status)
         {
             if (!IsAdmin()) return Forbid();
-            string[] validStatuses = { "Pending", "Approved", "Open", "Closed", "Listed", "Rejected", "Cancelled" };
+            string[] validStatuses = { "Pending", "Approved", "Upcoming", "Open", "Closed", "Listed", "Rejected", "Cancelled" };
             string? selectedStatus = validStatuses.FirstOrDefault(value =>
                 string.Equals(value, status, StringComparison.OrdinalIgnoreCase));
             IPO? ipo = await _context.IPOs.FindAsync(ipoId);
@@ -3201,7 +3485,36 @@ namespace IPOInvestmentManagement.Controllers
 
             string? previousStatus = ipo.Status;
             ipo.Status = selectedStatus;
+
+            int? adminId = HttpContext.Session.GetInt32("User_id");
+            string adminName = HttpContext.Session.GetString("UserName") ?? "Admin";
+
+            _context.AuditLogs.Add(new AuditLog
+            {
+                ActorUserId = adminId,
+                Action = "ChangeIpoStatus",
+                EntityType = "IPO",
+                EntityId = ipo.IPO_id.ToString(),
+                Details = $"Admin #{adminId} ({adminName}) manually changed status for '{ipo.IPO_name}' from '{previousStatus}' to '{selectedStatus}'.",
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                CreatedAt = DateTime.UtcNow
+            });
+
             await _context.SaveChangesAsync();
+
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveIpoStatusChange", new
+                {
+                    ipoId = ipo.IPO_id,
+                    ipoName = ipo.IPO_name,
+                    previousStatus = previousStatus,
+                    status = selectedStatus,
+                    timestamp = DateTime.Now.ToString("hh:mm:ss tt")
+                });
+            }
+            catch { }
+
             if (string.Equals(selectedStatus, "Approved", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(previousStatus, "Approved", StringComparison.OrdinalIgnoreCase))
             {
@@ -3316,6 +3629,21 @@ namespace IPOInvestmentManagement.Controllers
                 return View("Company", model);
             }
 
+            // Immediately send email notification to the Admin and broadcast update
+            await NotifyAdminsNewIpoSubmissionAsync(ipo, company!, submission);
+
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveBroadcastMessage", new
+                {
+                    title = "New IPO Submission",
+                    message = $"{company!.Company_name} has submitted a new IPO request for '{ipo.IPO_name}'.",
+                    category = "IPO",
+                    timestamp = DateTime.Now.ToString("hh:mm:ss tt")
+                });
+            }
+            catch { }
+
             TempData["SubmittedIpoName"] = ipo.IPO_name;
             return RedirectToAction(nameof(IpoSubmissionPending));
         }
@@ -3399,10 +3727,7 @@ namespace IPOInvestmentManagement.Controllers
                 .FirstOrDefaultAsync(user => user.User_id == userId && user.Is_active);
             model.InvestorDematAccountNumber = investor?.DematAccountNumber ?? string.Empty;
             model.InvestorUpiId = investor?.UpiId ?? string.Empty;
-            DateTime today = DateTime.UtcNow.Date;
-            model.OpenIpoCount = await _context.IPOs.CountAsync(ipo =>
-                (ipo.Status == "Approved" || ipo.Status == "Published" || ipo.Status == "Open" || ipo.Status == "Listed" || ipo.Status == "Closed") &&
-                ipo.Open_date.Date <= today && ipo.Close_date.Date >= today);
+            DateTime indiaNow = GetIndiaStandardTime();
             model.ApplicationCount = await _context.IPOApplications.CountAsync(application => application.User_id == userId);
             model.WatchlistCount = await _context.IPOWatchlists.CountAsync(item => item.User_id == userId);
             List<Investment> investorInvestments = await _context.Investments
@@ -3440,7 +3765,7 @@ namespace IPOInvestmentManagement.Controllers
                 .ToDictionaryAsync(allotment => allotment.Application_id);
             List<IPO> publishedIpos = await _context.IPOs
                 .AsNoTracking()
-                .Where(ipo => ipo.Status == "Approved" || ipo.Status == "Published" || ipo.Status == "Open" || ipo.Status == "Listed" || ipo.Status == "Closed")
+                .Where(ipo => ipo.Status == "Approved" || ipo.Status == "Published" || ipo.Status == "Upcoming" || ipo.Status == "Open" || ipo.Status == "Listed" || ipo.Status == "Closed")
                 .OrderByDescending(ipo => ipo.Created_at)
                 .ToListAsync();
             model.RecentIpos = publishedIpos.Take(5).ToList();
@@ -3512,13 +3837,14 @@ namespace IPOInvestmentManagement.Controllers
                 .ToList();
             model.MarketStatuses = publishedIpos.ToDictionary(
                 ipo => ipo.IPO_id,
-                ipo => GetInvestorMarketStatus(ipo, today));
+                ipo => _ipoStatusService.CalculateStatus(ipo, indiaNow));
+            model.OpenIpoCount = publishedIpos.Count(ipo => model.MarketStatuses.GetValueOrDefault(ipo.IPO_id) == "Open");
 
             IEnumerable<IPO> marketIpos = publishedIpos;
             if (!string.IsNullOrWhiteSpace(marketStatus))
             {
                 marketIpos = marketIpos.Where(ipo =>
-                    string.Equals(GetInvestorMarketStatus(ipo, today), marketStatus.Trim(), StringComparison.OrdinalIgnoreCase));
+                    string.Equals(model.MarketStatuses.GetValueOrDefault(ipo.IPO_id), marketStatus.Trim(), StringComparison.OrdinalIgnoreCase));
             }
             if (!string.IsNullOrWhiteSpace(marketIpoType))
             {
@@ -3538,25 +3864,9 @@ namespace IPOInvestmentManagement.Controllers
             model.MarketIpos = marketIpos.ToList();
         }
 
-        private static string GetInvestorMarketStatus(IPO ipo, DateTime today)
+        private string GetInvestorMarketStatus(IPO ipo, DateTime now)
         {
-            if (string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase) ||
-                (ipo.Listing_date.HasValue && ipo.Listing_date.Value.Date <= today))
-            {
-                return "Listed";
-            }
-
-            if (ipo.Open_date.Date > today)
-            {
-                return "Upcoming";
-            }
-
-            if (ipo.Close_date.Date < today)
-            {
-                return "Closed";
-            }
-
-            return "Open";
+            return _ipoStatusService.CalculateStatus(ipo, now);
         }
 
         private static bool HasIpoDateInMonth(IPO ipo, int year, int month)
@@ -3828,6 +4138,7 @@ namespace IPOInvestmentManagement.Controllers
             string? adminIpoStatus = null,
             string? adminIpoType = null)
         {
+            model.Market = await _stockMarketService.GetDashboardAsync();
             model.UserCount = await _context.Users.CountAsync(user =>
                 user.Is_active &&
                 user.Role == "Investor");
@@ -3943,12 +4254,29 @@ namespace IPOInvestmentManagement.Controllers
                     };
                 })
                 .ToList();
-            // All IPOs for Admin Directory & Search
+
+            // Always populate AllAdminIpos for Admin dashboard to view all available IPOs (Listed, Upcoming, Open, Closed)
+            model.AllAdminIpos = await GetAdminSearchIposListAsync(adminIpoQuery, adminIpoStatus, adminIpoType);
+            model.AdminIpoSearchQuery = adminIpoQuery;
+            model.AdminIpoSearchStatus = adminIpoStatus;
+            model.AdminIpoSearchType = adminIpoType;
+
+            // Recalculate distinct status counts based on effective statuses
+            model.OpenIpoCount = model.AllAdminIpos.Count(i => i.EffectiveStatus == "Open");
+            model.UpcomingIpoCount = model.AllAdminIpos.Count(i => i.EffectiveStatus == "Upcoming");
+            model.ClosedIpoCount = model.AllAdminIpos.Count(i => i.EffectiveStatus == "Closed");
+            model.ListedIpoCount = model.AllAdminIpos.Count(i => i.EffectiveStatus == "Listed");
+            model.ActiveIpoCount = model.OpenIpoCount;
+
+            await LoadMarketDataAsync(model);
+        }
+
+        private async Task<List<AdminSearchIpoItem>> GetAdminSearchIposListAsync(
+            string? adminIpoQuery = null,
+            string? adminIpoStatus = null,
+            string? adminIpoType = null)
+        {
             var allIposQuery = _context.IPOs.AsNoTracking();
-            if (!string.IsNullOrWhiteSpace(adminIpoStatus))
-            {
-                allIposQuery = allIposQuery.Where(i => i.Status == adminIpoStatus);
-            }
             if (!string.IsNullOrWhiteSpace(adminIpoType))
             {
                 allIposQuery = allIposQuery.Where(i => i.IPO_type == adminIpoType);
@@ -3958,17 +4286,22 @@ namespace IPOInvestmentManagement.Controllers
             int[] allIpoIds = allIposList.Select(i => i.IPO_id).ToArray();
             int[] allCompanyIds = allIposList.Select(i => i.Company_id).Distinct().ToArray();
 
-            var allCompanyNames = await _context.Companies
+            var allCompanies = await _context.Companies
                 .AsNoTracking()
                 .Where(c => allCompanyIds.Contains(c.Company_id))
-                .ToDictionaryAsync(c => c.Company_id, c => c.Company_name);
+                .ToDictionaryAsync(c => c.Company_id);
 
-            var ipoAppCounts = await _context.IPOApplications
+            var ipoAppStats = await _context.IPOApplications
                 .AsNoTracking()
-                .Where(a => allIpoIds.Contains(a.IPO_id))
+                .Where(a => allIpoIds.Contains(a.IPO_id) && a.Status != "Rejected" && a.Status != "Cancelled")
                 .GroupBy(a => a.IPO_id)
-                .Select(g => new { IpoId = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(g => g.IpoId, g => g.Count);
+                .Select(g => new
+                {
+                    IpoId = g.Key,
+                    Count = g.Count(),
+                    AppliedShares = g.Sum(a => (long)a.Applied_shares)
+                })
+                .ToDictionaryAsync(g => g.IpoId);
 
             var latestGmpQuotes = await _context.IPOGMPHistories
                 .AsNoTracking()
@@ -3981,11 +4314,32 @@ namespace IPOInvestmentManagement.Controllers
                 .GroupBy(g => g.IPO_id)
                 .ToDictionary(g => g.Key, g => g.Last());
 
-            DateTime todayDate = GetIndiaStandardTime().Date;
+            var allListings = await _context.IPOListings
+                .AsNoTracking()
+                .Where(l => allIpoIds.Contains(l.IPO_id))
+                .ToDictionaryAsync(l => l.IPO_id);
 
-            model.AllAdminIpos = allIposList.Select(ipo =>
+            var allFinancials = await _context.IPOFinancials
+                .AsNoTracking()
+                .Where(f => allIpoIds.Contains(f.IPO_id))
+                .OrderByDescending(f => f.Financial_year)
+                .ToListAsync();
+            var latestFinancialMap = allFinancials.GroupBy(f => f.IPO_id).ToDictionary(g => g.Key, g => g.First());
+
+            var allAnalyses = await _context.IPOAnalyses
+                .AsNoTracking()
+                .Where(a => allIpoIds.Contains(a.IPO_id))
+                .OrderByDescending(a => a.Updated_at)
+                .ToListAsync();
+            var latestAnalysisMap = allAnalyses.GroupBy(a => a.IPO_id).ToDictionary(g => g.Key, g => g.First());
+
+            DateTime istNow = GetIndiaStandardTime();
+            DateTime todayDate = istNow.Date;
+
+            var items = allIposList.Select(ipo =>
             {
-                string compName = allCompanyNames.GetValueOrDefault(ipo.Company_id, "Company");
+                var comp = allCompanies.GetValueOrDefault(ipo.Company_id);
+                string compName = comp?.Company_name ?? "Company";
                 var gmp = latestGmpMap.GetValueOrDefault(ipo.IPO_id);
                 decimal basePrice = ipo.Price_max ?? ipo.Price_min ?? 0m;
                 decimal? currentGmp = gmp?.GMPPrice;
@@ -3993,32 +4347,57 @@ namespace IPOInvestmentManagement.Controllers
                 decimal? gainPct = gmp?.ExpectedListingGainPercentage ?? (basePrice > 0 && currentGmp.HasValue ? Math.Round((currentGmp.Value / basePrice) * 100m, 2) : (decimal?)null);
 
                 var timing = CheckAllotmentTiming(ipo, todayDate);
+                var appStat = ipoAppStats.GetValueOrDefault(ipo.IPO_id);
+                int appCount = appStat?.Count ?? 0;
+                long appliedShares = appStat?.AppliedShares ?? 0L;
+                long offeredShares = ipo.Total_shares ?? 0L;
+                decimal subMultiple = offeredShares > 0L ? Math.Round((decimal)appliedShares / offeredShares, 2) : 0m;
+
+                string effectiveStatus = _ipoStatusService.CalculateStatus(ipo, istNow);
+                if (string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase))
+                {
+                    effectiveStatus = "Listed";
+                }
 
                 return new AdminSearchIpoItem
                 {
                     Ipo = ipo,
                     CompanyName = compName,
-                    ApplicationCount = ipoAppCounts.GetValueOrDefault(ipo.IPO_id, 0),
+                    Company = comp,
+                    ApplicationCount = appCount,
+                    AppliedShares = appliedShares,
+                    SubscriptionMultiple = subMultiple,
                     CurrentGmp = currentGmp,
                     EstimatedListingPrice = estPrice,
                     ExpectedGainPercentage = gainPct,
-                    AllotmentWindowOpen = timing.AllotmentWindowOpen
+                    LatestGmpRecord = gmp,
+                    Listing = allListings.GetValueOrDefault(ipo.IPO_id),
+                    Financial = latestFinancialMap.GetValueOrDefault(ipo.IPO_id),
+                    Analysis = latestAnalysisMap.GetValueOrDefault(ipo.IPO_id),
+                    AllotmentWindowOpen = timing.AllotmentWindowOpen,
+                    EffectiveStatus = effectiveStatus
                 };
             }).ToList();
+
+            if (!string.IsNullOrWhiteSpace(adminIpoStatus))
+            {
+                items = items.Where(item => 
+                    string.Equals(item.EffectiveStatus, adminIpoStatus, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(item.Ipo.Status, adminIpoStatus, StringComparison.OrdinalIgnoreCase)
+                ).ToList();
+            }
 
             if (!string.IsNullOrWhiteSpace(adminIpoQuery))
             {
                 string q = adminIpoQuery.Trim().ToLower();
-                model.AllAdminIpos = model.AllAdminIpos
-                    .Where(item => item.Ipo.IPO_name.ToLower().Contains(q) || item.CompanyName.ToLower().Contains(q))
+                items = items
+                    .Where(item => item.Ipo.IPO_name.ToLower().Contains(q) || 
+                                   item.CompanyName.ToLower().Contains(q) ||
+                                   (item.Listing?.StockSymbol != null && item.Listing.StockSymbol.ToLower().Contains(q)))
                     .ToList();
             }
 
-            model.AdminIpoSearchQuery = adminIpoQuery;
-            model.AdminIpoSearchStatus = adminIpoStatus;
-            model.AdminIpoSearchType = adminIpoType;
-
-            await LoadMarketDataAsync(model);
+            return items;
         }
 
         private bool IsAdmin()
@@ -4067,6 +4446,7 @@ namespace IPOInvestmentManagement.Controllers
         private async Task LoadCompanyDashboardAsync(DashboardViewModel model, int userId)
         {
             model.Notifications = await LoadNotificationsAsync(userId);
+            model.Market = await _stockMarketService.GetDashboardAsync();
             model.Companies = await _context.Companies
                 .AsNoTracking()
                 .Where(company => company.User_id == userId)
@@ -4129,7 +4509,7 @@ namespace IPOInvestmentManagement.Controllers
             model.Market = await _stockMarketService.GetDashboardAsync();
             List<IPO> publishedIpos = await _context.IPOs
                 .AsNoTracking()
-                .Where(ipo => ipo.Status == "Approved" || ipo.Status == "Published" || ipo.Status == "Open" || ipo.Status == "Listed" || ipo.Status == "Closed")
+                .Where(ipo => ipo.Status == "Approved" || ipo.Status == "Published" || ipo.Status == "Upcoming" || ipo.Status == "Open" || ipo.Status == "Listed" || ipo.Status == "Closed")
                 .OrderByDescending(ipo => ipo.Created_at)
                 .ToListAsync();
 
@@ -4156,7 +4536,7 @@ namespace IPOInvestmentManagement.Controllers
                 .AsNoTracking()
                 .Where(notification => notification.User_id == userId)
                 .OrderByDescending(notification => notification.Created_at)
-                .Take(5)
+                .Take(15)
                 .ToListAsync();
         }
 
@@ -4237,6 +4617,157 @@ namespace IPOInvestmentManagement.Controllers
             catch (FormatException exception)
             {
                 TempData["AdminMessage"] = $"The database update succeeded, but the email address is invalid: {exception.Message}";
+            }
+        }
+
+        private async Task NotifyAdminsNewIpoSubmissionAsync(IPO ipo, Company company, IpoSubmissionViewModel? submission = null)
+        {
+            List<User> adminUsers = await _context.Users
+                .AsNoTracking()
+                .Where(user => user.Role == "Admin" && user.Is_active)
+                .ToListAsync();
+
+            string subject = $"New IPO Submission Request: {ipo.IPO_name} ({company.Company_name})";
+
+            string issueSizeText = ipo.Issue_size.HasValue ? $"₹{ipo.Issue_size.Value:N2}" : "Not specified";
+            string priceBandText = (ipo.Price_min.HasValue && ipo.Price_max.HasValue)
+                ? $"₹{ipo.Price_min.Value:N2} - ₹{ipo.Price_max.Value:N2}"
+                : (ipo.Price_min.HasValue ? $"₹{ipo.Price_min.Value:N2}" : "Not specified");
+            string lotSizeText = ipo.Lot_size.HasValue ? $"{ipo.Lot_size.Value} shares" : "Not specified";
+            string totalSharesText = ipo.Total_shares.HasValue ? $"{ipo.Total_shares.Value:N0}" : "Not specified";
+            string allotmentDateText = ipo.Allotment_date.HasValue ? ipo.Allotment_date.Value.ToString("dd MMM yyyy") : "TBD";
+            string fundsUnblockDateText = ipo.Funds_unblock_date.HasValue ? ipo.Funds_unblock_date.Value.ToString("dd MMM yyyy") : "TBD";
+            string listingDateText = ipo.Listing_date.HasValue ? ipo.Listing_date.Value.ToString("dd MMM yyyy") : "TBD";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"A new IPO submission request has been submitted by {company.Company_name} and is waiting for your review and approval.");
+            sb.AppendLine();
+            sb.AppendLine("IPO Offering Details:");
+            sb.AppendLine("--------------------------------------------------");
+            sb.AppendLine($"Company Name     : {company.Company_name}");
+            if (!string.IsNullOrWhiteSpace(company.CIN))
+            {
+                sb.AppendLine($"CIN              : {company.CIN}");
+            }
+            if (!string.IsNullOrWhiteSpace(company.Industry))
+            {
+                sb.AppendLine($"Industry         : {company.Industry}");
+            }
+            sb.AppendLine($"IPO Name         : {ipo.IPO_name}");
+            sb.AppendLine($"Issue Size       : {issueSizeText}");
+            sb.AppendLine($"Price Band       : {priceBandText}");
+            sb.AppendLine($"Lot Size         : {lotSizeText}");
+            sb.AppendLine($"Total Shares     : {totalSharesText}");
+            sb.AppendLine($"Opening Date     : {ipo.Open_date:dd MMM yyyy}");
+            sb.AppendLine($"Closing Date     : {ipo.Close_date:dd MMM yyyy}");
+            sb.AppendLine($"Allotment Date   : {allotmentDateText}");
+            sb.AppendLine($"Funds Unblock    : {fundsUnblockDateText}");
+            sb.AppendLine($"Listing Date     : {listingDateText}");
+            sb.AppendLine($"Status           : Pending Admin Review");
+            sb.AppendLine($"Submission Date  : {DateTime.Now:dd MMM yyyy hh:mm tt}");
+            sb.AppendLine("--------------------------------------------------");
+
+            if (submission != null && submission.FinancialYear.HasValue)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"Financial Information (FY {submission.FinancialYear.Value}):");
+                sb.AppendLine("--------------------------------------------------");
+                sb.AppendLine($"Revenue          : {(submission.Revenue.HasValue ? $"₹{submission.Revenue.Value:N2}" : "Not specified")}");
+                sb.AppendLine($"Profit           : {(submission.Profit.HasValue ? $"₹{submission.Profit.Value:N2}" : "Not specified")}");
+                sb.AppendLine($"Net Worth        : {(submission.NetWorth.HasValue ? $"₹{submission.NetWorth.Value:N2}" : "Not specified")}");
+                sb.AppendLine("--------------------------------------------------");
+            }
+
+            if (!string.IsNullOrWhiteSpace(ipo.Description))
+            {
+                sb.AppendLine();
+                sb.AppendLine("Description:");
+                sb.AppendLine(ipo.Description.Trim());
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("Please log in to the Admin Dashboard to review and approve or reject this IPO submission request.");
+
+            string body = sb.ToString();
+
+            var recipients = new List<(string Email, string Name)>();
+            foreach (var admin in adminUsers)
+            {
+                if (!string.IsNullOrWhiteSpace(admin.Email))
+                {
+                    recipients.Add((admin.Email.Trim(), $"{admin.First_name} {admin.Last_name}".Trim()));
+                }
+            }
+
+            string? configuredAdminEmail = _configuration["Smtp:AdminEmail"]
+                ?? _configuration["AdminSettings:NotificationEmail"];
+            if (!string.IsNullOrWhiteSpace(configuredAdminEmail) &&
+                !recipients.Any(r => string.Equals(r.Email, configuredAdminEmail.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                recipients.Add((configuredAdminEmail.Trim(), "Administrator"));
+            }
+
+            if (recipients.Count == 0)
+            {
+                string? fromEmail = _configuration["Smtp:FromEmail"];
+                if (!string.IsNullOrWhiteSpace(fromEmail))
+                {
+                    recipients.Add((fromEmail.Trim(), "Administrator"));
+                }
+            }
+
+            foreach (var recipient in recipients)
+            {
+                try
+                {
+                    await _emailNotificationService.SendAsync(
+                        recipient.Email,
+                        string.IsNullOrWhiteSpace(recipient.Name) ? "Admin" : recipient.Name,
+                        subject,
+                        body);
+                }
+                catch (Exception exception)
+                {
+                    System.Diagnostics.Trace.TraceError($"Failed to send email to admin {recipient.Email}: {exception.Message}");
+                }
+            }
+
+            if (adminUsers.Count > 0)
+            {
+                try
+                {
+                    DateTime nowUtc = DateTime.UtcNow;
+                    _context.SystemNotifications.AddRange(adminUsers.Select(admin => new SystemNotification
+                    {
+                        User_id = admin.User_id,
+                        Title = "New IPO Submission Request",
+                        Message = $"{company.Company_name} submitted a new IPO request for '{ipo.IPO_name}'.",
+                        Created_at = nowUtc,
+                        Is_read = false
+                    }));
+                    await _context.SaveChangesAsync();
+                }
+                catch (Exception exception)
+                {
+                    System.Diagnostics.Trace.TraceError($"Failed to save SystemNotification for admins: {exception.Message}");
+                }
+            }
+
+            try
+            {
+                _context.SystemNotifications.Add(new SystemNotification
+                {
+                    User_id = company.User_id,
+                    Title = "IPO Submission Sent",
+                    Message = $"Your IPO submission request for '{ipo.IPO_name}' has been sent to Admin for review.",
+                    Created_at = DateTime.UtcNow,
+                    Is_read = false
+                });
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Trace.TraceError($"Failed to save SystemNotification for company: {exception.Message}");
             }
         }
     }

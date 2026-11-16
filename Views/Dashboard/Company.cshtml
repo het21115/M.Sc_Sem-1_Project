@@ -13,7 +13,12 @@
             <div class="company-hero-meta"><span><i></i> Account active</span><span>Management console</span></div>
         </div>
         <div class="company-hero-mark" aria-hidden="true"><span>IPO</span><strong>+</strong><small>HQ</small></div>
-        <a class="btn company-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&rarr;</span></a>
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-light" data-bs-toggle="modal" data-bs-target="#live-market-modal">
+                <span class="ticker-pulse d-inline-block me-1" style="width:7px;height:7px;vertical-align:middle;"></span>Live Market
+            </button>
+            <a class="btn company-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&rarr;</span></a>
+        </div>
     </section>
     @if (Model.Notifications.Count > 0) { <section class="user-notifications"><div class="company-section-head"><div><span class="company-overline">SYSTEM NOTIFICATIONS</span><h2>Updates for you</h2></div></div>@foreach (var notification in Model.Notifications) { <article><strong>@notification.Title</strong><p>@notification.Message</p><small>@notification.Created_at.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</small></article> }</section> }
 
@@ -21,6 +26,41 @@
     {
         <div class="alert company-dashboard-alert" role="alert">@companyMessage</div>
     }
+
+    <section class="investor-live-market-card mb-4" aria-label="Real-time live market pulse">
+        <div class="live-market-copy">
+            <span class="terminal-overline">
+                @if (Model.Market.IsMarketOpen)
+                {
+                    <i class="ticker-pulse"></i><span>REAL-TIME NSE · BSE MARKET (LIVE SESSION)</span>
+                }
+                else
+                {
+                    <i class="ticker-pulse" style="background:#ef4444; box-shadow:0 0 8px rgba(239, 68, 68, 0.4);"></i><span>REAL-TIME NSE · BSE MARKET (CLOSED)</span>
+                }
+            </span>
+            <strong>Live Market Pulse &amp; Dual-Exchange Feed</strong>
+            <small>Real-time dual-exchange monitoring, listed stock performance, and live market quotes (09:30 AM &ndash; 03:30 PM IST).</small>
+        </div>
+        <div class="live-market-highlights" aria-label="Live market summary">
+            <span class="live-market-stat-offers"><b>@Model.Market.Listings.Count</b><small>Listed stocks</small></span>
+            <span class="live-market-stat-listed"><b>@Model.Market.TopGainers.Count</b><small>Top gainers</small></span>
+            <span class="live-market-stat-open">
+                @if (Model.Market.IsMarketOpen)
+                {
+                    <b class="live-market-positive"><i></i> Open</b>
+                }
+                else
+                {
+                    <b class="live-market-negative"><i style="background:#ef4444;"></i> Closed</b>
+                }
+                <small>Market status (09:30 - 15:30 IST)</small>
+            </span>
+        </div>
+        <button type="button" class="btn investor-live-market-button" data-bs-toggle="modal" data-bs-target="#live-market-modal">
+            <span class="ticker-pulse d-inline-block me-1" style="width:7px;height:7px;vertical-align:middle;"></span>Live Market <span aria-hidden="true">&#8594;</span>
+        </button>
+    </section>
 
     @if (ViewData.ModelState.ErrorCount > 0)
     {
@@ -112,6 +152,8 @@
         </div>
     </details>
 </div>
+
+<partial name="_InvestorLiveMarket" model="Model" />
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />

@@ -20,8 +20,8 @@
                 <div><span>Company</span><strong>@Model.CompanyName</strong></div>
                 <div><span>Status</span><strong>@(Model.Ipo.Status ?? "Pending")</strong></div>
                 <div><span>Schedule</span><strong>@scheduleStatus</strong></div>
-                <div><span>Opening date</span><strong>@Model.Ipo.Open_date.ToString("dd MMM yyyy")</strong></div>
-                <div><span>Closing date</span><strong>@Model.Ipo.Close_date.ToString("dd MMM yyyy")</strong></div>
+                <div><span>Opening date</span><strong>@Model.Ipo.Open_date.ToString("dd MMM yyyy") (@Model.Ipo.EffectiveOpeningTime.ToString(@"hh\:mm") IST)</strong></div>
+                <div><span>Closing date</span><strong>@Model.Ipo.Close_date.ToString("dd MMM yyyy") (@Model.Ipo.EffectiveClosingTime.ToString(@"hh\:mm") IST)</strong></div>
                 <div><span>Allotment date</span><strong>@(Model.Ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "Not provided")</strong></div>
                 <div><span>Funds unblock date</span><strong>@(Model.Ipo.Funds_unblock_date?.ToString("dd MMM yyyy") ?? "Not provided")</strong></div>
                 <div><span>Listing date</span><strong>@(Model.Ipo.Listing_date?.ToString("dd MMM yyyy") ?? "Not provided")</strong></div>
@@ -42,7 +42,89 @@
                 @if (string.Equals(Model.Ipo.Status, "Approved", StringComparison.OrdinalIgnoreCase)) { <form asp-controller="Dashboard" asp-action="PublishIpo" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><button class="btn btn-success" type="submit">Publish IPO</button></form> }
                 @if (!string.Equals(Model.Ipo.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(Model.Ipo.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)) { <form asp-controller="Dashboard" asp-action="DenyIpo" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><button class="btn btn-outline-danger" type="submit" onclick="return confirm('Reject this IPO?');">Reject IPO</button></form><form asp-controller="Dashboard" asp-action="CancelIpo" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><button class="btn btn-outline-secondary" type="submit" onclick="return confirm('Cancel this IPO?');">Cancel IPO</button></form> }
             </div>
-            <form class="admin-status-form" asp-controller="Dashboard" asp-action="ChangeIpoStatus" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><label for="status">Change IPO status</label><select id="status" name="status"><option selected="@(Model.Ipo.Status == "Pending")">Pending</option><option selected="@(Model.Ipo.Status == "Approved")">Approved</option><option selected="@(Model.Ipo.Status == "Open")">Open</option><option selected="@(Model.Ipo.Status == "Closed")">Closed</option><option selected="@(Model.Ipo.Status == "Listed")">Listed</option><option selected="@(Model.Ipo.Status == "Rejected")">Rejected</option><option selected="@(Model.Ipo.Status == "Cancelled")">Cancelled</option></select><button class="btn btn-primary" type="submit">Update status</button></form>
+            <form class="admin-status-form" asp-controller="Dashboard" asp-action="ChangeIpoStatus" method="post"><input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" /><label for="status">Change IPO status</label><select id="status" name="status"><option selected="@(Model.Ipo.Status == "Pending")">Pending</option><option selected="@(Model.Ipo.Status == "Approved")">Approved</option><option selected="@(Model.Ipo.Status == "Upcoming")">Upcoming</option><option selected="@(Model.Ipo.Status == "Open")">Open</option><option selected="@(Model.Ipo.Status == "Closed")">Closed</option><option selected="@(Model.Ipo.Status == "Listed")">Listed</option><option selected="@(Model.Ipo.Status == "Rejected")">Rejected</option><option selected="@(Model.Ipo.Status == "Cancelled")">Cancelled</option></select><button class="btn btn-primary" type="submit">Update status</button></form>
+        </section>
+
+        <!-- AUTOMATIC STATUS & SCHEDULE CONFIGURATION (ADMIN) -->
+        <section class="admin-user-details-card mt-4" style="border-top: 4px solid #0284c7;">
+            <div class="admin-section-head">
+                <div>
+                    <span class="admin-overline" style="color: #0284c7;">SCHEDULE &amp; AUTOMATIC STATUS MANAGEMENT</span>
+                    <h2>Configure IPO Opening &amp; Closing Schedule</h2>
+                    <p class="text-muted mb-0">Set exact opening and closing dates and times in Indian Standard Time (IST). The system automatically transitions the IPO status between <strong>Upcoming</strong>, <strong>Open</strong>, and <strong>Closed</strong>.</p>
+                </div>
+            </div>
+            <form asp-controller="Dashboard" asp-action="UpdateIpoSchedule" method="post" class="p-3 bg-light rounded border mt-3">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" />
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small text-secondary">Opening Date (IST)</label>
+                        <input type="date" name="openDate" class="form-control form-control-sm" value="@Model.Ipo.Open_date.ToString("yyyy-MM-dd")" required />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small text-secondary">Opening Time (IST)</label>
+                        <input type="time" name="openTime" class="form-control form-control-sm" value="@Model.Ipo.EffectiveOpeningTime.ToString(@"hh\:mm")" required />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small text-secondary">Closing Date (IST)</label>
+                        <input type="date" name="closeDate" class="form-control form-control-sm" value="@Model.Ipo.Close_date.ToString("yyyy-MM-dd")" required />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small text-secondary">Closing Time (IST)</label>
+                        <input type="time" name="closeTime" class="form-control form-control-sm" value="@Model.Ipo.EffectiveClosingTime.ToString(@"hh\:mm")" required />
+                    </div>
+                </div>
+                <div class="mt-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <div class="small text-muted">
+                        Current Status: <span class="badge bg-primary">@(Model.Ipo.Status ?? "Upcoming")</span>
+                        &middot; Bidding Window: <strong>@Model.Ipo.OpeningDateTime.ToString("dd MMM yyyy, hh:mm tt")</strong> to <strong>@Model.Ipo.ClosingDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</strong>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary">Update Schedule &amp; Recalculate Status</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- AUDIT LOG & STATUS TRANSITION HISTORY -->
+        <section class="admin-user-details-card mt-4">
+            <div class="admin-section-head d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <span class="admin-overline">AUDIT RECORD</span>
+                    <h2>Status Transition &amp; Action History</h2>
+                    <p class="text-muted mb-0">Historical log of automatic transitions and administrative updates for this IPO.</p>
+                </div>
+                <span class="badge bg-secondary">@Model.AuditHistory.Count Record(s)</span>
+            </div>
+            @if (Model.AuditHistory.Count == 0)
+            {
+                <div class="admin-empty py-3 text-muted">No audit logs recorded for this IPO yet.</div>
+            }
+            else
+            {
+                <div class="table-responsive mt-3">
+                    <table class="table table-sm table-hover align-middle border mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Timestamp (IST)</th>
+                                <th>Action</th>
+                                <th>Actor</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var log in Model.AuditHistory)
+                            {
+                                <tr>
+                                    <td><small class="fw-bold">@TimeZoneInfo.ConvertTimeFromUtc(log.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time")).ToString("dd MMM yyyy, hh:mm:ss tt")</small></td>
+                                    <td><span class="badge bg-light text-dark border">@log.Action</span></td>
+                                    <td><small>@(log.ActorUserId.HasValue ? $"Admin #{log.ActorUserId}" : "System (Background Service)")</small></td>
+                                    <td><small class="text-break">@log.Details</small></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </section>
 
         <!-- GREY MARKET PREMIUM (GMP) MANAGEMENT (UNOFFICIAL) -->

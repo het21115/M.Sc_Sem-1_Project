@@ -41,6 +41,9 @@ namespace IPOInvestmentManagement.Controllers
                 isMarketOpen = dashboard.IsMarketOpen,
                 marketStatus = dashboard.MarketStatus,
                 isSimulationActive = dashboard.IsSimulationActive,
+                dataSource = dashboard.DataSource,
+                isStale = dashboard.IsStale,
+                warningMessage = dashboard.WarningMessage,
                 serverTime = DateTime.Now.ToString("dd MMM yyyy, hh:mm:ss tt"),
                 message = dashboard.IsMarketOpen 
                     ? "Live trading session active (NSE & BSE)." 
@@ -52,6 +55,9 @@ namespace IPOInvestmentManagement.Controllers
                         ipoName = row.IpoName,
                         companyName = row.CompanyName,
                         stockSymbol = row.StockSymbol,
+                        dataSource = row.DataSource,
+                        isStale = row.IsStale,
+                        staleWarning = row.StaleWarning,
 
                         // NSE
                         nsePrice = row.NsePrice ?? row.CurrentPrice ?? 0m,
@@ -99,15 +105,30 @@ namespace IPOInvestmentManagement.Controllers
             }
 
             bool isBse = string.Equals(exchange, "BSE", StringComparison.OrdinalIgnoreCase);
+            string exch = isBse ? "BSE" : "NSE";
             decimal currentPrice = isBse ? (data.BsePrice ?? data.CurrentPrice ?? 100m) : (data.NsePrice ?? data.CurrentPrice ?? 100m);
             decimal previousClose = isBse ? (data.BsePreviousClose ?? data.PreviousClose ?? currentPrice) : (data.NsePreviousClose ?? data.PreviousClose ?? currentPrice);
             decimal dayHigh = Math.Max(currentPrice, isBse ? (data.BseDayHigh ?? data.DayHigh ?? currentPrice) : (data.NseDayHigh ?? data.DayHigh ?? currentPrice));
             decimal dayLow = Math.Min(currentPrice, isBse ? (data.BseDayLow ?? data.DayLow ?? currentPrice) : (data.NseDayLow ?? data.DayLow ?? currentPrice));
             decimal priceChange = currentPrice - previousClose;
-            decimal priceChangePct = previousClose > 0 ? (priceChange / previousClose * 100m) : 0m;
-            decimal openPrice = Math.Round(previousClose * (1m + ((ipoId % 5 - 2) * 0.003m)), 2);
+            decimal priceChangePct = previousClose > 0 ? Math.Round(priceChange / previousClose * 100m, 2) : 0m;
+            decimal openPrice = previousClose;
 
-            var (points, candles) = GenerateChartData(timeframe, previousClose, currentPrice, dayHigh, dayLow, openPrice, ipoId);
+            var ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == ipoId);
+            DateTime? listingDate = ipo?.Listing_date;
+
+            string tf = string.IsNullOrWhiteSpace(timeframe) ? "1D" : timeframe.ToUpperInvariant();
+            var (points, candles, dataSource, dataNotice, isStale) = await BuildChartHistoryAsync(
+                ipoId,
+                data.StockSymbol,
+                exch,
+                tf,
+                previousClose,
+                currentPrice,
+                dayHigh,
+                dayLow,
+                openPrice,
+                listingDate);
 
             decimal lowerCircuit = Math.Round(previousClose * 0.80m, 2);
             decimal upperCircuit = Math.Round(previousClose * 1.20m, 2);
@@ -120,7 +141,7 @@ namespace IPOInvestmentManagement.Controllers
                 ipoName = data.IpoName,
                 companyName = data.CompanyName,
                 stockSymbol = data.StockSymbol,
-                exchange = isBse ? "BSE" : "NSE",
+                exchange = exch,
                 currentPrice,
                 previousClose,
                 priceChange,
@@ -136,88 +157,294 @@ namespace IPOInvestmentManagement.Controllers
                 bestBid = data.BestBidPrice ?? Math.Max(0.05m, currentPrice - 0.05m),
                 bestAsk = data.BestAskPrice ?? (currentPrice + 0.05m),
                 isMarketOpen = data.IsMarketOpen,
-                timeframe = timeframe.ToUpperInvariant(),
+                isSimulation = _marketDataProvider.IsSimulationMode,
+                isStale,
+                dataSource,
+                dataNotice,
+                warningMessage = isStale ? dataNotice : null,
+                listingDate = listingDate?.ToString("dd MMM yyyy"),
+                timeframe = tf,
                 points,
                 candles
             });
         }
 
-        private static (List<object> Points, List<object> Candles) GenerateChartData(
+        private async Task<(List<object> Points, List<object> Candles, string DataSource, string DataNotice, bool IsStale)> BuildChartHistoryAsync(
+            int ipoId,
+            string symbol,
+            string exchange,
             string timeframe,
             decimal previousClose,
             decimal currentPrice,
             decimal dayHigh,
             decimal dayLow,
             decimal openPrice,
-            int ipoId)
+            DateTime? listingDate)
         {
             var points = new List<object>();
             var candles = new List<object>();
-            string tf = string.IsNullOrWhiteSpace(timeframe) ? "1D" : timeframe.ToUpperInvariant();
+            DateTime now = GetIndiaStandardTime();
+            bool isSim = _marketDataProvider.IsSimulationMode;
 
-            int count = tf switch
+            // 1. DEVELOPMENT SIMULATION MODE (Clearly labeled)
+            if (isSim)
             {
-                "1D" => 42,
-                "1W" => 7,
-                "1M" => 30,
-                "3M" => 45,
-                "6M" => 60,
-                "1Y" => 52,
-                "5Y" => 60,
-                _ => 40
-            };
+                string simDataSource = "Simulation Engine (Development Mode)";
+                string simDataNotice = "⚠️ Simulation Mode: Realistic continuous developmental price simulation within Indian circuit limits (±20%).";
 
-            var rnd = new Random(ipoId * 101 + tf.GetHashCode());
-            decimal startPrice = tf == "1D" ? openPrice : Math.Round(previousClose * (1m - (count * 0.0035m)), 2);
-            if (startPrice <= 0m) startPrice = previousClose * 0.85m;
-
-            decimal runningPrice = startPrice;
-
-            for (int i = 0; i < count; i++)
-            {
-                double fraction = count <= 1 ? 1.0 : (double)i / (count - 1);
-                decimal target = startPrice + (decimal)fraction * (currentPrice - startPrice);
-                double wave = Math.Sin(fraction * Math.PI * 3.5) * (double)(dayHigh - dayLow) * 0.28;
-                double noise = (rnd.NextDouble() - 0.48) * (double)(previousClose * 0.012m);
-
-                decimal price = i == count - 1 ? currentPrice : Math.Round(target + (decimal)wave + (decimal)noise, 2);
-                if (price < 0.05m) price = 0.05m;
-
-                string label = tf switch
+                if (timeframe == "1D")
                 {
-                    "1D" => TimeSpan.FromMinutes(9 * 60 + 15 + i * (375.0 / count)).ToString(@"hh\:mm"),
-                    "1W" => DateTime.Now.AddDays(-6 + i).ToString("ddd"),
-                    "1M" => DateTime.Now.AddDays(-29 + i).ToString("dd MMM"),
-                    "3M" => DateTime.Now.AddDays(-89 + i * 2.0).ToString("dd MMM"),
-                    "6M" => DateTime.Now.AddDays(-179 + i * 3.0).ToString("MMM yy"),
-                    "1Y" => DateTime.Now.AddDays(-364 + i * 7.0).ToString("MMM yy"),
-                    "5Y" => DateTime.Now.AddMonths(-59 + i).ToString("MMM yyyy"),
-                    _ => DateTime.Now.AddMonths(-count + i).ToString("MMM yyyy")
+                    DateTime sessionStart = now.Date.AddHours(9).AddMinutes(30);
+                    DateTime sessionCurrent = now > sessionStart ? now : sessionStart.AddHours(6);
+                    int totalMinutes = (int)Math.Max(15, (sessionCurrent - sessionStart).TotalMinutes);
+                    int stepMinutes = 5;
+                    int intervals = Math.Clamp(totalMinutes / stepMinutes, 10, 60);
+
+                    var rnd = new Random(ipoId * 79 + exchange.GetHashCode());
+                    decimal walkPrice = openPrice > 0 ? openPrice : previousClose;
+                    decimal lowerCircuit = Math.Round(previousClose * 0.80m, 2);
+                    decimal upperCircuit = Math.Round(previousClose * 1.20m, 2);
+
+                    var backfill = new List<StockPriceHistory>();
+
+                    for (int i = 0; i < intervals; i++)
+                    {
+                        DateTime ptTime = sessionStart.AddMinutes(i * stepMinutes);
+                        string label = ptTime.ToString("hh:mm tt");
+
+                        if (i == intervals - 1)
+                        {
+                            walkPrice = currentPrice;
+                        }
+                        else
+                        {
+                            double progress = (double)i / (intervals - 1);
+                            decimal target = openPrice + (decimal)progress * (currentPrice - openPrice);
+                            double noise = (rnd.NextDouble() - 0.495) * 0.003;
+                            walkPrice = Math.Round(target + (target * (decimal)noise), 2);
+                            walkPrice = Math.Round(walkPrice * 20m) / 20m;
+                            walkPrice = Math.Clamp(walkPrice, lowerCircuit, upperCircuit);
+                        }
+
+                        long volume = rnd.Next(1500, 9500);
+                        points.Add(new { label, price = walkPrice, volume });
+
+                        decimal cOpen = walkPrice;
+                        decimal cDelta = Math.Max(0.05m, Math.Round((decimal)(rnd.NextDouble() * 0.35), 2));
+                        decimal cHigh = Math.Min(upperCircuit, walkPrice + cDelta);
+                        decimal cLow = Math.Max(lowerCircuit, walkPrice - cDelta);
+
+                        candles.Add(new { label, open = cOpen, high = cHigh, low = cLow, close = walkPrice, volume });
+
+                        backfill.Add(new StockPriceHistory
+                        {
+                            IPOId = ipoId,
+                            StockSymbol = symbol,
+                            Exchange = exchange,
+                            Price = walkPrice,
+                            OpenPrice = cOpen,
+                            HighPrice = cHigh,
+                            LowPrice = cLow,
+                            Volume = volume,
+                            Timestamp = ptTime,
+                            IsSimulated = true
+                        });
+                    }
+
+                    try
+                    {
+                        _context.StockPriceHistories.AddRange(backfill);
+                        await _context.SaveChangesAsync();
+                    }
+                    catch { }
+
+                    return (points, candles, simDataSource, simDataNotice, false);
+                }
+
+                // Multi-day simulation
+                int simDays = timeframe switch
+                {
+                    "1W" => 5,
+                    "1M" => 22,
+                    "3M" => 65,
+                    "6M" => 130,
+                    "1Y" => 250,
+                    "5Y" => 1250,
+                    _ => 250
                 };
 
-                long volume = rnd.Next(1500, 9500);
-                points.Add(new { label, price, volume });
+                DateTime startDate = now.AddDays(-Math.Max(7, (int)(simDays * 1.45)));
+                int count = Math.Clamp(simDays, 5, 80);
+                var rndMulti = new Random(ipoId * 137 + timeframe.GetHashCode());
+                decimal basePrice = previousClose > 0 ? previousClose : 100m;
+                decimal runningP = Math.Round(basePrice * (1m - (count * 0.002m)), 2);
+                if (runningP <= 0m) runningP = basePrice * 0.85m;
 
-                decimal cOpen = runningPrice;
-                decimal cClose = price;
-                decimal delta = Math.Abs(cClose - cOpen);
-                decimal cHigh = Math.Max(cOpen, cClose) + Math.Round((decimal)(rnd.NextDouble() * 0.2) + delta * 0.1m, 2);
-                decimal cLow = Math.Min(cOpen, cClose) - Math.Round((decimal)(rnd.NextDouble() * 0.2) + delta * 0.1m, 2);
-
-                candles.Add(new
+                for (int i = 0; i < count; i++)
                 {
-                    label,
-                    open = Math.Round(cOpen, 2),
-                    high = Math.Round(cHigh, 2),
-                    low = Math.Round(Math.Max(0.05m, cLow), 2),
-                    close = Math.Round(cClose, 2),
-                    volume
-                });
+                    double fraction = count <= 1 ? 1.0 : (double)i / (count - 1);
+                    decimal target = runningP + (decimal)fraction * (currentPrice - runningP);
+                    double dailyVol = (rndMulti.NextDouble() - 0.495) * 0.012;
+                    decimal dayPrice = i == count - 1 ? currentPrice : Math.Round(target + (target * (decimal)dailyVol), 2);
+                    dayPrice = Math.Round(dayPrice * 20m) / 20m;
+                    if (dayPrice < 0.05m) dayPrice = 0.05m;
 
-                runningPrice = price;
+                    DateTime ptDate = startDate.AddDays(fraction * (now - startDate).TotalDays);
+                    string label = FormatTimeframeLabel(ptDate, timeframe);
+                    long vol = rndMulti.Next(25000, 150000);
+                    points.Add(new { label, price = dayPrice, volume = vol });
+
+                    decimal cOpen = runningP;
+                    decimal cClose = dayPrice;
+                    decimal spread = Math.Max(0.10m, Math.Abs(cClose - cOpen) * 0.5m);
+                    decimal cHigh = Math.Max(cOpen, cClose) + Math.Round((decimal)(rndMulti.NextDouble() * 0.4) + spread, 2);
+                    decimal cLow = Math.Max(0.05m, Math.Min(cOpen, cClose) - Math.Round((decimal)(rndMulti.NextDouble() * 0.4) + spread, 2));
+
+                    candles.Add(new
+                    {
+                        label,
+                        open = Math.Round(cOpen, 2),
+                        high = Math.Round(cHigh, 2),
+                        low = Math.Round(cLow, 2),
+                        close = Math.Round(cClose, 2),
+                        volume = vol
+                    });
+
+                    runningP = dayPrice;
+                }
+
+                return (points, candles, simDataSource, simDataNotice, false);
             }
 
-            return (points, candles);
+            // 2. GENUINE LIVE DATA INTEGRATION (Never display simulated data as real)
+            DateTime filterStartDate = timeframe switch
+            {
+                "1D" => now.Date.AddHours(9).AddMinutes(15),
+                "1W" => now.AddDays(-7),
+                "1M" => now.AddMonths(-1),
+                "3M" => now.AddMonths(-3),
+                "6M" => now.AddMonths(-6),
+                "1Y" => now.AddYears(-1),
+                "5Y" => now.AddYears(-5),
+                "ALL" => listingDate.HasValue && listingDate.Value.Date <= now.Date ? listingDate.Value.Date : now.AddYears(-5),
+                _ => now.Date.AddHours(9).AddMinutes(15)
+            };
+
+            // Query genuine records from SQL Server
+            var dbRealHistory = await _context.StockPriceHistories.AsNoTracking()
+                .Where(h => h.IPOId == ipoId && h.Exchange == exchange && h.Timestamp >= filterStartDate && !h.IsSimulated)
+                .OrderBy(h => h.Timestamp)
+                .ToListAsync();
+
+            if (dbRealHistory.Count >= 5)
+            {
+                if (timeframe == "1D")
+                {
+                    foreach (var h in dbRealHistory)
+                    {
+                        string label = h.Timestamp.ToString("hh:mm tt");
+                        points.Add(new { label, price = h.Price, volume = h.Volume });
+                        candles.Add(new { label, open = h.OpenPrice, high = h.HighPrice, low = h.LowPrice, close = h.Price, volume = h.Volume });
+                    }
+                    points.Add(new { label = now.ToString("hh:mm tt"), price = currentPrice, volume = 0 });
+                }
+                else
+                {
+                    var grouped = dbRealHistory.GroupBy(h => h.Timestamp.Date).OrderBy(g => g.Key);
+                    foreach (var g in grouped)
+                    {
+                        var first = g.First();
+                        var last = g.Last();
+                        decimal gOpen = first.OpenPrice > 0 ? first.OpenPrice : first.Price;
+                        decimal gClose = last.Price;
+                        decimal gHigh = g.Max(x => x.HighPrice > 0 ? x.HighPrice : x.Price);
+                        decimal gLow = g.Min(x => x.LowPrice > 0 ? x.LowPrice : x.Price);
+                        long gVol = g.Sum(x => x.Volume);
+                        string label = FormatTimeframeLabel(g.Key, timeframe);
+                        points.Add(new { label, price = gClose, volume = gVol });
+                        candles.Add(new { label, open = gOpen, high = gHigh, low = gLow, close = gClose, volume = gVol });
+                    }
+                }
+
+                string genuineSource = _marketDataProvider.IsConfigured 
+                    ? $"{_marketDataProvider.ProviderName} (NSE/BSE)" 
+                    : "Exchange Database (Verified Records)";
+                string genuineNotice = "Genuine historical price points recorded in SQL Server.";
+                return (points, candles, genuineSource, genuineNotice, false);
+            }
+
+            // If SQL Server has insufficient records, try to fetch genuine history from provider API
+            if (_marketDataProvider.IsConfigured)
+            {
+                var providerHistory = (await _marketDataProvider.GetHistoricalPricesAsync(
+                    ipoId, symbol, exchange, timeframe, HttpContext.RequestAborted)).ToList();
+
+                if (providerHistory.Count > 0)
+                {
+                    try
+                    {
+                        _context.StockPriceHistories.AddRange(providerHistory);
+                        await _context.SaveChangesAsync();
+                    }
+                    catch { }
+
+                    foreach (var h in providerHistory)
+                    {
+                        string label = timeframe == "1D" ? h.Timestamp.ToString("hh:mm tt") : FormatTimeframeLabel(h.Timestamp.Date, timeframe);
+                        points.Add(new { label, price = h.Price, volume = h.Volume });
+                        candles.Add(new { label, open = h.OpenPrice, high = h.HighPrice, low = h.LowPrice, close = h.Price, volume = h.Volume });
+                    }
+
+                    string liveSource = $"{_marketDataProvider.ProviderName} (NSE/BSE Historical)";
+                    string liveNotice = $"Genuine historical market data fetched from {_marketDataProvider.ProviderName}.";
+                    return (points, candles, liveSource, liveNotice, false);
+                }
+            }
+
+            // 3. Provider credentials missing or no historical feed available:
+            // Do NOT fabricate random numbers! Display verified baseline price points with clear stale/unconfigured warning.
+            string offlineSource = "Exchange Database (Static/Offline)";
+            string offlineNotice = _marketDataProvider.StatusMessage ?? "Market data provider API credentials not configured. Showing recorded baseline exchange price.";
+            
+            decimal basePt = previousClose > 0 ? previousClose : (openPrice > 0 ? openPrice : currentPrice);
+            string startLbl = listingDate.HasValue ? listingDate.Value.ToString("dd MMM yyyy") : filterStartDate.ToString("dd MMM yyyy");
+            string nowLbl = now.ToString("dd MMM yyyy");
+
+            points.Add(new { label = startLbl, price = basePt, volume = 0 });
+            points.Add(new { label = nowLbl, price = currentPrice, volume = 0 });
+
+            candles.Add(new { label = startLbl, open = basePt, high = basePt, low = basePt, close = basePt, volume = 0 });
+            candles.Add(new { label = nowLbl, open = basePt, high = dayHigh, low = dayLow, close = currentPrice, volume = 0 });
+
+            return (points, candles, offlineSource, offlineNotice, true);
+        }
+
+        private static string FormatTimeframeLabel(DateTime dt, string timeframe) => timeframe switch
+        {
+            "1W" => dt.ToString("ddd, dd MMM"),
+            "1M" or "3M" or "6M" => dt.ToString("dd MMM"),
+            "1Y" => dt.ToString("MMM yy"),
+            "5Y" or "ALL" => dt.ToString("MMM yyyy"),
+            _ => dt.ToString("dd MMM")
+        };
+
+        private static DateTime GetIndiaStandardTime()
+        {
+            try
+            {
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
+            }
+            catch
+            {
+                try
+                {
+                    return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata"));
+                }
+                catch
+                {
+                    return DateTime.UtcNow.AddHours(5).AddMinutes(30);
+                }
+            }
         }
 
         public class FastTradeApiRequest

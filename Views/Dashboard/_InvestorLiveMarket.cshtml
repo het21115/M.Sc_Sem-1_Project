@@ -20,64 +20,60 @@
             <div class="modal-body" id="live-market-modal-body">
                 @if (!Model.Market.IsMarketOpen)
                 {
-                    <div class="market-closed-panel text-center py-5 px-3" style="background:#0c1524; border-radius:12px; border:1px solid #1e334d;">
-                        <div class="mb-3">
-                            <span style="display:inline-flex; align-items:center; justify-content:center; width:68px; height:68px; border-radius:50%; background:rgba(239, 68, 68, 0.12); border:2px solid #ef4444; color:#ef4444; font-size:2rem;">
-                                &#9200;
-                            </span>
-                        </div>
-                        <h3 class="text-white fw-bold mb-2">Live Market is Currently Closed</h3>
-                        <p class="text-muted mx-auto mb-4" style="max-width:540px; font-size:0.95rem;">
-                            Live share prices and real-time dual-exchange feeds are visible exclusively during official market trading hours.
-                        </p>
-
-                        <div class="market-hours-card text-start d-inline-block p-4 mb-4" style="background:#132032; border-radius:8px; border:1px solid #1e3a5f; min-width:320px; max-width:480px;">
-                            <div class="d-flex align-items-center justify-content-between mb-2">
-                                <span class="text-muted small">Trading Days:</span>
-                                <strong class="text-white small">Monday &ndash; Friday</strong>
-                            </div>
-                            <div class="d-flex align-items-center justify-content-between mb-2">
-                                <span class="text-muted small">Official Hours:</span>
-                                <strong class="text-warning small">09:30 AM &ndash; 03:30 PM IST</strong>
-                            </div>
-                            <div class="d-flex align-items-center justify-content-between mb-2">
-                                <span class="text-muted small">Exchanges:</span>
-                                <strong class="text-white small">NSE (National) &amp; BSE (Bombay)</strong>
-                            </div>
-                            <div class="d-flex align-items-center justify-content-between">
-                                <span class="text-muted small">Next Session Opens:</span>
-                                <strong class="text-success small">09:30 AM IST (Next Trading Day)</strong>
+                    <div class="market-closed-banner p-3 mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2" style="background:#131c2b; border:1px solid #ef4444; border-radius:8px;">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="ticker-pulse" style="width:10px; height:10px; background:#ef4444; box-shadow:0 0 8px rgba(239, 68, 68, 0.5);"></span>
+                            <div>
+                                <strong class="text-danger" style="font-size:0.9rem;">MARKET SESSION CLOSED (09:30 AM – 03:30 PM IST)</strong>
+                                <div class="text-muted" style="font-size:0.75rem;">Showing official closing prices. Interactive live charts, technicals, and details remain active. Orders execute during active market hours.</div>
                             </div>
                         </div>
-
-                        <div>
-                            <span class="badge bg-secondary px-3 py-2">
-                                Market Session: Closed (Available only during 09:30 AM – 03:30 PM IST)
+                        <span class="badge bg-secondary px-2 py-1" style="font-size:0.75rem;">Session: Closed</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 p-3 mb-3" style="background:#132235; border-radius:8px; border:1px solid #1e3a5f;">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="ticker-pulse" style="width:10px; height:10px; background:#10b981;"></span>
+                            <div>
+                                <strong class="text-success" style="font-size:0.9rem;">LIVE TRADING SESSION ACTIVE</strong>
+                                <div class="text-muted" style="font-size:0.75rem;">Official Hours: 09:30 AM &ndash; 03:30 PM IST &middot; Real-Time Dual-Exchange Quotes (NSE &amp; BSE)</div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-dark border border-secondary text-light px-2 py-1" style="font-size:0.75rem;" id="modal-data-source-badge">@Model.Market.DataSource</span>
+                            <span class="badge @(Model.Market.IsSimulationActive ? "bg-warning text-dark" : (Model.Market.IsStale ? "bg-warning text-dark" : "bg-success text-white")) px-2 py-1" style="font-size:0.75rem;" id="modal-feed-status-badge">
+                                @(Model.Market.IsSimulationActive ? "SIMULATED (DEV)" : (Model.Market.IsStale ? "STALE / OFFLINE" : "LIVE FEED"))
                             </span>
                         </div>
                     </div>
                 }
-                else if (Model.Market.Listings.Count == 0)
+
+                @if (Model.Market.IsStale || !string.IsNullOrWhiteSpace(Model.Market.WarningMessage))
+                {
+                    <div class="alert alert-warning p-2 mb-3 d-flex align-items-center justify-content-between" style="background:rgba(245,158,11,0.12); border:1px solid #f59e0b; color:#fbbf24; font-size:0.78rem;" id="modal-stale-alert">
+                        <div>
+                            <strong>⚠️ Feed Notice:</strong> @(Model.Market.WarningMessage ?? "Real-time exchange feed is delayed or unconfigured. Displaying verified recorded prices.")
+                        </div>
+                    </div>
+                }
+                else if (Model.Market.IsSimulationActive)
+                {
+                    <div class="alert alert-warning p-2 mb-3 d-flex align-items-center justify-content-between" style="background:rgba(245,158,11,0.12); border:1px solid #f59e0b; color:#fbbf24; font-size:0.78rem;" id="modal-sim-alert">
+                        <div>
+                            <strong>⚠️ Development Mode:</strong> Market simulation active with realistic circuit-bounded price generation. Configure licensed provider for live exchange feeds.
+                        </div>
+                    </div>
+                }
+
+                @if (Model.Market.Listings.Count == 0)
                 {
                     <div class="terminal-empty">No listed stocks available yet. Once an IPO listing date arrives, live dual-exchange quotes stream automatically.</div>
                 }
                 else
                 {
                     <div class="live-market-active-view">
-                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 p-3 mb-3" style="background:#132235; border-radius:8px; border:1px solid #1e3a5f;">
-                            <div class="d-flex align-items-center gap-2">
-                                <span class="ticker-pulse" style="width:10px; height:10px; background:#10b981;"></span>
-                                <div>
-                                    <strong class="text-success" style="font-size:0.9rem;">LIVE TRADING SESSION ACTIVE</strong>
-                                    <div class="text-muted" style="font-size:0.75rem;">Official Hours: 09:30 AM &ndash; 03:30 PM IST &middot; Real-Time Dual-Exchange Quotes (NSE &amp; BSE)</div>
-                                </div>
-                            </div>
-                            <div class="d-flex align-items-center gap-2">
-                                <span class="badge bg-dark border border-secondary text-light px-2 py-1" style="font-size:0.75rem;">NSE LIVE</span>
-                                <span class="badge bg-dark border border-secondary text-light px-2 py-1" style="font-size:0.75rem;">BSE LIVE</span>
-                            </div>
-                        </div>
-
                         <div class="table-responsive">
                             <table class="table table-dark table-hover align-middle mb-0" style="background:#101c2c; border-radius:6px; overflow:hidden;">
                                 <thead style="background:#17283d; font-size:0.75rem; letter-spacing:0.04em; color:#94a3b8;">
@@ -192,7 +188,7 @@
                     <button type="button" class="top-icon-btn" id="chart-bookmark-btn" onclick="window.toggleCurrentChartWatchlist()" title="Add to Watchlist">
                         <span class="icon" id="chart-bookmark-icon">&#128278;</span>
                     </button>
-                    <button type="button" class="top-icon-btn" data-bs-toggle="modal" data-bs-target="#search-ipo-modal" title="Search stocks">
+                    <button type="button" class="top-icon-btn" onclick="window.closeStockLiveChart?.(); const lm = bootstrap.Modal.getInstance(document.getElementById('live-market-modal')); if(lm) lm.hide(); document.getElementById('ipo-market')?.scrollIntoView({behavior:'smooth'});" title="Search IPOs">
                         <span class="icon">&#128269;</span>
                     </button>
                     <button type="button" class="btn-close btn-close-white ms-2" onclick="window.closeStockLiveChart()" aria-label="Close"></button>

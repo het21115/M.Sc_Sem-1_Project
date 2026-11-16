@@ -21,6 +21,10 @@ namespace IPOInvestmentManagement.Models
         public bool IsMarketOpen { get; set; }
         public bool CanTrade { get; set; }
         public bool IsListingToday { get; set; }
+        public bool IsSimulationActive { get; set; } = true;
+        public string DataSource { get; set; } = "Live Exchange";
+        public bool IsStale { get; set; } = false;
+        public string? StaleWarning { get; set; }
 
         // Dedicated NSE Fields
         public decimal? NsePrice { get; set; }
@@ -56,6 +60,9 @@ namespace IPOInvestmentManagement.Models
         public List<MarketDataViewModel> TopGainers { get; set; } = new();
         public List<MarketDataViewModel> TopLosers { get; set; } = new();
         public bool IsSimulationActive { get; set; } = true;
+        public string DataSource { get; set; } = "Live Exchange";
+        public bool IsStale { get; set; } = false;
+        public string? WarningMessage { get; set; }
     }
 
     public sealed class MarketTradeViewModel
@@ -82,6 +89,10 @@ namespace IPOInvestmentManagement.Models
         public string MarketStatus { get; set; } = "Open";
         public bool IsMarketOpen { get; set; } = true;
         public string ServerTime { get; set; } = string.Empty;
+        public string DataSource { get; set; } = "Live Exchange";
+        public bool IsSimulation { get; set; } = false;
+        public bool IsStale { get; set; } = false;
+        public string? WarningMessage { get; set; }
         public List<MarketStockTickDto> Stocks { get; set; } = new();
     }
 
@@ -91,6 +102,8 @@ namespace IPOInvestmentManagement.Models
         public string IpoName { get; set; } = string.Empty;
         public string CompanyName { get; set; } = string.Empty;
         public string StockSymbol { get; set; } = string.Empty;
+        public string DataSource { get; set; } = "Live Exchange";
+        public bool IsStale { get; set; } = false;
 
         // NSE
         public decimal NsePrice { get; set; }

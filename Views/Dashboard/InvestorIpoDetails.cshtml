@@ -17,7 +17,7 @@
     </header>
     <main class="admin-main">
         <div class="admin-heading">
-            <div><span class="admin-overline">IPO INFORMATION</span><h1>@ipo.IPO_name</h1><p>@(company?.Company_name ?? "Company") &middot; @(ipo.Status ?? "Published")</p></div>
+            <div><span class="admin-overline">IPO INFORMATION</span><h1>@ipo.IPO_name</h1><p>@(company?.Company_name ?? "Company") &middot; <span class="badge bg-secondary" data-status-for="@ipo.IPO_id">@(ipo.Status ?? "Published")</span></p></div>
         </div>
         <section class="admin-user-details-card">
             <div class="admin-section-head"><div><span class="admin-overline">OFFER DETAILS</span><h2>Complete IPO overview</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Index" asp-fragment="published-ipos">Back to IPO market</a></div>
@@ -28,8 +28,8 @@
                 <div><span>Lot size</span><strong>@(ipo.Lot_size?.ToString("N0") ?? "-") shares</strong></div>
                 <div><span>Total shares</span><strong>@(ipo.Total_shares?.ToString("N0") ?? "-")</strong></div>
                 <div><span>Issue size</span><strong>₹@(ipo.Issue_size?.ToString("N2") ?? "-")</strong></div>
-                <div><span>Open date</span><strong>@ipo.Open_date.ToString("dd MMM yyyy")</strong></div>
-                <div><span>Close date</span><strong>@ipo.Close_date.ToString("dd MMM yyyy")</strong></div>
+                <div><span>Open date &amp; time</span><strong>@ipo.OpeningDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</strong></div>
+                <div><span>Close date &amp; time</span><strong>@ipo.ClosingDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</strong></div>
                 <div><span>Allotment date</span><strong>@(ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "Not announced")</strong></div>
                 <div><span>Funds release date</span><strong>@(ipo.Funds_unblock_date?.ToString("dd MMM yyyy") ?? "Not announced")</strong></div>
                 <div><span>Listing date</span><strong>@(ipo.Listing_date?.ToString("dd MMM yyyy") ?? "Not announced")</strong></div>

@@ -1,3 +1,4 @@
+using IPOInvestmentManagement.Models;
 using Microsoft.Extensions.Logging;
 
 namespace IPOInvestmentManagement.Services
@@ -5,6 +6,9 @@ namespace IPOInvestmentManagement.Services
     public sealed class UnavailableMarketDataProvider(ILogger<UnavailableMarketDataProvider> logger) : IMarketDataProvider
     {
         public bool IsSimulationMode { get; set; } = false;
+        public string ProviderName => "Unavailable";
+        public bool IsConfigured => false;
+        public string? StatusMessage => "No market data provider configured.";
 
         public Task<MarketQuote?> GetQuoteAsync(string symbol, string exchange, CancellationToken cancellationToken = default)
         {
@@ -25,6 +29,11 @@ namespace IPOInvestmentManagement.Services
 
         public void UpdateTickPrices(IEnumerable<(int IpoId, string Symbol, decimal BasePrice)> ipos)
         {
+        }
+
+        public Task<IEnumerable<StockPriceHistory>> GetHistoricalPricesAsync(int ipoId, string symbol, string exchange, string timeframe, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Enumerable.Empty<StockPriceHistory>());
         }
     }
 }

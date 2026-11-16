@@ -17,6 +17,7 @@ namespace IPOInvestmentManagement.Services
             string host = _configuration["Smtp:Host"] ?? string.Empty;
             int port = _configuration.GetValue<int>("Smtp:Port", 587);
             bool enableSsl = _configuration.GetValue("Smtp:EnableSsl", true);
+            int timeoutMilliseconds = _configuration.GetValue("Smtp:TimeoutMilliseconds", 60000);
             string username = _configuration["Smtp:Username"] ?? string.Empty;
             string password = (_configuration["Smtp:Password"] ?? string.Empty).Replace(" ", "");
             string fromEmail = _configuration["Smtp:FromEmail"] ?? string.Empty;
@@ -46,7 +47,7 @@ namespace IPOInvestmentManagement.Services
                 UseDefaultCredentials = false,
                 Credentials = new NetworkCredential(username, password),
                 DeliveryMethod = SmtpDeliveryMethod.Network,
-                Timeout = 15000
+                Timeout = timeoutMilliseconds
             };
 
             await smtpClient.SendMailAsync(message);

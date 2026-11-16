@@ -14,17 +14,6 @@ document.addEventListener("click", function (event) {
 		}
 	}
 
-	const statusCard = event.target.closest("[data-ipo-status]");
-	if (statusCard) {
-		const selectedStatus = statusCard.dataset.ipoStatus;
-		document.querySelectorAll("#search-ipo-modal [data-market-status]").forEach(function (row) {
-			row.hidden = row.dataset.marketStatus !== selectedStatus;
-		});
-	} else if (event.target.closest("[data-bs-target='#search-ipo-modal']")) {
-		document.querySelectorAll("#search-ipo-modal [data-market-status]").forEach(function (row) {
-			row.hidden = false;
-		});
-	}
 
 	const marketNavigation = event.target.closest("[data-market-navigation]");
 	if (marketNavigation) {
@@ -103,22 +92,86 @@ if (document.readyState === "loading") {
 	document.addEventListener("DOMContentLoaded", function () {
 		attachInvestorApplyButtons();
 		attachInvestorWatchlistButtons();
-		openFilteredMarketModal();
+		initModalMarketSearch();
 	});
 } else {
 	attachInvestorApplyButtons();
 	attachInvestorWatchlistButtons();
-	openFilteredMarketModal();
+	initModalMarketSearch();
 }
 
-function openFilteredMarketModal() {
-	const query = new URLSearchParams(window.location.search);
-	const hasMarketFilter = ["marketIpoName", "marketStatus", "marketIpoType", "marketCompany"]
-		.some(function (key) { return query.get(key); });
+function initModalMarketSearch() {
 	const modal = document.getElementById("search-ipo-modal");
-	if (hasMarketFilter && modal && window.bootstrap) {
-		window.bootstrap.Modal.getOrCreateInstance(modal).show();
+	if (!modal) return;
+
+	const nameInput = document.getElementById("modal-market-name");
+	const statusSelect = document.getElementById("modal-market-status");
+	const typeSelect = document.getElementById("modal-market-type");
+	const companySelect = document.getElementById("modal-market-company");
+	const resetBtn = document.getElementById("modal-market-reset");
+	const countBadge = document.getElementById("modal-search-count-badge");
+	const emptyMsg = document.getElementById("modal-market-empty");
+	const table = document.getElementById("modal-market-table");
+
+	function filterRows() {
+		const nameFilter = (nameInput?.value || "").trim().toLowerCase();
+		const statusFilter = (statusSelect?.value || "").trim().toLowerCase();
+		const typeFilter = (typeSelect?.value || "").trim().toLowerCase();
+		const companyFilter = (companySelect?.value || "").trim().toLowerCase();
+
+		let visibleCount = 0;
+		const rows = modal.querySelectorAll(".modal-ipo-row");
+		rows.forEach(function (row) {
+			const rowName = row.dataset.name || "";
+			const rowCompany = row.dataset.company || "";
+			const rowStatus = (row.dataset.status || "").toLowerCase();
+			const rowType = (row.dataset.type || "").toLowerCase();
+
+			const matchesName = !nameFilter || rowName.includes(nameFilter) || rowCompany.includes(nameFilter);
+			const matchesStatus = !statusFilter || rowStatus === statusFilter;
+			const matchesType = !typeFilter || rowType === typeFilter;
+			const matchesCompany = !companyFilter || rowCompany === companyFilter;
+
+			const match = matchesName && matchesStatus && matchesType && matchesCompany;
+			row.style.display = match ? "" : "none";
+			if (match) visibleCount++;
+		});
+
+		if (countBadge) {
+			countBadge.textContent = "Showing " + visibleCount + " opportunit" + (visibleCount === 1 ? "y" : "ies");
+		}
+		if (emptyMsg && table) {
+			emptyMsg.style.display = visibleCount === 0 ? "block" : "none";
+			table.style.display = visibleCount === 0 ? "none" : "";
+		}
 	}
+
+	nameInput?.addEventListener("input", filterRows);
+	statusSelect?.addEventListener("change", filterRows);
+	typeSelect?.addEventListener("change", filterRows);
+	companySelect?.addEventListener("change", filterRows);
+
+	resetBtn?.addEventListener("click", function () {
+		if (nameInput) nameInput.value = "";
+		if (statusSelect) statusSelect.value = "";
+		if (typeSelect) typeSelect.value = "";
+		if (companySelect) companySelect.value = "";
+		filterRows();
+	});
+
+	document.addEventListener("click", function (event) {
+		const statusCard = event.target.closest("[data-ipo-status]");
+		if (statusCard) {
+			const targetStatus = statusCard.dataset.ipoStatus || "";
+			if (statusSelect) {
+				statusSelect.value = targetStatus;
+			}
+			if (nameInput) nameInput.value = "";
+			if (typeSelect) typeSelect.value = "";
+			if (companySelect) companySelect.value = "";
+			filterRows();
+		}
+	});
 }
 
 document.addEventListener("toggle", function (event) {

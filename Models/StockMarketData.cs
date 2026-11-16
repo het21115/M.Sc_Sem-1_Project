@@ -48,5 +48,9 @@ namespace IPOInvestmentManagement.Models
 
         public DateTime LastUpdated { get; set; }
         public bool IsAvailable { get; set; }
+        public bool IsSimulated { get; set; }
+
+        [StringLength(100)]
+        public string? DataSource { get; set; }
     }
 }

@@ -13,9 +13,19 @@ namespace IPOInvestmentManagement.Services
         {
             DateTime now = GetIndiaStandardTime();
             bool isCalendarOpen = await calendar.IsMarketOpenAsync(now, cancellationToken);
-            bool marketOpen = isCalendarOpen || marketDataProvider.IsSimulationMode;
+            bool marketOpen = isCalendarOpen;
 
             List<MarketDataViewModel> rows = await LoadRowsAsync(null, now, marketOpen, cancellationToken);
+
+            bool isSim = marketDataProvider.IsSimulationMode;
+            bool isConfigured = marketDataProvider.IsConfigured;
+            string dataSource = isSim 
+                ? "Simulation Engine (Development Mode)" 
+                : (isConfigured ? $"{marketDataProvider.ProviderName} (NSE/BSE)" : "Exchange Database (Static/Offline)");
+
+            bool isStale = !isSim && (!isConfigured || rows.Any(r => r.IsStale));
+            string? warning = marketDataProvider.StatusMessage;
+
             return new MarketDashboardViewModel
             {
                 IsMarketOpen = marketOpen,
@@ -28,7 +38,10 @@ namespace IPOInvestmentManagement.Services
                 TopLosers = rows.Where(row => row.IsAvailable && (row.PriceChangePercentage < 0 || row.NsePriceChangePercentage < 0))
                     .OrderBy(row => row.PriceChangePercentage ?? row.NsePriceChangePercentage ?? 0)
                     .Take(5).ToList(),
-                IsSimulationActive = marketDataProvider.IsSimulationMode
+                IsSimulationActive = isSim,
+                DataSource = dataSource,
+                IsStale = isStale,
+                WarningMessage = warning
             };
         }
 
@@ -36,7 +49,7 @@ namespace IPOInvestmentManagement.Services
         {
             DateTime now = GetIndiaStandardTime();
             bool isCalendarOpen = await calendar.IsMarketOpenAsync(now, cancellationToken);
-            bool marketOpen = isCalendarOpen || marketDataProvider.IsSimulationMode;
+            bool marketOpen = isCalendarOpen;
             return (await LoadRowsAsync(ipoId, now, marketOpen, cancellationToken)).SingleOrDefault();
         }
 
@@ -163,7 +176,13 @@ namespace IPOInvestmentManagement.Services
                     IsAvailable = true,
                     IsMarketOpen = marketOpen,
                     CanTrade = marketOpen && primaryCurrent > 0,
-                    IsListingToday = ipo.Listing_date?.Date == now.Date
+                    IsListingToday = ipo.Listing_date?.Date == now.Date,
+                    IsSimulationActive = marketDataProvider.IsSimulationMode,
+                    DataSource = marketDataProvider.IsSimulationMode 
+                        ? "Simulation Engine (Development Mode)" 
+                        : (marketDataProvider.IsConfigured ? $"{marketDataProvider.ProviderName} (NSE/BSE)" : "Exchange Database (Static/Offline)"),
+                    IsStale = !marketDataProvider.IsSimulationMode && (!marketDataProvider.IsConfigured || (now - (nseData?.LastUpdated ?? bseData?.LastUpdated ?? now)).TotalMinutes > 5),
+                    StaleWarning = !marketDataProvider.IsSimulationMode && !marketDataProvider.IsConfigured ? marketDataProvider.StatusMessage : null
                 };
             }).ToList();
         }

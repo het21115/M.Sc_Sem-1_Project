@@ -25,5 +25,7 @@ namespace IPOInvestmentManagement.Models
         public decimal GmpChangePercentage => PreviousGmp != null && PreviousGmp.GMPPrice > 0 
             ? Math.Round(((CurrentGmp?.GMPPrice ?? 0m) - PreviousGmp.GMPPrice) / PreviousGmp.GMPPrice * 100m, 2) 
             : 0m;
+
+        public List<AuditLog> AuditHistory { get; set; } = new();
     }
 }

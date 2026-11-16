@@ -1393,10 +1393,15 @@ body {
   .admin-application-status { background: #edf3f8; border-radius: 999px; color: var(--admin-blue); font-size: .62rem; font-weight: 700; padding: 5px 9px; text-transform: uppercase; }
   .admin-page-actions { align-items: center; display: flex; gap: 14px; justify-content: flex-end; margin-top: 20px; }
   .admin-page-actions .btn + .btn { margin-left: 4px; }
+  .investor-page-actions { align-items: center; display: flex; gap: 12px; justify-content: flex-end; margin-bottom: 24px; }
+  .investor-page-actions .btn + .btn { margin-left: 4px; }
   @media (max-width: 600px) {
     .admin-page-actions { align-items: stretch; flex-direction: column; }
     .admin-page-actions .btn { text-align: center; width: 100%; }
     .admin-page-actions .btn + .btn { margin-left: 0; }
+    .investor-page-actions { align-items: stretch; flex-direction: column; }
+    .investor-page-actions .btn { text-align: center; width: 100%; }
+    .investor-page-actions .btn + .btn { margin-left: 0; }
   }
   .admin-notification-card { background: #fff; border-top: 4px solid var(--admin-orange); margin-top: 28px; max-width: 850px; padding: 25px 28px 30px; }
   .admin-notification-card form { display: grid; gap: 17px; }
@@ -1569,7 +1574,7 @@ body {
 .investor-terminal .investor-status-summary .terminal-section-head { border-bottom-color: #d4e7e1; }
 .investor-terminal .investor-status-summary .terminal-overline { color: var(--terminal-blue); }
 .investor-terminal .investor-status-summary .terminal-section-head h2 { color: #1c4555; }
-.investor-status-search { background: var(--terminal-coral); border: 0; color: #fff; font-size: .65rem; font-weight: 700; padding: 9px 12px; }
+.investor-status-search { align-items: center; background: var(--terminal-coral); border: 0; color: #fff; display: inline-flex; font-size: .65rem; font-weight: 700; padding: 9px 12px; text-decoration: none; }
 .investor-status-search:hover { background: #c9574b; color: #fff; }
 .investor-status-search span { color: var(--terminal-yellow); margin-left: 5px; }
 .investor-status-counts { display: grid; gap: 10px; grid-template-columns: repeat(4, 1fr); margin-top: 18px; }
@@ -1597,7 +1602,6 @@ body {
   overflow: hidden;
   position: relative;
 }
-.investor-terminal .investor-market { display: none; }
 .investor-market-launcher { align-items: center; background: linear-gradient(110deg, #fff5e4, #e8f7f2); border: 1px solid #e2d8b9; border-left: 5px solid var(--terminal-coral); border-radius: 14px; box-shadow: 0 12px 24px rgba(33,77,81,.08); display: flex; justify-content: space-between; margin-top: 28px; padding: 19px 24px; }
 .investor-market-launcher strong, .investor-market-launcher small { display: block; }
 .investor-market-launcher strong { color: #1b4851; font-family: Georgia, "Times New Roman", serif; font-size: 1.35rem; font-weight: 400; margin-top: 4px; }
@@ -1869,3 +1873,57 @@ body {
     margin-top: 3px;
     letter-spacing: 0.04em;
 }
+
+/* AVAILABLE IPOS ADMIN SECTION */
+.available-ipos-section {
+    background: #fff;
+    border-top: 4px solid var(--admin-blue);
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(16,45,74,.07);
+    margin-top: 31px;
+    padding: 26px 28px 32px;
+}
+
+.admin-status-tab-btn {
+    border-radius: 20px !important;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 6px 14px;
+    transition: all 0.15s ease;
+}
+
+.admin-status-tab-btn.active {
+    box-shadow: 0 3px 10px rgba(22, 125, 168, 0.25);
+}
+
+.admin-modal-tile {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 13px 15px;
+}
+
+.admin-modal-tile span {
+    color: #64748b;
+    display: block;
+    font-size: 0.63rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.admin-modal-tile strong {
+    color: var(--admin-navy);
+    display: block;
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-top: 4px;
+}
+
+.admin-modal-tile small {
+    color: #94a3b8;
+    display: block;
+    font-size: 0.7rem;
+    margin-top: 2px;
+}
+

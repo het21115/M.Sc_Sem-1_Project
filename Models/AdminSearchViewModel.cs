@@ -23,10 +23,20 @@ namespace IPOInvestmentManagement.Models
     {
         public IPO Ipo { get; set; } = new();
         public string CompanyName { get; set; } = "Company";
+        public Company? Company { get; set; }
         public int ApplicationCount { get; set; }
+        public long AppliedShares { get; set; }
+        public decimal SubscriptionMultiple { get; set; }
         public decimal? CurrentGmp { get; set; }
         public decimal? EstimatedListingPrice { get; set; }
         public decimal? ExpectedGainPercentage { get; set; }
+        public IPOGMPHistory? LatestGmpRecord { get; set; }
+        public IPOListing? Listing { get; set; }
+        public IPOFinancial? Financial { get; set; }
+        public IPOAnalysis? Analysis { get; set; }
         public bool AllotmentWindowOpen { get; set; }
+        public string EffectiveStatus { get; set; } = string.Empty;
+
+        public decimal MinimumInvestment => (Ipo.Lot_size ?? 0) * (Ipo.Price_min ?? Ipo.Price_max ?? 0m);
     }
 }

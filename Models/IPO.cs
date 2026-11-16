@@ -27,8 +27,12 @@ namespace IPOInvestmentManagement.Models
         [Required]
         public DateTime Open_date { get; set; }
 
+        public TimeSpan? Opening_time { get; set; }
+
         [Required]
         public DateTime Close_date { get; set; }
+
+        public TimeSpan? Closing_time { get; set; }
 
         [Required]
         public DateTime? Allotment_date { get; set; }
@@ -55,5 +59,17 @@ namespace IPOInvestmentManagement.Models
         public string? Description { get; set; }
 
         public DateTime Created_at { get; set; }
+
+        [NotMapped]
+        public TimeSpan EffectiveOpeningTime => Opening_time ?? (Open_date.TimeOfDay != TimeSpan.Zero ? Open_date.TimeOfDay : new TimeSpan(9, 30, 0));
+
+        [NotMapped]
+        public TimeSpan EffectiveClosingTime => Closing_time ?? (Close_date.TimeOfDay != TimeSpan.Zero ? Close_date.TimeOfDay : new TimeSpan(15, 30, 0));
+
+        [NotMapped]
+        public DateTime OpeningDateTime => Open_date.Date.Add(EffectiveOpeningTime);
+
+        [NotMapped]
+        public DateTime ClosingDateTime => Close_date.Date.Add(EffectiveClosingTime);
     }
 }

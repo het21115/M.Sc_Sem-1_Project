@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using IPOInvestmentManagement.Data;
 using IPOInvestmentManagement.Hubs;
 using IPOInvestmentManagement.Models;
@@ -15,6 +16,7 @@ namespace IPOInvestmentManagement.Services
         private readonly IHubContext<MarketHub> _hubContext;
         private readonly ILogger<StockPriceBroadcastingService> _logger;
         private readonly TimeSpan _tickInterval = TimeSpan.FromSeconds(3.5);
+        private readonly ConcurrentDictionary<string, DateTime> _lastHistorySaved = new();
 
         public StockPriceBroadcastingService(
             IServiceScopeFactory scopeFactory,
@@ -64,9 +66,8 @@ namespace IPOInvestmentManagement.Services
 
             DateTime now = GetIndiaStandardTime();
             bool isMarketOpen = await calendar.IsMarketOpenAsync(now, cancellationToken);
-            bool isSimulationActive = _marketDataProvider.IsSimulationMode;
 
-            if (!isMarketOpen && !isSimulationActive)
+            if (!isMarketOpen)
             {
                 await _hubContext.Clients.All.SendAsync("ReceiveMarketUpdate", new
                 {
@@ -74,6 +75,10 @@ namespace IPOInvestmentManagement.Services
                     marketStatus = "Closed",
                     isMarketOpen = false,
                     serverTime = now.ToString("dd MMM yyyy, hh:mm:ss tt"),
+                    dataSource = _marketDataProvider.IsSimulationMode ? "Simulation Engine (Development Mode)" : (_marketDataProvider.IsConfigured ? $"{_marketDataProvider.ProviderName} (NSE/BSE)" : "Exchange Database (Static/Offline)"),
+                    isSimulation = _marketDataProvider.IsSimulationMode,
+                    isStale = !_marketDataProvider.IsSimulationMode && !_marketDataProvider.IsConfigured,
+                    warningMessage = _marketDataProvider.StatusMessage,
                     stocks = new List<object>()
                 }, cancellationToken);
                 return;
@@ -165,6 +170,10 @@ namespace IPOInvestmentManagement.Services
                 // Upsert BSE database record
                 SyncStockMarketDataRow(context, existingRows, ipo, "BSE", symbol, listing?.Issue_price ?? defaultPrice, bseQuote);
 
+                // Persist historical price points for charting and analysis
+                RecordPriceHistory(context, ipo.IPO_id, symbol, "NSE", nseQuote, now);
+                RecordPriceHistory(context, ipo.IPO_id, symbol, "BSE", bseQuote, now);
+
                 // Add to broadcast payload
                 stockTicks.Add(new MarketStockTickDto
                 {
@@ -187,7 +196,9 @@ namespace IPOInvestmentManagement.Services
                     BseLow = bseQuote.DayLow,
                     BseVolume = bseQuote.Volume,
 
-                    LastUpdated = now.ToString("hh:mm:ss tt")
+                    LastUpdated = now.ToString("hh:mm:ss tt"),
+                    IsStale = nseQuote.IsStale || bseQuote.IsStale,
+                    DataSource = nseQuote.DataSource
                 });
             }
 
@@ -211,9 +222,13 @@ namespace IPOInvestmentManagement.Services
             var broadcastPayload = new LiveMarketBroadcastDto
             {
                 Type = "MARKET_TICK",
-                MarketStatus = (isMarketOpen || isSimulationActive) ? "Open" : "Closed",
-                IsMarketOpen = isMarketOpen || isSimulationActive,
+                MarketStatus = isMarketOpen ? "Open" : "Closed",
+                IsMarketOpen = isMarketOpen,
                 ServerTime = now.ToString("dd MMM yyyy, hh:mm:ss tt"),
+                DataSource = _marketDataProvider.IsSimulationMode ? "Simulation Engine (Development Mode)" : (_marketDataProvider.IsConfigured ? $"{_marketDataProvider.ProviderName} (NSE/BSE)" : "Exchange Database (Static/Offline)"),
+                IsSimulation = _marketDataProvider.IsSimulationMode,
+                IsStale = !_marketDataProvider.IsSimulationMode && (!_marketDataProvider.IsConfigured || stockTicks.Any(t => t.IsStale)),
+                WarningMessage = _marketDataProvider.StatusMessage,
                 Stocks = stockTicks
             };
 
@@ -248,7 +263,9 @@ namespace IPOInvestmentManagement.Services
                     PriceChange = quote.PriceChange,
                     PriceChangePercentage = quote.PriceChangePercentage,
                     LastUpdated = quote.LastUpdated,
-                    IsAvailable = true
+                    IsAvailable = true,
+                    IsSimulated = quote.IsSimulated,
+                    DataSource = quote.DataSource
                 };
                 context.StockMarketData.Add(row);
                 existingRows.Add(row);
@@ -265,7 +282,33 @@ namespace IPOInvestmentManagement.Services
                 row.PriceChangePercentage = quote.PriceChangePercentage;
                 row.LastUpdated = quote.LastUpdated;
                 row.IsAvailable = true;
+                row.IsSimulated = quote.IsSimulated;
+                row.DataSource = quote.DataSource;
             }
+        }
+
+        private void RecordPriceHistory(ApplicationDbContext context, int ipoId, string symbol, string exchange, MarketQuote quote, DateTime now)
+        {
+            string key = $"{ipoId}_{exchange.ToUpperInvariant()}";
+            if (_lastHistorySaved.TryGetValue(key, out DateTime lastTime) && (now - lastTime).TotalSeconds < 15)
+            {
+                return;
+            }
+
+            _lastHistorySaved[key] = now;
+            context.StockPriceHistories.Add(new StockPriceHistory
+            {
+                IPOId = ipoId,
+                StockSymbol = symbol,
+                Exchange = exchange,
+                Price = quote.CurrentPrice,
+                OpenPrice = quote.PreviousClose,
+                HighPrice = quote.DayHigh,
+                LowPrice = quote.DayLow,
+                Volume = quote.Volume,
+                Timestamp = now,
+                IsSimulated = quote.IsSimulated
+            });
         }
 
         private static string GenerateStockSymbol(string ipoName)

@@ -15,6 +15,8 @@ namespace IPOInvestmentManagement.Models
         public decimal ProfitLoss { get; set; }
         public int UserCount { get; set; }
         public int ActiveIpoCount { get; set; }
+        public int UpcomingIpoCount { get; set; }
+        public int ClosedIpoCount { get; set; }
         public int ListedIpoCount { get; set; }
         public int CompanyCount { get; set; }
         public int IpoCount { get; set; }
