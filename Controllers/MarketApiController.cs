@@ -184,7 +184,7 @@ namespace IPOInvestmentManagement.Controllers
             var points = new List<object>();
             var candles = new List<object>();
             DateTime now = GetIndiaStandardTime();
-            bool isSim = _marketDataProvider.IsSimulationMode;
+            bool isSim = _marketDataProvider.IsSimulationMode || !_marketDataProvider.IsConfigured;
 
             // 1. DEVELOPMENT SIMULATION MODE (Clearly labeled)
             if (isSim)
@@ -253,8 +253,13 @@ namespace IPOInvestmentManagement.Controllers
 
                     try
                     {
-                        _context.StockPriceHistories.AddRange(backfill);
-                        await _context.SaveChangesAsync();
+                        bool alreadyHasToday = await _context.StockPriceHistories
+                            .AnyAsync(h => h.IPOId == ipoId && h.Exchange == exchange && h.Timestamp.Date == now.Date);
+                        if (!alreadyHasToday)
+                        {
+                            _context.StockPriceHistories.AddRange(backfill);
+                            await _context.SaveChangesAsync();
+                        }
                     }
                     catch { }
 

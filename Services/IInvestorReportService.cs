@@ -9,5 +9,6 @@ namespace IPOInvestmentManagement.Services
         Task<byte[]> GenerateTransactionReportPdfAsync(int userId, CancellationToken cancellationToken = default);
         Task<byte[]> GenerateIpoApplicationReportPdfAsync(int userId, CancellationToken cancellationToken = default);
         Task<byte[]> GenerateAllotmentReportPdfAsync(int userId, CancellationToken cancellationToken = default);
+        Task<byte[]> GenerateAllotmentAdvicePdfAsync(int applicationId, CancellationToken cancellationToken = default);
     }
 }

@@ -23,6 +23,7 @@ namespace IPOInvestmentManagement.Controllers
         private readonly IInvestorReportService _investorReportService;
         private readonly IIpoClock _clock;
         private readonly IIpoStatusService _ipoStatusService;
+        private readonly IPaymentReconciliationService _paymentReconciliationService;
         private readonly IConfiguration _configuration;
 
         public DashboardController(
@@ -34,6 +35,7 @@ namespace IPOInvestmentManagement.Controllers
             IInvestorReportService investorReportService,
             IIpoClock clock,
             IIpoStatusService ipoStatusService,
+            IPaymentReconciliationService paymentReconciliationService,
             IConfiguration configuration)
         {
             _context = context;
@@ -44,6 +46,7 @@ namespace IPOInvestmentManagement.Controllers
             _investorReportService = investorReportService;
             _clock = clock;
             _ipoStatusService = ipoStatusService;
+            _paymentReconciliationService = paymentReconciliationService;
             _configuration = configuration;
         }
 
@@ -207,34 +210,61 @@ namespace IPOInvestmentManagement.Controllers
                 return RedirectToAction(nameof(Index));
             }
 
+            int currentUserId = document.RootElement.GetProperty("UserId").GetInt32();
+            int currentIpoId = document.RootElement.GetProperty("IpoId").GetInt32();
+            application.IsSimulated = _razorpayPaymentService.IsTestMode;
+            application.PaymentMode = _razorpayPaymentService.IsTestMode ? "SIMULATED_MANDATE" : "RAZORPAY_GATEWAY";
+            application.RazorpayKeyId = _razorpayPaymentService.KeyId;
+
             if (string.IsNullOrWhiteSpace(application.RazorpayOrderId))
             {
                 try
                 {
-                    application.RazorpayOrderId = await _razorpayPaymentService.CreateOrderAsync(
-                        application.ApplicationAmount,
-                        $"{application.ApplicationNumber}-{Guid.NewGuid():N}"[..40]);
-                    application.RazorpayKeyId = _razorpayPaymentService.KeyId;
-                    DateTime now = DateTime.UtcNow;
-                    _context.PaymentRecords.Add(new PaymentRecord
+                    // Prevent duplicate order creation by looking for an active, uncaptured order created in last 15 minutes
+                    DateTime recentWindow = DateTime.UtcNow.AddMinutes(-15);
+                    PaymentRecord? existingActiveRecord = await _context.PaymentRecords
+                        .Where(record => record.UserId == currentUserId &&
+                                         record.IpoId == currentIpoId &&
+                                         record.Amount == application.ApplicationAmount &&
+                                         record.Status == "Created" &&
+                                         record.CreatedAt >= recentWindow)
+                        .OrderByDescending(record => record.CreatedAt)
+                        .FirstOrDefaultAsync();
+
+                    if (existingActiveRecord != null && !string.IsNullOrWhiteSpace(existingActiveRecord.RazorpayOrderId))
                     {
-                        UserId = document.RootElement.GetProperty("UserId").GetInt32(),
-                        IpoId = document.RootElement.GetProperty("IpoId").GetInt32(),
-                        AppliedLots = application.AppliedLots,
-                        AppliedShares = application.AppliedShares,
-                        BidPrice = application.BidPrice,
-                        ApplicationNumber = application.ApplicationNumber,
-                        RazorpayOrderId = application.RazorpayOrderId,
-                        Amount = application.ApplicationAmount,
-                        Status = "Created",
-                        CreatedAt = now,
-                        UpdatedAt = now
-                    });
-                    await _context.SaveChangesAsync();
+                        application.RazorpayOrderId = existingActiveRecord.RazorpayOrderId;
+                    }
+                    else
+                    {
+                        application.RazorpayOrderId = await _razorpayPaymentService.CreateOrderAsync(
+                            application.ApplicationAmount,
+                            $"{application.ApplicationNumber}-{Guid.NewGuid():N}"[..40]);
+
+                        DateTime now = DateTime.UtcNow;
+                        _context.PaymentRecords.Add(new PaymentRecord
+                        {
+                            UserId = currentUserId,
+                            IpoId = currentIpoId,
+                            AppliedLots = application.AppliedLots,
+                            AppliedShares = application.AppliedShares,
+                            BidPrice = application.BidPrice,
+                            ApplicationNumber = application.ApplicationNumber,
+                            RazorpayOrderId = application.RazorpayOrderId,
+                            Amount = application.ApplicationAmount,
+                            Status = "Created",
+                            PaymentMode = application.PaymentMode,
+                            IsSimulated = application.IsSimulated,
+                            CreatedAt = now,
+                            UpdatedAt = now
+                        });
+                        await _context.SaveChangesAsync();
+                    }
+
                     HttpContext.Session.SetString("PendingIpoApplication", JsonSerializer.Serialize(new
                     {
-                        UserId = document.RootElement.GetProperty("UserId").GetInt32(),
-                        IpoId = document.RootElement.GetProperty("IpoId").GetInt32(),
+                        UserId = currentUserId,
+                        IpoId = currentIpoId,
                         Application = application
                     }));
                 }
@@ -331,6 +361,19 @@ namespace IPOInvestmentManagement.Controllers
                 return RedirectToAction(nameof(IpoPayment));
             }
 
+            // Duplicate prevention: If payment record is already captured, verify if application already exists
+            if (string.Equals(paymentRecord.Status, "Captured", StringComparison.OrdinalIgnoreCase))
+            {
+                bool existingApp = await _context.IPOApplications.AnyAsync(a =>
+                    a.Razorpay_order_id == razorpayOrderId || a.Razorpay_payment_id == razorpayPaymentId);
+                if (existingApp)
+                {
+                    HttpContext.Session.Remove("PendingIpoApplication");
+                    TempData["InvestorMessage"] = $"Application {pending.ApplicationNumber} has already been verified and confirmed.";
+                    return RedirectToAction(nameof(Index));
+                }
+            }
+
             await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
                 await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             IPO? ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(item => item.IPO_id == ipoId);
@@ -369,10 +412,18 @@ namespace IPOInvestmentManagement.Controllers
                 return RedirectToAction(nameof(Index));
             }
 
+            string receiptNumber = $"RCP-{indiaNow:yyyyMMdd}-{paymentRecord.PaymentRecordId:D5}";
+
             paymentRecord.RazorpayPaymentId = payment.PaymentId;
             paymentRecord.Amount = payment.Amount;
             paymentRecord.Status = "Captured";
+            paymentRecord.ReceiptNumber = receiptNumber;
+            paymentRecord.PaymentMode = _razorpayPaymentService.IsTestMode ? "SIMULATED_MANDATE" : "RAZORPAY_GATEWAY";
+            paymentRecord.IsSimulated = _razorpayPaymentService.IsTestMode;
+            paymentRecord.ReconciliationStatus = "Confirmed";
+            paymentRecord.ReconciledAt = indiaNow;
             paymentRecord.UpdatedAt = DateTime.UtcNow;
+
             _context.IPOApplications.Add(new IPOApplication
             {
                 User_id = userId.Value,
@@ -389,6 +440,9 @@ namespace IPOInvestmentManagement.Controllers
                 Razorpay_payment_id = payment.PaymentId,
                 Payment_amount = payment.Amount,
                 Payment_status = "Verified",
+                Payment_mode = paymentRecord.PaymentMode,
+                Is_simulated_payment = paymentRecord.IsSimulated,
+                Receipt_number = receiptNumber,
                 Application_date = DateTime.UtcNow,
                 Status = "Submitted"
             });
@@ -396,7 +450,7 @@ namespace IPOInvestmentManagement.Controllers
             {
                 User_id = userId.Value,
                 Title = $"Payment Confirmed - {ipo.IPO_name} IPO",
-                Message = $"Payment of ₹{payment.Amount:N2} (Ref: {payment.PaymentId}) verified and captured successfully for application #{pending.ApplicationNumber}. Your bid for {pending.AppliedShares} share(s) ({pending.AppliedLots} lot(s)) has been submitted.",
+                Message = $"Payment of ₹{payment.Amount:N2} (Txn: {payment.PaymentId}) verified and captured successfully for application #{pending.ApplicationNumber}. Receipt: {receiptNumber}. Your bid for {pending.AppliedShares} share(s) ({pending.AppliedLots} lot(s)) has been submitted.",
                 Created_at = DateTime.UtcNow,
                 Is_read = false
             });
@@ -406,8 +460,11 @@ namespace IPOInvestmentManagement.Controllers
             User? payingInvestor = await _context.Users.FindAsync(userId.Value);
             if (payingInvestor != null)
             {
+                string workflowLabel = _razorpayPaymentService.IsTestMode
+                    ? "Simulated UPI ASBA Mandate (Testnet Sandbox)"
+                    : "Genuine Payment Gateway (Production)";
                 string emailSubject = $"Payment Receipt & Application Confirmed: {ipo.IPO_name}";
-                string emailBody = $"Dear {payingInvestor.First_name},\n\nYour payment for {ipo.IPO_name} IPO application #{pending.ApplicationNumber} has been verified and captured successfully.\n\nTransaction Summary:\n- Application Number: {pending.ApplicationNumber}\n- IPO Name: {ipo.IPO_name}\n- Applied Lots: {pending.AppliedLots}\n- Applied Shares: {pending.AppliedShares}\n- Bid Price: ₹{pending.BidPrice:N2}\n- Total Amount Paid: ₹{payment.Amount:N2}\n- Payment Reference ID: {payment.PaymentId}\n- Razorpay Order ID: {payment.OrderId}\n- UPI ID: {pending.UpiId}\n- Demat Account: {pending.DematAccountNumber}\n- Payment Status: Verified (Captured)\n- Application Status: Submitted\n\nYou can track the progress of your application and allotment results from your Investor Dashboard.\n\nThank you,\nIPO Investment Management";
+                string emailBody = $"Dear {payingInvestor.First_name},\n\nYour payment for {ipo.IPO_name} IPO application #{pending.ApplicationNumber} has been verified and captured successfully.\n\nTransaction Summary:\n- Receipt Number: {receiptNumber}\n- Application Number: {pending.ApplicationNumber}\n- IPO Name: {ipo.IPO_name}\n- Applied Lots: {pending.AppliedLots}\n- Applied Shares: {pending.AppliedShares}\n- Bid Price: ₹{pending.BidPrice:N2}\n- Total Amount: ₹{payment.Amount:N2}\n- Payment Transaction ID: {payment.PaymentId}\n- Razorpay Order ID: {payment.OrderId}\n- Payment Workflow: {workflowLabel}\n- UPI ID: {pending.UpiId}\n- Demat Account: {pending.DematAccountNumber}\n- Payment Status: Verified (Captured)\n- Application Status: Submitted\n\nYou can view and download your official payment receipt from your Investor Dashboard.\n\nThank you,\nIPO Investment Management";
                 await TrySendEventEmailAsync(payingInvestor, emailSubject, emailBody);
             }
 
@@ -504,11 +561,22 @@ namespace IPOInvestmentManagement.Controllers
             application.Cancellation_admin_id = null;
             application.Cancellation_reason = model.Reason.Trim();
             application.Cancellation_date = cancellationDate;
+
+            PaymentRecord? paymentRecord = await _context.PaymentRecords
+                .FirstOrDefaultAsync(record => record.RazorpayOrderId == application.Razorpay_order_id);
+            if (paymentRecord != null)
+            {
+                paymentRecord.UnblockedAmount = application.Payment_amount ?? 0m;
+                paymentRecord.RefundStatus = "Pending Unblock";
+                paymentRecord.RefundReferenceId = $"UNBLK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..25].ToUpper();
+                paymentRecord.UpdatedAt = DateTime.UtcNow;
+            }
+
             _context.SystemNotifications.Add(new SystemNotification
             {
                 User_id = userId.Value,
-                Title = "IPO application cancelled",
-                Message = $"Your IPO application #{application.Application_id} was cancelled. Reason: {application.Cancellation_reason}",
+                Title = "IPO Application Cancelled & Refund Initiated",
+                Message = $"Your IPO application #{application.Application_id} was cancelled. Full amount of ₹{application.Payment_amount:N2} has been marked for unblocking to your UPI ID {application.Upi_id}. Refund Ref: {paymentRecord?.RefundReferenceId ?? "N/A"}.",
                 Created_at = cancellationDate,
                 Is_read = false
             });
@@ -568,33 +636,427 @@ namespace IPOInvestmentManagement.Controllers
         {
             string payload = await new StreamReader(Request.Body).ReadToEndAsync();
             string? signature = Request.Headers["X-Razorpay-Signature"].FirstOrDefault();
+
+            string eventId = string.Empty;
+            string eventName = "unknown";
+            string? orderId = null;
+            string? paymentId = null;
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(payload);
+                eventId = document.RootElement.TryGetProperty("id", out var idElem) ? idElem.GetString() ?? string.Empty : string.Empty;
+                eventName = document.RootElement.TryGetProperty("event", out var evElem) ? evElem.GetString() ?? string.Empty : string.Empty;
+
+                if (document.RootElement.TryGetProperty("payload", out var payloadObj) &&
+                    payloadObj.TryGetProperty("payment", out var pObj) &&
+                    pObj.TryGetProperty("entity", out var pEnt))
+                {
+                    orderId = pEnt.TryGetProperty("order_id", out var oElem) ? oElem.GetString() : null;
+                    paymentId = pEnt.TryGetProperty("id", out var payElem) ? payElem.GetString() : null;
+                }
+            }
+            catch { }
+
+            if (string.IsNullOrWhiteSpace(eventId))
+            {
+                using var md5 = System.Security.Cryptography.MD5.Create();
+                eventId = "evt_" + Convert.ToHexString(md5.ComputeHash(Encoding.UTF8.GetBytes(payload)))[..16].ToLower();
+            }
+
             if (string.IsNullOrWhiteSpace(signature) || !_razorpayPaymentService.VerifyWebhookSignature(payload, signature))
             {
+                await _context.PaymentWebhookLogs.AddAsync(new PaymentWebhookLog
+                {
+                    EventId = eventId,
+                    EventType = eventName,
+                    RazorpayOrderId = orderId,
+                    RazorpayPaymentId = paymentId,
+                    Payload = payload,
+                    Status = "SignatureFailed",
+                    ErrorMessage = "Invalid or missing X-Razorpay-Signature header",
+                    ReceivedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
                 return Unauthorized();
             }
 
-            using JsonDocument document = JsonDocument.Parse(payload);
-            string eventName = document.RootElement.GetProperty("event").GetString() ?? string.Empty;
-            JsonElement entity = document.RootElement.GetProperty("payload").GetProperty("payment").GetProperty("entity");
-            string orderId = entity.GetProperty("order_id").GetString() ?? string.Empty;
-            string paymentId = entity.GetProperty("id").GetString() ?? string.Empty;
-            PaymentRecord? record = await _context.PaymentRecords.FirstOrDefaultAsync(item => item.RazorpayOrderId == orderId);
-            if (record is null)
+            PaymentWebhookLog log = await _paymentReconciliationService.LogAndProcessWebhookAsync(eventId, eventName, orderId, paymentId, payload);
+            if (log.Status == "Failed")
             {
-                return Ok();
+                // Return 500 so Razorpay retries webhook delivery, and background reconciliation also handles retry
+                return StatusCode(500, new { message = "Webhook processing failed; queued for retry.", eventId, status = log.Status });
             }
 
-            record.RazorpayPaymentId = paymentId;
-            record.Amount = entity.GetProperty("amount").GetInt64() / 100m;
-            record.Status = eventName switch
+            return Ok(new { status = "received", eventId, logStatus = log.Status });
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> PaymentReceipt(int paymentRecordId)
+        {
+            int? currentUserId = HttpContext.Session.GetInt32("User_id");
+            string? role = HttpContext.Session.GetString("UserRole");
+            if (!currentUserId.HasValue)
             {
-                "payment.captured" => "Captured",
-                "payment.failed" when !string.Equals(record.Status, "Captured", StringComparison.OrdinalIgnoreCase) => "Failed",
-                _ => record.Status
+                return RedirectToAction("Login", "Account");
+            }
+
+            PaymentRecord? payment = await _context.PaymentRecords
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.PaymentRecordId == paymentRecordId);
+
+            if (payment is null)
+            {
+                TempData["InvestorMessage"] = "Payment record was not found.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            bool isAdmin = string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase);
+            if (!isAdmin && payment.UserId != currentUserId.Value)
+            {
+                return Forbid();
+            }
+
+            IPO? ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == payment.IpoId);
+            IPOApplication? application = await _context.IPOApplications.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Razorpay_order_id == payment.RazorpayOrderId);
+            User? investor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.User_id == payment.UserId);
+            IPOListing? listing = await _context.IPOListings.AsNoTracking().FirstOrDefaultAsync(l => l.IPO_id == payment.IpoId);
+
+            string receiptNumber = payment.ReceiptNumber ?? application?.Receipt_number ?? $"RCP-{payment.CreatedAt:yyyyMMdd}-{payment.PaymentRecordId:D5}";
+
+            PaymentReceiptViewModel model = new()
+            {
+                ReceiptNumber = receiptNumber,
+                PaymentRecordId = payment.PaymentRecordId,
+                ApplicationId = application?.Application_id,
+                ApplicationNumber = payment.ApplicationNumber,
+                UserId = payment.UserId,
+                InvestorName = $"{investor?.First_name} {investor?.Last_name}".Trim(),
+                InvestorEmail = investor?.Email ?? "N/A",
+                InvestorPhone = investor?.Phone ?? "N/A",
+                DematAccountNumber = application?.Demat_account_number ?? investor?.DematAccountNumber ?? "N/A",
+                UpiId = application?.Upi_id ?? investor?.UpiId ?? "N/A",
+                IpoId = payment.IpoId,
+                IpoName = ipo?.IPO_name ?? "IPO",
+                CompanySymbol = listing?.StockSymbol ?? "N/A",
+                CategoryName = "Retail Individual Investor (RII)",
+                AppliedLots = payment.AppliedLots,
+                AppliedShares = payment.AppliedShares,
+                BidPrice = payment.BidPrice,
+                TotalAmount = payment.Amount,
+                AmountInWords = RupeeWordsHelper.ToWords(payment.Amount),
+                RazorpayOrderId = payment.RazorpayOrderId,
+                RazorpayPaymentId = payment.RazorpayPaymentId ?? application?.Razorpay_payment_id ?? application?.Payment_reference ?? "Pending Capture",
+                PaymentStatus = payment.Status,
+                PaymentDate = payment.CreatedAt,
+                IsSimulated = payment.IsSimulated,
+                PaymentMode = payment.PaymentMode,
+                RefundStatus = payment.RefundStatus,
+                UnblockedAmount = payment.UnblockedAmount,
+                RefundReferenceId = payment.RefundReferenceId,
+                RefundProcessedAt = payment.RefundProcessedAt,
+                ReconciliationStatus = payment.ReconciliationStatus,
+                ReconciledAt = payment.ReconciledAt
             };
-            record.UpdatedAt = DateTime.UtcNow;
+
+            return View(model);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> PaymentReceiptByApplication(int applicationId)
+        {
+            int? currentUserId = HttpContext.Session.GetInt32("User_id");
+            string? role = HttpContext.Session.GetString("UserRole");
+            if (!currentUserId.HasValue)
+            {
+                return RedirectToAction("Login", "Account");
+            }
+
+            IPOApplication? app = await _context.IPOApplications
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Application_id == applicationId);
+
+            if (app is null)
+            {
+                TempData["InvestorMessage"] = "Application record was not found.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            bool isAdmin = string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase);
+            if (!isAdmin && app.User_id != currentUserId.Value)
+            {
+                return Forbid();
+            }
+
+            PaymentRecord? payment = await _context.PaymentRecords
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.RazorpayOrderId == app.Razorpay_order_id);
+
+            if (payment is null)
+            {
+                TempData["InvestorMessage"] = "No payment transaction record found for this application.";
+                return RedirectToAction(nameof(InvestorApplicationDetails), new { applicationId });
+            }
+
+            return RedirectToAction(nameof(PaymentReceipt), new { paymentRecordId = payment.PaymentRecordId });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ReconcilePayments(string? returnUrl = null)
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
+            PaymentReconciliationReport report = await _paymentReconciliationService.ReconcileAllPaymentsAsync();
+            TempData["AdminMessage"] = $"Reconciliation Completed: {report.ReconciledCaptured} payment(s) auto-captured, {report.ReconciledFailed} expired, {report.ApplicationsAutoCreated} missing application(s) healed, {report.ReconciledUnblocks} mandate unblock(s) synced.";
+            if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            {
+                return Redirect(returnUrl);
+            }
+            return RedirectToAction(nameof(Applications));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ReconcilePaymentRecord(int paymentRecordId, string? returnUrl = null)
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
+            bool reconciled = await _paymentReconciliationService.ReconcilePaymentRecordAsync(paymentRecordId);
+            PaymentRecord? record = await _context.PaymentRecords.FindAsync(paymentRecordId);
+            if (reconciled)
+            {
+                TempData["AdminMessage"] = $"Payment #{paymentRecordId} successfully reconciled. New status: {record?.Status ?? "Updated"}.";
+            }
+            else
+            {
+                TempData["AdminMessage"] = $"Payment #{paymentRecordId} status checked with gateway. Current status: {record?.Status ?? "Unchanged"}.";
+            }
+
+            if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            {
+                return Redirect(returnUrl);
+            }
+            return RedirectToAction(nameof(PaymentManagement));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ProcessPaymentRefund(int paymentRecordId, string? returnUrl = null)
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
+            PaymentRecord? payment = await _context.PaymentRecords.FindAsync(paymentRecordId);
+            if (payment == null)
+            {
+                TempData["AdminMessage"] = "Payment record was not found.";
+                return RedirectToAction(nameof(PaymentManagement));
+            }
+
+            decimal refundAmt = payment.UnblockedAmount > 0m ? payment.UnblockedAmount : payment.Amount;
+            if (refundAmt <= 0m || payment.RefundStatus == "Completed")
+            {
+                TempData["AdminMessage"] = "Payment is already marked as refunded or has no unblockable amount.";
+                return RedirectToAction(nameof(PaymentManagement));
+            }
+
+            payment.RefundStatus = "Completed";
+            payment.RefundProcessedAt = GetIndiaStandardTime();
+            if (string.IsNullOrWhiteSpace(payment.RefundReferenceId))
+            {
+                payment.RefundReferenceId = $"UNBLK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..25].ToUpper();
+            }
+            if (payment.UnblockedAmount <= 0m)
+            {
+                payment.UnblockedAmount = payment.Amount;
+            }
+            payment.UpdatedAt = DateTime.UtcNow;
+
+            _context.SystemNotifications.Add(new SystemNotification
+            {
+                User_id = payment.UserId,
+                Title = "Mandate Amount Unblocked / Refunded",
+                Message = $"₹{payment.UnblockedAmount:N2} has been released and unblocked to your bank account. Refund Ref: {payment.RefundReferenceId}.",
+                Created_at = DateTime.UtcNow,
+                Is_read = false
+            });
+
             await _context.SaveChangesAsync();
-            return Ok();
+            TempData["AdminMessage"] = $"Payment #{payment.PaymentRecordId} refund/unblock of ₹{payment.UnblockedAmount:N2} marked as completed (Ref: {payment.RefundReferenceId}).";
+
+            if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            {
+                return Redirect(returnUrl);
+            }
+            return RedirectToAction(nameof(PaymentManagement));
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> PaymentManagement(string? status, string? search, int? ipoId)
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
+            var allPayments = await _context.PaymentRecords
+                .AsNoTracking()
+                .OrderByDescending(record => record.CreatedAt)
+                .ToListAsync();
+
+            int[] userIds = allPayments.Select(p => p.UserId).Distinct().ToArray();
+            int[] ipoIds = allPayments.Select(p => p.IpoId).Distinct().ToArray();
+            string[] orderIds = allPayments.Select(p => p.RazorpayOrderId).Where(o => !string.IsNullOrEmpty(o)).Distinct().ToArray();
+
+            var users = await _context.Users
+                .AsNoTracking()
+                .Where(u => userIds.Contains(u.User_id))
+                .Select(u => new { u.User_id, FullName = (u.First_name + " " + u.Last_name).Trim(), u.Email, u.DematAccountNumber, u.UpiId })
+                .ToListAsync();
+
+            var ipos = await _context.IPOs
+                .AsNoTracking()
+                .Where(i => ipoIds.Contains(i.IPO_id))
+                .Select(i => new { i.IPO_id, i.IPO_name })
+                .ToListAsync();
+
+            var allIposList = await _context.IPOs
+                .AsNoTracking()
+                .OrderByDescending(i => i.Open_date)
+                .ToListAsync();
+
+            var apps = await _context.IPOApplications
+                .AsNoTracking()
+                .Where(a => orderIds.Contains(a.Razorpay_order_id))
+                .Select(a => new { a.Application_id, a.Razorpay_order_id, a.Application_number })
+                .ToListAsync();
+
+            var model = new AdminPaymentManagementViewModel
+            {
+                Payments = allPayments,
+                UserNames = users.ToDictionary(u => u.User_id, u => u.FullName),
+                UserEmails = users.ToDictionary(u => u.User_id, u => u.Email ?? "N/A"),
+                UserDemats = users.ToDictionary(u => u.User_id, u => u.DematAccountNumber ?? "N/A"),
+                UserUpis = users.ToDictionary(u => u.User_id, u => u.UpiId ?? "N/A"),
+                IpoNames = ipos.ToDictionary(i => i.IPO_id, i => i.IPO_name),
+                AllIpos = allIposList,
+                SelectedStatus = status,
+                SearchQuery = search,
+                SelectedIpoId = ipoId,
+
+                TotalTransactions = allPayments.Count,
+                SuccessfulCount = allPayments.Count(p => p.Status == "Captured" || p.Status == "Verified"),
+                FailedCount = allPayments.Count(p => p.Status == "Failed"),
+                PendingCount = allPayments.Count(p => p.Status == "Created" || p.Status == "Pending"),
+                RefundedCount = allPayments.Count(p => p.RefundStatus == "Completed" || p.RefundStatus == "Pending Unblock" || p.UnblockedAmount > 0m || p.Status == "Refunded"),
+
+                TotalVolume = allPayments.Sum(p => p.Amount),
+                SuccessfulVolume = allPayments.Where(p => p.Status == "Captured" || p.Status == "Verified").Sum(p => p.Amount),
+                FailedVolume = allPayments.Where(p => p.Status == "Failed").Sum(p => p.Amount),
+                PendingVolume = allPayments.Where(p => p.Status == "Created" || p.Status == "Pending").Sum(p => p.Amount),
+                RefundedVolume = allPayments.Sum(p => p.UnblockedAmount > 0m ? p.UnblockedAmount : (p.RefundStatus == "Completed" ? p.Amount : 0m))
+            };
+
+            foreach (var app in apps)
+            {
+                if (!string.IsNullOrEmpty(app.Razorpay_order_id))
+                {
+                    model.ApplicationIds[app.Razorpay_order_id] = app.Application_id;
+                }
+                if (!string.IsNullOrEmpty(app.Application_number))
+                {
+                    model.ApplicationIds[app.Application_number] = app.Application_id;
+                }
+            }
+
+            return View(model);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> ExportPaymentsCsv(string? status, int? ipoId)
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
+            IQueryable<PaymentRecord> query = _context.PaymentRecords.AsNoTracking();
+            if (ipoId.HasValue)
+            {
+                query = query.Where(p => p.IpoId == ipoId.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                if (status.Equals("Captured", StringComparison.OrdinalIgnoreCase) || status.Equals("Successful", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = query.Where(p => p.Status == "Captured" || p.Status == "Verified");
+                }
+                else if (status.Equals("Failed", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = query.Where(p => p.Status == "Failed");
+                }
+                else if (status.Equals("Pending", StringComparison.OrdinalIgnoreCase) || status.Equals("Created", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = query.Where(p => p.Status == "Created" || p.Status == "Pending");
+                }
+                else if (status.Equals("Refunded", StringComparison.OrdinalIgnoreCase) || status.Equals("Unblocked", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = query.Where(p => p.RefundStatus == "Completed" || p.RefundStatus == "Pending Unblock" || p.UnblockedAmount > 0m || p.Status == "Refunded");
+                }
+            }
+
+            List<PaymentRecord> records = await query.OrderByDescending(p => p.CreatedAt).ToListAsync();
+            int[] userIds = records.Select(p => p.UserId).Distinct().ToArray();
+            int[] ipoIds = records.Select(p => p.IpoId).Distinct().ToArray();
+
+            var users = await _context.Users.AsNoTracking().Where(u => userIds.Contains(u.User_id)).ToDictionaryAsync(u => u.User_id);
+            var ipos = await _context.IPOs.AsNoTracking().Where(i => ipoIds.Contains(i.IPO_id)).ToDictionaryAsync(i => i.IPO_id);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("PaymentRecordId,Date_IST,Investor_Name,Email,Demat,UPI_ID,IPO_Name,Application_Number,Lots,Shares,Bid_Price,Amount,Payment_Mode,Razorpay_Order_Id,Razorpay_Payment_Id,Status,Refund_Status,Unblocked_Amount,Refund_Reference_Id,Receipt_Number,Failure_Reason");
+
+            foreach (var r in records)
+            {
+                var user = users.GetValueOrDefault(r.UserId);
+                var ipo = ipos.GetValueOrDefault(r.IpoId);
+                string investorName = user != null ? $"\"{user.First_name} {user.Last_name}\"" : "\"N/A\"";
+                string email = user?.Email ?? "N/A";
+                string demat = user?.DematAccountNumber ?? "N/A";
+                string upi = user?.UpiId ?? "N/A";
+                string ipoName = ipo != null ? $"\"{ipo.IPO_name}\"" : "\"N/A\"";
+                string dateStr = r.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss");
+                string failureReason = string.IsNullOrWhiteSpace(r.FailureReason) ? "" : $"\"{r.FailureReason.Replace("\"", "\"\"")}\"";
+
+                sb.AppendLine($"{r.PaymentRecordId},{dateStr},{investorName},{email},{demat},{upi},{ipoName},{r.ApplicationNumber},{r.AppliedLots},{r.AppliedShares},{r.BidPrice:F2},{r.Amount:F2},{r.PaymentMode},{r.RazorpayOrderId},{r.RazorpayPaymentId},{r.Status},{r.RefundStatus},{r.UnblockedAmount:F2},{r.RefundReferenceId},{r.ReceiptNumber},{failureReason}");
+            }
+
+            string filename = $"payment-records-report-{DateTime.UtcNow:yyyyMMddHHmmss}.csv";
+            return File(Encoding.UTF8.GetBytes(sb.ToString()), "text/csv", filename);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> RetryWebhooks()
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
+            int count = await _paymentReconciliationService.ProcessPendingWebhookRetriesAsync();
+            TempData["AdminMessage"] = $"Processed {count} failed webhook retry events.";
+            return RedirectToAction(nameof(Applications));
         }
 
         [HttpPost]
@@ -1829,16 +2291,358 @@ namespace IPOInvestmentManagement.Controllers
 
             try
             {
+                int? adminId = HttpContext.Session.GetInt32("User_id");
+                IPO? ipo = await _context.IPOs.FirstOrDefaultAsync(i => i.IPO_id == ipoId);
+                if (ipo == null)
+                {
+                    TempData["AdminMessage"] = "The selected IPO was not found.";
+                    return RedirectToAction(nameof(Applications));
+                }
+
+                if (ipo.Allotment_finalized)
+                {
+                    TempData["AdminMessage"] = $"Allotment for {ipo.IPO_name} has already been finalized and locked.";
+                    return RedirectToAction(nameof(AllotmentResults), new { ipoId });
+                }
+
                 AutomaticAllotmentPlan plan = await BuildAutomaticAllotmentAsync(ipoId);
                 string[] statuses = await ProcessAllotmentsAsync(plan.Requests, false, ipoId);
-                TempData["AdminMessage"] = $"{statuses.Length} automatic allotment(s) confirmed using category-wise allocation.";
+
+                DateTime finalizedAt = GetIndiaStandardTime();
+                ipo.Allotment_finalized = true;
+                ipo.Allotment_finalized_at = finalizedAt;
+                ipo.Status = "Allotted";
+
+                long totalAppliedShares = plan.TotalAppliedShares;
+                long totalAllottedShares = plan.AllocatedShares;
+                decimal totalDebited = plan.Requests.Sum(r => (decimal)r.AllottedShares * r.AllotmentPrice);
+                decimal totalBlocked = plan.Applications.Sum(a => a.Application_amount ?? ((decimal)a.Applied_shares * plan.AllotmentPrice));
+                decimal totalUnblocked = Math.Max(0m, totalBlocked - totalDebited);
+
+                IPOAllotmentHistory history = new()
+                {
+                    IPOId = ipoId,
+                    FinalizedByUserId = adminId ?? 1,
+                    FinalizedAt = finalizedAt,
+                    TotalApplications = plan.Applications.Count,
+                    AllottedApplications = plan.Requests.Count(r => r.AllottedLots == r.AppliedLots && r.AllottedLots > 0),
+                    PartialAllotmentCount = plan.Requests.Count(r => r.AllottedLots > 0 && r.AllottedLots < r.AppliedLots),
+                    UnallottedCount = plan.Requests.Count(r => r.AllottedLots == 0),
+                    TotalAppliedShares = totalAppliedShares,
+                    TotalAllottedShares = totalAllottedShares,
+                    TotalDebitedAmount = totalDebited,
+                    TotalUnblockedAmount = totalUnblocked,
+                    OversubscriptionMultiple = plan.OverallSubscriptionMultiple,
+                    CutOffPrice = plan.AllotmentPrice,
+                    Notes = $"Category allocation: RII ({plan.CategorySummaries.FirstOrDefault(c=>c.CategoryCode=="RII")?.AllocatedLots} lots), NII ({plan.CategorySummaries.FirstOrDefault(c=>c.CategoryCode=="NII")?.AllocatedLots} lots), QIB ({plan.CategorySummaries.FirstOrDefault(c=>c.CategoryCode=="QIB")?.AllocatedLots} lots)."
+                };
+
+                _context.IPOAllotmentHistories.Add(history);
+                _context.AuditLogs.Add(new AuditLog
+                {
+                    ActorUserId = adminId,
+                    Action = "FINAL_ALLOTMENT_CONFIRMED",
+                    EntityType = "IPO",
+                    EntityId = ipoId.ToString(),
+                    Details = $"Final allotment confirmed for {ipo.IPO_name}. {plan.Applications.Count} applications processed. Allotted: {history.AllottedApplications}, Partial: {history.PartialAllotmentCount}, Non-allotted: {history.UnallottedCount}. Total unblocked: ₹{totalUnblocked:N2}.",
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                await _context.SaveChangesAsync();
+
+                TempData["AdminMessage"] = $"Final allotment successfully confirmed and locked for {ipo.IPO_name}: {history.AllottedApplications} full allotment(s), {history.PartialAllotmentCount} partial allotment(s), {history.UnallottedCount} non-allotted. Unblocked ₹{totalUnblocked:N2}. Allotment advice is now available.";
+                return RedirectToAction(nameof(AllotmentResults), new { ipoId });
             }
             catch (InvalidOperationException exception)
             {
                 TempData["AdminMessage"] = exception.Message;
+                return RedirectToAction(nameof(Applications), new { ipoId });
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ConfirmFinalAllotment(int ipoId)
+        {
+            return await ConfirmAutomaticAllotment(ipoId);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> AllotmentResults(int ipoId)
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
             }
 
-            return RedirectToAction(nameof(Applications), new { ipoId });
+            IPO? ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == ipoId);
+            if (ipo == null)
+            {
+                return NotFound("IPO not found.");
+            }
+
+            IPOAllotmentHistory? history = await _context.IPOAllotmentHistories.AsNoTracking()
+                .OrderByDescending(h => h.FinalizedAt)
+                .FirstOrDefaultAsync(h => h.IPOId == ipoId);
+
+            List<IPOApplication> applications = await _context.IPOApplications.AsNoTracking()
+                .Where(a => a.IPO_id == ipoId && (a.Payment_status == "Verified" || a.Payment_status == "Captured"))
+                .OrderBy(a => a.Application_date)
+                .ToListAsync();
+
+            int[] appIds = applications.Select(a => a.Application_id).ToArray();
+            Dictionary<int, IPOAllotment> allotments = await _context.IPOAllotments.AsNoTracking()
+                .Where(al => appIds.Contains(al.Application_id))
+                .ToDictionaryAsync(al => al.Application_id);
+
+            Dictionary<string, PaymentRecord> payments = await _context.PaymentRecords.AsNoTracking()
+                .Where(p => p.IpoId == ipoId)
+                .ToDictionaryAsync(p => p.RazorpayOrderId, StringComparer.OrdinalIgnoreCase);
+
+            Dictionary<int, User> investors = await _context.Users.AsNoTracking()
+                .Where(u => applications.Select(a => a.User_id).Contains(u.User_id))
+                .ToDictionaryAsync(u => u.User_id);
+
+            int lotSize = ipo.Lot_size ?? 1;
+            decimal cutOffPrice = history?.CutOffPrice ?? ipo.Price_max ?? ipo.Price_min ?? 0m;
+
+            List<AllotmentInvestorResultItem> allItems = new();
+            foreach (var app in applications)
+            {
+                allotments.TryGetValue(app.Application_id, out var allotment);
+                payments.TryGetValue(app.Razorpay_order_id ?? "", out var payment);
+                investors.TryGetValue(app.User_id, out var investor);
+
+                var cat = GetApplicationCategory(app, ipo);
+                int allottedLots = allotment?.Allotted_lots ?? 0;
+                int allottedShares = allotment?.Allotted_shares ?? 0;
+                decimal allotPrice = allotment?.Allotment_price > 0 ? allotment.Allotment_price : cutOffPrice;
+                decimal blocked = app.Application_amount ?? (app.Applied_shares * allotPrice);
+                decimal debited = allottedShares * allotPrice;
+                decimal unblocked = Math.Max(0m, blocked - debited);
+
+                string status;
+                if (allotment != null)
+                {
+                    status = allotment.Status;
+                }
+                else
+                {
+                    status = allottedLots == 0 ? "Not Allotted" : (allottedLots == app.Applied_lots ? "Allotted" : "Partially Allotted");
+                }
+
+                allItems.Add(new AllotmentInvestorResultItem
+                {
+                    ApplicationId = app.Application_id,
+                    ApplicationNumber = app.Application_number ?? $"#{app.Application_id}",
+                    UserId = app.User_id,
+                    InvestorName = $"{investor?.First_name} {investor?.Last_name}".Trim(),
+                    InvestorEmail = investor?.Email ?? "N/A",
+                    DematAccountNumber = app.Demat_account_number ?? investor?.DematAccountNumber ?? "N/A",
+                    UpiId = app.Upi_id ?? investor?.UpiId ?? "N/A",
+                    CategoryCode = cat.Code,
+                    CategoryName = cat.Name,
+                    AppliedLots = app.Applied_lots,
+                    AppliedShares = app.Applied_shares,
+                    BidPrice = app.Bid_price ?? allotPrice,
+                    AllottedLots = allottedLots,
+                    AllottedShares = allottedShares,
+                    AllotmentPrice = allotPrice,
+                    BlockedAmount = blocked,
+                    DebitedAmount = debited,
+                    UnblockedAmount = unblocked,
+                    Status = status,
+                    AdviceNumber = allotment?.Advice_number ?? $"CAN-{app.Application_date:yyyyMMdd}-{app.Application_id:D5}",
+                    RefundStatus = payment?.RefundStatus ?? (unblocked > 0 ? "Pending Unblock" : "Not Applicable"),
+                    RefundReferenceId = payment?.RefundReferenceId
+                });
+            }
+
+            var model = new AllotmentResultsViewModel
+            {
+                Ipo = ipo,
+                History = history,
+                AllotmentDate = history?.FinalizedAt ?? ipo.Allotment_date ?? DateTime.UtcNow,
+                CutOffPrice = cutOffPrice,
+                LotSize = lotSize,
+                TotalApplications = allItems.Count,
+                AllottedCount = allItems.Count(i => i.Status == "Allotted"),
+                PartialAllotmentCount = allItems.Count(i => i.Status == "Partially Allotted"),
+                UnallottedCount = allItems.Count(i => i.Status == "Not Allotted"),
+                TotalAppliedShares = allItems.Sum(i => (long)i.AppliedShares),
+                TotalAllottedShares = allItems.Sum(i => (long)i.AllottedShares),
+                TotalDebitedAmount = allItems.Sum(i => i.DebitedAmount),
+                TotalUnblockedAmount = allItems.Sum(i => i.UnblockedAmount),
+                OversubscriptionMultiple = history?.OversubscriptionMultiple ?? (ipo.Total_shares > 0 ? Math.Round((decimal)allItems.Sum(i => (long)i.AppliedShares) / ipo.Total_shares.Value, 2) : 1m),
+                AllApplicants = allItems,
+                AllottedApplicants = allItems.Where(i => i.Status == "Allotted").ToList(),
+                PartiallyAllottedApplicants = allItems.Where(i => i.Status == "Partially Allotted").ToList(),
+                NonAllottedApplicants = allItems.Where(i => i.Status == "Not Allotted").ToList()
+            };
+
+            return View(model);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> AllotmentHistory()
+        {
+            if (!IsAdmin())
+            {
+                return Forbid();
+            }
+
+            List<IPOAllotmentHistory> histories = await _context.IPOAllotmentHistories
+                .AsNoTracking()
+                .OrderByDescending(h => h.FinalizedAt)
+                .ToListAsync();
+
+            int[] ipoIds = histories.Select(h => h.IPOId).Distinct().ToArray();
+            Dictionary<int, IPO> ipos = await _context.IPOs.AsNoTracking()
+                .Where(i => ipoIds.Contains(i.IPO_id))
+                .ToDictionaryAsync(i => i.IPO_id);
+
+            int[] adminIds = histories.Select(h => h.FinalizedByUserId).Distinct().ToArray();
+            Dictionary<int, string> adminNames = await _context.Users.AsNoTracking()
+                .Where(u => adminIds.Contains(u.User_id))
+                .ToDictionaryAsync(u => u.User_id, u => $"{u.First_name} {u.Last_name}".Trim());
+
+            AllotmentHistoryListViewModel model = new();
+            foreach (var h in histories)
+            {
+                ipos.TryGetValue(h.IPOId, out var ipo);
+                model.Items.Add(new AllotmentHistoryItemViewModel
+                {
+                    HistoryId = h.AllotmentHistoryId,
+                    IpoId = h.IPOId,
+                    IpoName = ipo?.IPO_name ?? $"IPO #{h.IPOId}",
+                    CompanyName = ipo?.IPO_name ?? "Issuer",
+                    FinalizedAt = h.FinalizedAt,
+                    FinalizedByAdminName = adminNames.GetValueOrDefault(h.FinalizedByUserId, "Platform Admin"),
+                    TotalApplications = h.TotalApplications,
+                    AllottedApplications = h.AllottedApplications,
+                    PartialAllotmentCount = h.PartialAllotmentCount,
+                    UnallottedCount = h.UnallottedCount,
+                    TotalAllottedShares = h.TotalAllottedShares,
+                    TotalDebitedAmount = h.TotalDebitedAmount,
+                    TotalUnblockedAmount = h.TotalUnblockedAmount,
+                    OversubscriptionMultiple = h.OversubscriptionMultiple,
+                    CutOffPrice = h.CutOffPrice
+                });
+            }
+
+            return View(model);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> AllotmentAdvice(int applicationId)
+        {
+            int? currentUserId = HttpContext.Session.GetInt32("User_id");
+            string? role = HttpContext.Session.GetString("UserRole");
+            if (!currentUserId.HasValue)
+            {
+                return RedirectToAction("Login", "Account");
+            }
+
+            IPOApplication? app = await _context.IPOApplications.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Application_id == applicationId);
+
+            if (app == null)
+            {
+                TempData["InvestorMessage"] = "Application not found.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            bool isAdmin = string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase);
+            if (!isAdmin && app.User_id != currentUserId.Value)
+            {
+                return Forbid();
+            }
+
+            User? user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.User_id == app.User_id);
+            IPO? ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == app.IPO_id);
+            IPOAllotment? allotment = await _context.IPOAllotments.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Application_id == applicationId);
+            PaymentRecord? payment = await _context.PaymentRecords.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.RazorpayOrderId == app.Razorpay_order_id);
+            IPOListing? listing = ipo != null ? await _context.IPOListings.AsNoTracking().FirstOrDefaultAsync(l => l.IPO_id == ipo.IPO_id) : null;
+
+            int appliedShares = app.Applied_shares;
+            int appliedLots = app.Applied_lots;
+            int allottedShares = allotment?.Allotted_shares ?? 0;
+            int allottedLots = allotment?.Allotted_lots ?? 0;
+            decimal price = allotment != null && allotment.Allotment_price > 0 ? allotment.Allotment_price : (app.Bid_price ?? 0m);
+            decimal blocked = app.Application_amount ?? (appliedShares * (app.Bid_price ?? 0m));
+            decimal debited = allottedShares * price;
+            decimal unblocked = Math.Max(0m, blocked - debited);
+            string status = allotment?.Status ?? (allottedShares == 0 ? "Not Allotted" : (allottedShares == appliedShares ? "Allotted" : "Partially Allotted"));
+            string adviceNo = allotment?.Advice_number ?? $"CAN-{DateTime.UtcNow:yyyyMMdd}-{app.Application_id:D5}";
+
+            (string Code, string Name, string Rule) cat = ipo != null ? GetApplicationCategory(app, ipo) : (Code: "RII", Name: "Retail Individual Investor (RII)", Rule: "");
+
+            AllotmentAdviceViewModel model = new()
+            {
+                AdviceNumber = adviceNo,
+                ApplicationId = app.Application_id,
+                ApplicationNumber = app.Application_number ?? $"#{app.Application_id}",
+                ApplicationDate = app.Application_date,
+                AllotmentDate = allotment?.Allotment_date ?? ipo?.Allotment_date ?? DateTime.UtcNow,
+                UserId = app.User_id,
+                InvestorName = $"{user?.First_name} {user?.Last_name}".Trim(),
+                InvestorEmail = user?.Email ?? "N/A",
+                InvestorPhone = user?.Phone ?? "N/A",
+                DematAccountNumber = app.Demat_account_number ?? user?.DematAccountNumber ?? "N/A",
+                UpiId = app.Upi_id ?? user?.UpiId ?? "N/A",
+                IpoId = app.IPO_id,
+                IpoName = ipo?.IPO_name ?? "IPO Issue",
+                CompanyName = ipo?.IPO_name ?? "Issuer Company",
+                StockSymbol = listing?.StockSymbol ?? "N/A",
+                LotSize = ipo?.Lot_size ?? 1,
+                CategoryName = cat.Name,
+                CategoryCode = cat.Code,
+                AppliedLots = appliedLots,
+                AppliedShares = appliedShares,
+                BidPrice = app.Bid_price ?? price,
+                AllottedLots = allottedLots,
+                AllottedShares = allottedShares,
+                AllotmentPrice = price,
+                BlockedAmount = blocked,
+                DebitedAmount = debited,
+                UnblockedAmount = unblocked,
+                AmountInWords = RupeeWordsHelper.ToWords(debited > 0 ? debited : blocked),
+                Status = status,
+                RefundStatus = payment?.RefundStatus ?? (unblocked > 0 ? "Completed" : "Not Applicable"),
+                RefundReferenceId = payment?.RefundReferenceId,
+                RefundProcessedAt = payment?.RefundProcessedAt,
+                ExpectedListingDate = ipo?.Listing_date,
+                VerificationCode = adviceNo.GetHashCode().ToString("X8")
+            };
+
+            return View(model);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> DownloadAllotmentAdvicePdf(int applicationId)
+        {
+            int? currentUserId = HttpContext.Session.GetInt32("User_id");
+            string? role = HttpContext.Session.GetString("UserRole");
+            if (!currentUserId.HasValue)
+            {
+                return RedirectToAction("Login", "Account");
+            }
+
+            IPOApplication? app = await _context.IPOApplications.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Application_id == applicationId);
+            if (app == null) return NotFound("Application not found.");
+
+            bool isAdmin = string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase);
+            if (!isAdmin && app.User_id != currentUserId.Value)
+            {
+                return Forbid();
+            }
+
+            byte[] pdfBytes = await _investorReportService.GenerateAllotmentAdvicePdfAsync(applicationId);
+            string fileName = $"Allotment-Advice-{app.Application_number ?? app.Application_id.ToString()}-{DateTime.UtcNow:yyyyMMdd}.pdf";
+            return File(pdfBytes, "application/pdf", fileName);
         }
 
         private sealed class AutomaticAllotmentPlan
@@ -1847,6 +2651,10 @@ namespace IPOInvestmentManagement.Controllers
             public List<AllotmentRequestViewModel> Requests { get; set; } = new();
             public List<IPOApplication> Applications { get; set; } = new();
             public int AvailableLots { get; set; }
+            public decimal AllotmentPrice { get; set; }
+            public long TotalAppliedShares => Applications.Sum(a => (long)a.Applied_shares);
+            public long AllocatedShares => Requests.Sum(r => (long)r.AllottedShares);
+            public decimal OverallSubscriptionMultiple => AvailableLots > 0 ? Math.Round((decimal)Applications.Sum(a => a.Applied_lots) / AvailableLots, 2) : 0m;
             public List<CategoryAllotmentSummaryViewModel> CategorySummaries { get; set; } = new();
             public Dictionary<int, (string Code, string Name)> ApplicationCategories { get; set; } = new();
             public bool IsClosed { get; set; }
@@ -2287,15 +3095,18 @@ namespace IPOInvestmentManagement.Controllers
                 }
             };
 
+            decimal cutOffPrice = ipo.Price_max ?? ipo.Price_min ?? 0m;
             List<AllotmentRequestViewModel> requests = applications.Select(application =>
             {
                 int lots = allottedLotsMap.GetValueOrDefault(application.Application_id, 0);
                 return new AllotmentRequestViewModel
                 {
                     ApplicationId = application.Application_id,
+                    AppliedLots = application.Applied_lots,
+                    AppliedShares = application.Applied_shares,
                     AllottedLots = lots,
                     AllottedShares = checked(lots * ipo.Lot_size.Value),
-                    AllotmentPrice = ipo.Price_max ?? ipo.Price_min ?? 0m
+                    AllotmentPrice = cutOffPrice
                 };
             }).ToList();
 
@@ -2305,6 +3116,7 @@ namespace IPOInvestmentManagement.Controllers
                 Requests = requests,
                 Applications = applications,
                 AvailableLots = availableLots,
+                AllotmentPrice = cutOffPrice,
                 CategorySummaries = categorySummaries,
                 ApplicationCategories = appCategories,
                 IsClosed = timing.IsClosed,
@@ -2336,6 +3148,11 @@ namespace IPOInvestmentManagement.Controllers
             if (application is null || ipo is null)
             {
                 return NotFound();
+            }
+
+            if (allottedShares <= 0 && allottedLots > 0 && ipo.Lot_size > 0)
+            {
+                allottedShares = allottedLots * ipo.Lot_size.Value;
             }
 
             ValidateAllotmentRequest(application, ipo, allottedLots, allottedShares, allotmentPrice);
@@ -2422,6 +3239,20 @@ namespace IPOInvestmentManagement.Controllers
 
             payment.RefundStatus = "Completed";
             payment.RefundProcessedAt = GetIndiaStandardTime();
+            if (string.IsNullOrWhiteSpace(payment.RefundReferenceId))
+            {
+                payment.RefundReferenceId = $"UNBLK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..25].ToUpper();
+            }
+            payment.UpdatedAt = DateTime.UtcNow;
+
+            _context.SystemNotifications.Add(new SystemNotification
+            {
+                User_id = payment.UserId,
+                Title = "Mandate Amount Unblocked / Refunded",
+                Message = $"₹{payment.UnblockedAmount:N2} has been released and unblocked to your bank account. Refund Ref: {payment.RefundReferenceId}.",
+                Created_at = DateTime.UtcNow,
+                Is_read = false
+            });
             await _context.SaveChangesAsync();
             TempData["AdminMessage"] = $"₹{payment.UnblockedAmount:N2} was marked as unblocked in the simulated workflow.";
             return RedirectToAction(nameof(ApplicationDetails), new { applicationId });
@@ -2631,11 +3462,22 @@ namespace IPOInvestmentManagement.Controllers
             application.Cancellation_admin_id = adminId.Value;
             application.Cancellation_reason = model.Reason.Trim();
             application.Cancellation_date = cancellationDate;
+
+            PaymentRecord? paymentRecord = await _context.PaymentRecords
+                .FirstOrDefaultAsync(record => record.RazorpayOrderId == application.Razorpay_order_id);
+            if (paymentRecord != null)
+            {
+                paymentRecord.UnblockedAmount = application.Payment_amount ?? 0m;
+                paymentRecord.RefundStatus = "Pending Unblock";
+                paymentRecord.RefundReferenceId = $"UNBLK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..25].ToUpper();
+                paymentRecord.UpdatedAt = DateTime.UtcNow;
+            }
+
             _context.SystemNotifications.Add(new SystemNotification
             {
                 User_id = application.User_id,
                 Title = "IPO Application Cancelled & Refund Initiated",
-                Message = $"Your application #{application.Application_id} for {ipo.IPO_name} was cancelled by administrator (Reason: {application.Cancellation_reason}). Full refund of ₹{application.Payment_amount:N2} has been initiated to your UPI ID {application.Upi_id}.",
+                Message = $"Your application #{application.Application_id} for {ipo.IPO_name} was cancelled by administrator (Reason: {application.Cancellation_reason}). Full refund of ₹{application.Payment_amount:N2} has been initiated to your UPI ID {application.Upi_id}. Refund Ref: {paymentRecord?.RefundReferenceId ?? "N/A"}.",
                 Created_at = cancellationDate,
                 Is_read = false
             });
@@ -2666,11 +3508,20 @@ namespace IPOInvestmentManagement.Controllers
 
             try
             {
+                IPOApplication? app = await _context.IPOApplications.AsNoTracking().FirstOrDefaultAsync(a => a.Application_id == applicationId);
+                IPO? ipo = app != null ? await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == app.IPO_id) : null;
+                if (allottedShares <= 0 && allottedLots > 0 && ipo?.Lot_size > 0)
+                {
+                    allottedShares = allottedLots * ipo.Lot_size.Value;
+                }
+
                 string[] statuses = await ProcessAllotmentsAsync(new[]
                 {
                     new AllotmentRequestViewModel
                     {
                         ApplicationId = applicationId,
+                        AppliedLots = app?.Applied_lots ?? 0,
+                        AppliedShares = app?.Applied_shares ?? 0,
                         AllottedLots = allottedLots,
                         AllottedShares = allottedShares,
                         AllotmentPrice = allotmentPrice
@@ -2797,6 +3648,11 @@ namespace IPOInvestmentManagement.Controllers
                         ? application.Applied_shares
                         : request.AllottedShares;
 
+                    if (allottedShares == 0 && allottedLots > 0 && ipo.Lot_size > 0)
+                    {
+                        allottedShares = checked(allottedLots * ipo.Lot_size.Value);
+                    }
+
                     ModelState.Clear();
                     ValidateAllotmentRequest(application, ipo, allottedLots, allottedShares, requested.First(item => item.ApplicationId == application.Application_id).AllotmentPrice);
                     if (!ModelState.IsValid)
@@ -2829,20 +3685,36 @@ namespace IPOInvestmentManagement.Controllers
                     User? investor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(user => user.User_id == application.User_id);
                     if (investor is not null)
                     {
-                        bool successfullyAllotted = string.Equals(application.Status, "Allotted", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(application.Status, "Partially Allotted", StringComparison.OrdinalIgnoreCase);
                         IPOAllotment? allotment = await _context.IPOAllotments
                             .AsNoTracking()
                             .FirstOrDefaultAsync(item => item.Application_id == application.Application_id);
                         int allottedResultShares = allotment?.Allotted_shares ?? 0;
+                        int allottedResultLots = allotment?.Allotted_lots ?? 0;
                         decimal allotmentResultPrice = allotment?.Allotment_price ?? 0m;
+                        decimal debitedAmt = allotment?.Debited_amount ?? (allottedResultShares * allotmentResultPrice);
+                        decimal unblockedAmt = allotment?.Unblocked_amount ?? Math.Max(0m, (application.Application_amount ?? 0m) - debitedAmt);
+                        string adviceNo = allotment?.Advice_number ?? $"CAN-{allotmentDate:yyyyMMdd}-{application.Application_id:D5}";
                         string listingDateStr = ipo.Listing_date.HasValue ? ipo.Listing_date.Value.ToString("dd MMM yyyy") : "To be announced";
-                        string subject = successfullyAllotted
-                            ? $"{ipo.IPO_name} IPO Allotment Successful"
-                            : $"{ipo.IPO_name} IPO Allotment Result: Not Allotted";
-                        string message = successfullyAllotted
-                            ? $"{ipo.IPO_name}: Your IPO application #{application.Application_id} was successfully allotted {allottedResultShares:N0} share(s) at ₹{allotmentResultPrice:N2}. Expected listing date on NSE/BSE: {listingDateStr}. Shares will be credited to Demat account: {application.Demat_account_number}. Please log in to your investor dashboard to view the complete result."
-                            : $"{ipo.IPO_name}: No shares were allotted for your application #{application.Application_id}. The full amount of ₹{application.Payment_amount:N2} will be unblocked/refunded to your UPI account ({application.Upi_id}). Please log in to your investor dashboard to view the result.";
+
+                        string subject;
+                        string message;
+
+                        if (string.Equals(application.Status, "Allotted", StringComparison.OrdinalIgnoreCase))
+                        {
+                            subject = $"{ipo.IPO_name} - Allotment Confirmed (CAN: {adviceNo})";
+                            message = $"Dear {investor.First_name},\n\nCongratulations! Your application #{application.Application_number ?? application.Application_id.ToString()} for {ipo.IPO_name} has received FULL ALLOTMENT.\n\nAllotment Summary:\n- CAN / Advice Reference: {adviceNo}\n- Applied Lots / Shares: {application.Applied_lots} lot(s) / {application.Applied_shares:N0} shares\n- Allotted Lots / Shares: {allottedResultLots} lot(s) / {allottedResultShares:N0} shares\n- Allotment Price: ₹{allotmentResultPrice:N2} per share\n- Total Debited Amount: ₹{debitedAmt:N2}\n- Designated Demat Account: {application.Demat_account_number}\n- Expected Listing Date on NSE/BSE: {listingDateStr}\n\nYou can download your official Allotment Advice (CAN) from your Investor Dashboard.\n\nBest regards,\nIPO Investment Management";
+                        }
+                        else if (string.Equals(application.Status, "Partially Allotted", StringComparison.OrdinalIgnoreCase))
+                        {
+                            subject = $"{ipo.IPO_name} - Partial Allotment Confirmed (CAN: {adviceNo})";
+                            message = $"Dear {investor.First_name},\n\nYour application #{application.Application_number ?? application.Application_id.ToString()} for {ipo.IPO_name} has received PARTIAL ALLOTMENT due to oversubscription.\n\nAllotment & Refund Summary:\n- CAN / Advice Reference: {adviceNo}\n- Applied Lots / Shares: {application.Applied_lots} lot(s) / {application.Applied_shares:N0} shares\n- Allotted Lots / Shares: {allottedResultLots} lot(s) / {allottedResultShares:N0} shares\n- Allotment Price: ₹{allotmentResultPrice:N2} per share\n- Total Debited Amount: ₹{debitedAmt:N2}\n- Unblocked / Refunded Amount: ₹{unblockedAmt:N2}\n- Refund Destination: UPI ID {application.Upi_id}\n- Designated Demat Account: {application.Demat_account_number}\n- Expected Listing Date: {listingDateStr}\n\nYou can download your official Allotment Advice (CAN) from your Investor Dashboard.\n\nBest regards,\nIPO Investment Management";
+                        }
+                        else
+                        {
+                            subject = $"{ipo.IPO_name} - Allotment Result: Not Allotted";
+                            message = $"Dear {investor.First_name},\n\nThank you for bidding in the {ipo.IPO_name} public issue. Due to heavy oversubscription, no shares could be allotted for your application #{application.Application_number ?? application.Application_id.ToString()}.\n\nSettlement Summary:\n- CAN Reference: {adviceNo}\n- Applied Shares: {application.Applied_shares:N0}\n- Allotted Shares: 0\n- Full Refund / Unblock Amount: ₹{unblockedAmt:N2}\n- Mandate Release UPI ID: {application.Upi_id}\n\nThe blocked amount has been released back to your bank account. You can download your official Allotment Advice from your dashboard.\n\nBest regards,\nIPO Investment Management";
+                        }
+
                         await TrySendEventEmailAsync(investor, subject, message);
                     }
                 }
@@ -2915,6 +3787,10 @@ namespace IPOInvestmentManagement.Controllers
                     ? "Allotted"
                     : "Partially Allotted";
 
+            string adviceNumber = $"CAN-{allotmentDate:yyyyMMdd}-{application.Application_id:D5}";
+            decimal debitedAmount = allottedShares * price;
+            decimal unblockedAmount = Math.Max(0m, (application.Application_amount ?? 0m) - debitedAmount);
+
             _context.IPOAllotments.Add(new IPOAllotment
             {
                 Application_id = application.Application_id,
@@ -2923,6 +3799,9 @@ namespace IPOInvestmentManagement.Controllers
                 Allotted_lots = allottedLots,
                 Allotted_shares = allottedShares,
                 Allotment_price = price,
+                Debited_amount = debitedAmount,
+                Unblocked_amount = unblockedAmount,
+                Advice_number = adviceNumber,
                 Status = status,
                 Allotment_date = allotmentDate
             });
@@ -2931,8 +3810,13 @@ namespace IPOInvestmentManagement.Controllers
                 .FirstOrDefaultAsync(record => record.RazorpayOrderId == application.Razorpay_order_id);
             if (paymentRecord is not null)
             {
-                paymentRecord.UnblockedAmount = Math.Max(0m, (application.Application_amount ?? 0m) - (allottedShares * price));
-                paymentRecord.RefundStatus = paymentRecord.UnblockedAmount > 0m ? "Pending Simulation" : "Not Applicable";
+                paymentRecord.UnblockedAmount = unblockedAmount;
+                paymentRecord.RefundStatus = unblockedAmount > 0m ? "Pending Unblock" : "Not Applicable";
+                if (unblockedAmount > 0m && string.IsNullOrWhiteSpace(paymentRecord.RefundReferenceId))
+                {
+                    paymentRecord.RefundReferenceId = $"UNBLK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..25].ToUpper();
+                }
+                paymentRecord.UpdatedAt = DateTime.UtcNow;
             }
 
             if (allottedShares == 0)
@@ -2941,7 +3825,7 @@ namespace IPOInvestmentManagement.Controllers
                 {
                     User_id = application.User_id,
                     Title = $"IPO Allotment Result: {ipo.IPO_name}",
-                    Message = $"{ipo.IPO_name}: No shares were allotted for application #{application.Application_id}. The full amount of ₹{application.Payment_amount:N2} has been unblocked/refunded to your UPI account ({application.Upi_id}).",
+                    Message = $"{ipo.IPO_name}: No shares were allotted for application #{application.Application_number ?? application.Application_id.ToString()}. Full blocked amount of ₹{unblockedAmount:N2} has been unblocked/refunded to your UPI account ({application.Upi_id}). Allotment Advice: {adviceNumber}.",
                     Created_at = allotmentDate,
                     Is_read = false
                 });
@@ -2985,15 +3869,22 @@ namespace IPOInvestmentManagement.Controllers
                 Transaction_type = "ALLOTMENT",
                 Quantity = allottedShares,
                 Price = price,
-                Total_amount = allottedShares * price,
+                Total_amount = debitedAmount,
                 Transaction_date = allotmentDate
             });
             string expectedListing = ipo.Listing_date.HasValue ? ipo.Listing_date.Value.ToString("dd MMM yyyy") : "To be announced";
+            string notifTitle = status == "Allotted"
+                ? $"IPO Allotment Confirmed: {ipo.IPO_name}"
+                : $"IPO Partial Allotment: {ipo.IPO_name}";
+            string notifMessage = status == "Allotted"
+                ? $"{ipo.IPO_name}: Full allotment confirmed! {allottedShares:N0} share(s) ({allottedLots} lot(s)) allotted at ₹{price:N2}. Total debited: ₹{debitedAmount:N2}. Shares credited to Demat: {application.Demat_account_number}. Expected listing date: {expectedListing}. Advice Ref: {adviceNumber}."
+                : $"{ipo.IPO_name}: Partial allotment confirmed. {allottedShares:N0} share(s) ({allottedLots} lot(s)) out of {application.Applied_shares:N0} shares applied were allotted at ₹{price:N2}. Total debited: ₹{debitedAmount:N2}. Balance ₹{unblockedAmount:N2} released back to UPI ({application.Upi_id}). Advice Ref: {adviceNumber}.";
+
             _context.SystemNotifications.Add(new SystemNotification
             {
                 User_id = application.User_id,
-                Title = $"IPO Allotment Confirmed: {ipo.IPO_name}",
-                Message = $"{ipo.IPO_name}: {allottedShares:N0} share(s) allotted at ₹{price:N2} for application #{application.Application_id}. Shares will be credited to Demat: {application.Demat_account_number}. Expected listing date: {expectedListing}.",
+                Title = notifTitle,
+                Message = notifMessage,
                 Created_at = allotmentDate,
                 Is_read = false
             });
@@ -3744,6 +4635,47 @@ namespace IPOInvestmentManagement.Controllers
                     ? (investment.Current_price.Value * investment.Quantity) -
                       (investment.Investment_amount ?? ((investment.Buy_price ?? 0m) * investment.Quantity))
                     : 0m);
+
+            // Calculate Today's Profit / Loss
+            decimal todayProfitLoss = 0m;
+            decimal prevDayBasis = 0m;
+            foreach (var holding in portfolio.Holdings)
+            {
+                var marketRow = model.Market.Listings.FirstOrDefault(row => row.IpoId == holding.IpoId);
+                decimal priceChange = 0m;
+                if (marketRow?.PriceChange.HasValue == true)
+                {
+                    priceChange = marketRow.PriceChange.Value;
+                }
+                else if (marketRow?.PreviousClose.HasValue == true && marketRow.PreviousClose.Value > 0)
+                {
+                    priceChange = holding.CurrentPrice - marketRow.PreviousClose.Value;
+                }
+                else
+                {
+                    priceChange = holding.CurrentPrice - holding.AverageBuyPrice;
+                }
+
+                todayProfitLoss += holding.Quantity * priceChange;
+                decimal prevHoldingVal = (holding.CurrentPrice - priceChange) * holding.Quantity;
+                prevDayBasis += prevHoldingVal > 0 ? prevHoldingVal : holding.InvestedAmount;
+            }
+
+            DateTime todayIst = indiaNow.Date;
+            var todaySales = portfolio.Transactions
+                .Where(t => t.TransactionDate.Date == todayIst && string.Equals(t.TransactionType, "SELL", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            foreach (var sale in todaySales)
+            {
+                var holding = portfolio.Holdings.FirstOrDefault(h => h.IpoName == sale.IpoName);
+                decimal avgBuy = holding?.AverageBuyPrice ?? sale.Price;
+                todayProfitLoss += sale.Quantity * (sale.Price - avgBuy);
+            }
+
+            model.TodayProfitLoss = todayProfitLoss;
+            model.TodayProfitLossPercentage = prevDayBasis > 0
+                ? Math.Round((todayProfitLoss / prevDayBasis) * 100m, 2)
+                : (model.InvestmentTotal > 0 ? Math.Round((todayProfitLoss / model.InvestmentTotal) * 100m, 2) : 0m);
             int[] investmentIpoIds = investorInvestments.Select(investment => investment.IPO_id).Distinct().ToArray();
             model.InvestmentIpoNames = await _context.IPOs
                 .AsNoTracking()
@@ -3763,6 +4695,22 @@ namespace IPOInvestmentManagement.Controllers
                 .AsNoTracking()
                 .Where(allotment => model.RecentApplications.Select(application => application.Application_id).Contains(allotment.Application_id))
                 .ToDictionaryAsync(allotment => allotment.Application_id);
+
+            List<string> appOrderIds = model.RecentApplications
+                .Where(a => !string.IsNullOrEmpty(a.Razorpay_order_id))
+                .Select(a => a.Razorpay_order_id!)
+                .Distinct()
+                .ToList();
+            if (appOrderIds.Count > 0)
+            {
+                var payments = await _context.PaymentRecords
+                    .AsNoTracking()
+                    .Where(p => appOrderIds.Contains(p.RazorpayOrderId))
+                    .ToListAsync();
+                model.ApplicationPayments = payments
+                    .GroupBy(p => p.RazorpayOrderId, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            }
             List<IPO> publishedIpos = await _context.IPOs
                 .AsNoTracking()
                 .Where(ipo => ipo.Status == "Approved" || ipo.Status == "Published" || ipo.Status == "Upcoming" || ipo.Status == "Open" || ipo.Status == "Listed" || ipo.Status == "Closed")
@@ -4267,6 +5215,69 @@ namespace IPOInvestmentManagement.Controllers
             model.ClosedIpoCount = model.AllAdminIpos.Count(i => i.EffectiveStatus == "Closed");
             model.ListedIpoCount = model.AllAdminIpos.Count(i => i.EffectiveStatus == "Listed");
             model.ActiveIpoCount = model.OpenIpoCount;
+
+            // Populate Admin Payment Management data
+            List<PaymentRecord> adminPayments = await _context.PaymentRecords
+                .AsNoTracking()
+                .OrderByDescending(record => record.CreatedAt)
+                .ToListAsync();
+
+            model.AdminPayments = adminPayments;
+
+            int[] paymentUserIds = adminPayments.Select(p => p.UserId).Distinct().ToArray();
+            int[] paymentIpoIds = adminPayments.Select(p => p.IpoId).Distinct().ToArray();
+            string[] paymentOrderIds = adminPayments.Select(p => p.RazorpayOrderId).Where(o => !string.IsNullOrEmpty(o)).Distinct().ToArray();
+
+            var paymentUsers = await _context.Users
+                .AsNoTracking()
+                .Where(u => paymentUserIds.Contains(u.User_id))
+                .Select(u => new { u.User_id, FullName = (u.First_name + " " + u.Last_name).Trim(), u.Email, u.DematAccountNumber, u.UpiId })
+                .ToListAsync();
+
+            model.PaymentUserNames = paymentUsers.ToDictionary(u => u.User_id, u => u.FullName);
+            model.PaymentUserEmails = paymentUsers.ToDictionary(u => u.User_id, u => u.Email ?? "N/A");
+            model.PaymentUserDemats = paymentUsers.ToDictionary(u => u.User_id, u => u.DematAccountNumber ?? "N/A");
+            model.PaymentUserUpis = paymentUsers.ToDictionary(u => u.User_id, u => u.UpiId ?? "N/A");
+
+            var paymentIpos = await _context.IPOs
+                .AsNoTracking()
+                .Where(i => paymentIpoIds.Contains(i.IPO_id))
+                .Select(i => new { i.IPO_id, i.IPO_name })
+                .ToListAsync();
+
+            foreach (var ipo in paymentIpos)
+            {
+                model.PaymentIpoNames[ipo.IPO_id] = ipo.IPO_name;
+            }
+
+            var paymentApps = await _context.IPOApplications
+                .AsNoTracking()
+                .Where(a => paymentOrderIds.Contains(a.Razorpay_order_id))
+                .Select(a => new { a.Application_id, a.Razorpay_order_id, a.Application_number })
+                .ToListAsync();
+
+            foreach (var app in paymentApps)
+            {
+                if (!string.IsNullOrEmpty(app.Razorpay_order_id))
+                {
+                    model.PaymentApplicationIds[app.Razorpay_order_id] = app.Application_id;
+                }
+                if (!string.IsNullOrEmpty(app.Application_number))
+                {
+                    model.PaymentApplicationIds[app.Application_number] = app.Application_id;
+                }
+            }
+
+            model.SuccessfulPaymentCount = adminPayments.Count(p => p.Status == "Captured" || p.Status == "Verified");
+            model.FailedPaymentCount = adminPayments.Count(p => p.Status == "Failed");
+            model.PendingPaymentCount = adminPayments.Count(p => p.Status == "Created" || p.Status == "Pending");
+            model.RefundedPaymentCount = adminPayments.Count(p => p.RefundStatus == "Completed" || p.RefundStatus == "Pending Unblock" || p.UnblockedAmount > 0m || p.Status == "Refunded");
+
+            model.SuccessfulPaymentAmount = adminPayments.Where(p => p.Status == "Captured" || p.Status == "Verified").Sum(p => p.Amount);
+            model.FailedPaymentAmount = adminPayments.Where(p => p.Status == "Failed").Sum(p => p.Amount);
+            model.PendingPaymentAmount = adminPayments.Where(p => p.Status == "Created" || p.Status == "Pending").Sum(p => p.Amount);
+            model.RefundedPaymentAmount = adminPayments.Sum(p => p.UnblockedAmount > 0m ? p.UnblockedAmount : (p.RefundStatus == "Completed" ? p.Amount : 0m));
+            model.TotalPaymentVolume = adminPayments.Sum(p => p.Amount);
 
             await LoadMarketDataAsync(model);
         }

@@ -24,5 +24,14 @@ namespace IPOInvestmentManagement.Models
         public string Status { get; set; } = "Not Allotted";
 
         public DateTime Allotment_date { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal Debited_amount { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal Unblocked_amount { get; set; }
+
+        [StringLength(50)]
+        public string? Advice_number { get; set; }
     }
 }

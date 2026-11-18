@@ -51,6 +51,14 @@ namespace IPOInvestmentManagement.Models
         [StringLength(20)]
         public string? Payment_status { get; set; }
 
+        [StringLength(40)]
+        public string? Payment_mode { get; set; }
+
+        public bool? Is_simulated_payment { get; set; }
+
+        [StringLength(40)]
+        public string? Receipt_number { get; set; }
+
         public DateTime Application_date { get; set; }
 
         [StringLength(30)]

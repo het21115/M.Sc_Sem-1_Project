@@ -193,13 +193,49 @@
                     }
                 </div>
 
-                <div class="company-request-actions admin-detail-actions mt-4">
-                    <form asp-controller="Dashboard" asp-action="ConfirmAutomaticAllotment" method="post" onsubmit="return confirm('Confirm and save all calculated category-wise allotments for this IPO? Allotments and investment holdings will be permanently committed.');">
-                        @Html.AntiForgeryToken()
-                        <input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" />
-                        <button class="btn btn-primary px-4 py-2" type="submit">Confirm automatic allotment</button>
-                        <a class="btn btn-outline-secondary px-3 py-2" asp-controller="Dashboard" asp-action="Applications" asp-route-ipoId="@Model.Ipo.IPO_id">Cancel</a>
-                    </form>
+                <!-- Final Allotment Confirmation Settlement Card -->
+                <div class="card border-0 shadow-sm mt-4 p-4" style="border-radius: 12px; background: linear-gradient(135deg, #f8fafc, #edf2f7); border-left: 5px solid #0d6efd !important;">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+                        <div>
+                            <span class="badge bg-primary text-uppercase px-2 py-1 mb-1">Final Allotment Confirmation</span>
+                            <h3 class="h5 mb-1 text-navy fw-bold">Ready to Confirm &amp; Publish Final Allotment?</h3>
+                            <p class="text-muted small mb-0">Review the final accounting totals below. Confirming will permanently record allotments, generate official Allotment Advice (CAN) documents, credit Demat portfolios, dispatch investor email &amp; in-app notifications, and initiate bank mandate unblocking.</p>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 py-2 border-top border-bottom my-2 small">
+                        <div class="col-md-3">
+                            <span class="text-muted d-block">Eligible Applications:</span>
+                            <strong class="fs-6">@Model.Rows.Count</strong>
+                        </div>
+                        <div class="col-md-3">
+                            <span class="text-muted d-block">Allotment Distribution:</span>
+                            <span class="badge bg-success">@Model.Rows.Count(r => r.Result == "Full allotment") Full</span>
+                            <span class="badge bg-primary">@Model.Rows.Count(r => r.Result == "Partial allotment") Partial</span>
+                            <span class="badge bg-secondary">@Model.Rows.Count(r => r.Result == "Not allotted") Unallotted</span>
+                        </div>
+                        <div class="col-md-3">
+                            <span class="text-muted d-block">Capital to Debit:</span>
+                            <strong class="fs-6 text-success">₹@Model.Rows.Sum(r => r.AllocatedAmount).ToString("N2")</strong>
+                        </div>
+                        <div class="col-md-3">
+                            <span class="text-muted d-block">Mandate Funds to Unblock / Refund:</span>
+                            <strong class="fs-6 text-warning">₹@Model.Rows.Sum(r => r.UnblockedAmount).ToString("N2")</strong>
+                        </div>
+                    </div>
+
+                    <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+                        <form asp-controller="Dashboard" asp-action="ConfirmAutomaticAllotment" method="post" onsubmit="return confirm('CONFIRM FINAL ALLOTMENT FOR @Model.Ipo.IPO_name?\n\n• @Model.Rows.Count(r => r.Result == "Full allotment") Full Allotments\n• @Model.Rows.Count(r => r.Result == "Partial allotment") Partial Allotments\n• @Model.Rows.Count(r => r.Result == "Not allotted") Non-Allotted\n• ₹@Model.Rows.Sum(r => r.AllocatedAmount).ToString("N2") to debit\n• ₹@Model.Rows.Sum(r => r.UnblockedAmount).ToString("N2") to unblock/refund\n\nAllotment results and CAN advice will be permanently locked and notifications dispatched to all applicants.');">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" />
+                            <button class="btn btn-success px-4 py-2 fw-bold" type="submit">
+                                &#10004; Confirm Final Allotment &amp; Publish Results
+                            </button>
+                        </form>
+                        <a class="btn btn-outline-secondary px-3 py-2" asp-controller="Dashboard" asp-action="Applications" asp-route-ipoId="@Model.Ipo.IPO_id">
+                            Cancel &amp; Return
+                        </a>
+                    </div>
                 </div>
             }
         </section>

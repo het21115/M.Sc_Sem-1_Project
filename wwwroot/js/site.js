@@ -88,17 +88,37 @@ function attachInvestorWatchlistButtons() {
 	});
 }
 
+function updateTimeGreetings() {
+	const now = new Date();
+	const hour = now.getHours();
+	let greeting = "Good evening";
+	if (hour >= 5 && hour < 12) {
+		greeting = "Good morning";
+	} else if (hour >= 12 && hour < 17) {
+		greeting = "Good afternoon";
+	}
+
+	document.querySelectorAll("[data-time-greeting]").forEach(function (el) {
+		el.textContent = greeting;
+	});
+}
+
 if (document.readyState === "loading") {
 	document.addEventListener("DOMContentLoaded", function () {
 		attachInvestorApplyButtons();
 		attachInvestorWatchlistButtons();
 		initModalMarketSearch();
+		updateTimeGreetings();
 	});
 } else {
 	attachInvestorApplyButtons();
 	attachInvestorWatchlistButtons();
 	initModalMarketSearch();
+	updateTimeGreetings();
 }
+
+window.addEventListener("focus", updateTimeGreetings);
+setInterval(updateTimeGreetings, 60000);
 
 function initModalMarketSearch() {
 	const modal = document.getElementById("search-ipo-modal");
@@ -212,5 +232,39 @@ function updateInvestorBidForm(form) {
 document.addEventListener("input", function (event) {
 	const bidForm = event.target.closest(".investor-bid-form");
 	if (bidForm) updateInvestorBidForm(bidForm);
+});
 
+document.addEventListener("submit", function (event) {
+	const bidForm = event.target.closest(".investor-bid-form");
+	if (!bidForm) return;
+
+	if (bidForm.dataset.canApply === "false") {
+		event.preventDefault();
+		alert("IPO applications are only accepted between 10:00 AM and 05:00 PM IST during the market period (Monday to Friday).");
+		return false;
+	}
+
+	// Compute current Indian Standard Time (IST: UTC + 5:30)
+	const now = new Date();
+	const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+	const istDate = new Date(utcMs + (5.5 * 3600000));
+	const dayOfWeek = istDate.getDay(); // 0 = Sunday, 6 = Saturday
+	const minutes = istDate.getHours() * 60 + istDate.getMinutes();
+
+	if (dayOfWeek === 0 || dayOfWeek === 6) {
+		event.preventDefault();
+		alert("IPO applications are only accepted during the market period (Monday to Friday, 10:00 AM to 05:00 PM IST). Bidding is closed on weekends.");
+		return false;
+	}
+
+	if (minutes < 600) {
+		event.preventDefault();
+		alert("IPO bidding for today opens at 10:00 AM IST. Applications are accepted Monday to Friday between 10:00 AM and 05:00 PM IST.");
+		return false;
+	}
+	if (minutes >= 1020) {
+		event.preventDefault();
+		alert("IPO bidding for today closed at 05:00 PM IST. Applications are accepted Monday to Friday between 10:00 AM and 05:00 PM IST.");
+		return false;
+	}
 });

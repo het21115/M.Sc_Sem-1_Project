@@ -22,6 +22,11 @@ namespace IPOInvestmentManagement.Services
 
         public async Task<bool> IsMarketOpenAsync(DateTime now, CancellationToken cancellationToken = default)
         {
+            if (configuration.GetValue<bool>("MarketTrading:AlwaysOpen", false))
+            {
+                return true;
+            }
+
             if (!await IsTradingDayAsync(now, cancellationToken))
             {
                 return false;

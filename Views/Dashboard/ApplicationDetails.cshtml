@@ -28,13 +28,45 @@
                 <div><span>Application amount</span><strong>₹@((Model.Application.Application_amount ?? 0m).ToString("N2"))</strong></div>
                 <div><span>UPI ID</span><strong>@(upiId ?? "Not recorded")</strong></div>
                 <div><span>Payment status</span><strong>@(Model.Application.Payment_status ?? "Not recorded")</strong></div>
-                <div><span>Razorpay order ID</span><strong>@(Model.Application.Razorpay_order_id ?? "Not recorded")</strong></div>
-                <div><span>Razorpay payment ID</span><strong>@(Model.Application.Razorpay_payment_id ?? Model.Application.Payment_reference ?? "Not recorded")</strong></div>
+                <div>
+                    <span>Payment workflow</span>
+                    <strong>
+                        @if (Model.Payment?.IsSimulated ?? Model.Application.Is_simulated_payment ?? true)
+                        {
+                            <span class="badge bg-warning text-dark">🧪 Simulated ASBA Mandate</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success">💳 Genuine Gateway</span>
+                        }
+                    </strong>
+                </div>
+                <div><span>Razorpay order ID</span><strong class="font-monospace small">@(Model.Application.Razorpay_order_id ?? "Not recorded")</strong></div>
+                <div><span>Transaction ID</span><strong class="font-monospace text-primary">@(Model.Application.Razorpay_payment_id ?? Model.Application.Payment_reference ?? "Not recorded")</strong></div>
+                <div>
+                    <span>Payment receipt</span>
+                    <strong>
+                        @if (Model.Payment != null)
+                        {
+                            <a class="btn btn-sm btn-outline-primary py-0 px-2 font-monospace" asp-controller="Dashboard" asp-action="PaymentReceipt" asp-route-paymentRecordId="@Model.Payment.PaymentRecordId" target="_blank">
+                                📄 @(Model.Payment.ReceiptNumber ?? "View Receipt")
+                            </a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">No receipt generated</span>
+                        }
+                    </strong>
+                </div>
                 <div><span>Payment amount</span><strong>₹@((Model.Application.Payment_amount ?? 0m).ToString("N2"))</strong></div>
                 <div><span>Refund / unblock</span><strong>@(Model.Payment?.RefundStatus ?? "Not applicable")</strong></div>
                 @if (Model.Payment?.UnblockedAmount > 0)
                 {
                     <div><span>Amount to unblock</span><strong>₹@Model.Payment.UnblockedAmount.ToString("N2")</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.Payment?.RefundReferenceId))
+                {
+                    <div><span>Refund Ref ID</span><strong class="font-monospace">@Model.Payment.RefundReferenceId</strong></div>
                 }
                 @if (application.Cancellation_date.HasValue)
                 {
@@ -44,12 +76,26 @@
                 }
                 @if (allotment is not null)
                 {
-                    <div><span>Allotment status</span><strong>@allotment.Status</strong></div>
+                    <div><span>Allotment status</span><strong class="@(allotment.Status == "Allotted" ? "text-success" : allotment.Status == "Partially Allotted" ? "text-primary" : "text-danger")">@allotment.Status</strong></div>
                     <div><span>Allotted lots</span><strong>@allotment.Allotted_lots.ToString("N0")</strong></div>
                     <div><span>Allotted shares</span><strong>@allotment.Allotted_shares.ToString("N0")</strong></div>
                     <div><span>Allotment price</span><strong>₹@allotment.Allotment_price.ToString("N2")</strong></div>
+                    <div><span>Debited amount</span><strong>₹@allotment.Debited_amount.ToString("N2")</strong></div>
+                    <div><span>Unblocked / refund</span><strong>₹@allotment.Unblocked_amount.ToString("N2")</strong></div>
+                    <div><span>CAN / Advice Ref</span><strong class="font-monospace text-primary">@(allotment.Advice_number ?? "Generated")</strong></div>
                 }
             </div>
+            @if (allotment is not null)
+            {
+                <div class="d-flex flex-wrap gap-2 mb-3 mt-3">
+                    <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="AllotmentAdvice" asp-route-applicationId="@application.Application_id">
+                        &#128196; View Official Allotment Advice (CAN)
+                    </a>
+                    <a class="btn btn-outline-success" asp-controller="Dashboard" asp-action="DownloadAllotmentAdvicePdf" asp-route-applicationId="@application.Application_id" target="_blank">
+                        &#128190; Download Allotment Advice PDF
+                    </a>
+                </div>
+            }
             @if (Model.Payment?.UnblockedAmount > 0 && Model.Payment.RefundStatus != "Completed")
             {
                 <form asp-controller="Dashboard" asp-action="SimulateUnblock" method="post" class="mb-3">
@@ -81,17 +127,95 @@
                     bool hasAllotmentDate = ipo.Allotment_date.HasValue;
                     bool isAllotmentDateReached = hasAllotmentDate && todayIst >= ipo.Allotment_date!.Value.Date;
                     bool canProcessAllotment = isClosed && isAllotmentDateReached;
+                    int lotSize = ipo.Lot_size ?? 1;
+                    decimal defaultPrice = (application.Application_amount ?? 0m) / (application.Applied_shares > 0 ? application.Applied_shares : 1);
+                    if (defaultPrice <= 0m) { defaultPrice = ipo.Price_max ?? ipo.Price_min ?? 0m; }
                 }
                 @if (allotment is null && canProcessAllotment && string.Equals(application.Status, "Submitted", StringComparison.OrdinalIgnoreCase) && string.Equals(application.Payment_status, "Verified", StringComparison.OrdinalIgnoreCase))
                 {
-                    <form asp-controller="Dashboard" asp-action="PreviewAllotment" method="get" class="admin-allotment-form">
-                        @Html.AntiForgeryToken()
+                    <form asp-controller="Dashboard" asp-action="PreviewAllotment" method="get" class="admin-allotment-form p-3 border rounded bg-light">
+                        <div class="fw-bold mb-2 text-navy">&#9881; Process Allotment (Automatic Calculation Enabled)</div>
                         <input type="hidden" name="applicationId" value="@application.Application_id" />
-                        <label>Allotted lots<input type="number" name="allottedLots" min="0" max="@application.Applied_lots" value="@application.Applied_lots" required /></label>
-                        <label>Allotted shares<input type="number" name="allottedShares" min="0" max="@application.Applied_shares" value="@application.Applied_shares" required /></label>
-                        <label>Allotment price <small>(optional)</small><input type="number" name="allotmentPrice" min="0" step="0.01" placeholder="Application price" /></label>
-                        <button class="btn btn-primary" type="submit">Preview allotment</button>
+                        <label>
+                            Allotted lots (0 to @application.Applied_lots):
+                            <input type="number" id="manual-allotted-lots" name="allottedLots" min="0" max="@application.Applied_lots" value="@application.Applied_lots" required />
+                        </label>
+                        <label>
+                            Allotted shares (Auto-calculated: Lots &times; @lotSize):
+                            <input type="number" id="manual-allotted-shares" name="allottedShares" min="0" max="@application.Applied_shares" value="@application.Applied_shares" required />
+                        </label>
+                        <label>
+                            Allotment price:
+                            <input type="number" id="manual-allotment-price" name="allotmentPrice" min="@(ipo.Price_min ?? 0)" max="@(ipo.Price_max ?? decimal.MaxValue)" step="0.01" value="@defaultPrice.ToString("F2")" />
+                        </label>
+                        
+                        <!-- Real-time calculation summary -->
+                        <div class="p-2 my-2 bg-white border rounded small">
+                            <div class="d-flex justify-content-between">
+                                <span class="text-muted">Calculated Allotment Status:</span>
+                                <strong id="calc-status" class="text-success">Full Allotment</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span class="text-muted">Amount to Debit:</span>
+                                <strong id="calc-debited">₹@((application.Applied_shares * defaultPrice).ToString("N2"))</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span class="text-muted">Amount to Unblock / Refund:</span>
+                                <strong id="calc-unblocked" class="text-warning">₹0.00</strong>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary mt-2" type="submit">Preview Allotment</button>
                     </form>
+
+                    <script>
+                        (function() {
+                            var lotSize = @lotSize;
+                            var maxLots = @application.Applied_lots;
+                            var blockedAmount = @(application.Application_amount ?? (application.Applied_shares * defaultPrice));
+                            var lotsInput = document.getElementById('manual-allotted-lots');
+                            var sharesInput = document.getElementById('manual-allotted-shares');
+                            var priceInput = document.getElementById('manual-allotment-price');
+                            var statusEl = document.getElementById('calc-status');
+                            var debitedEl = document.getElementById('calc-debited');
+                            var unblockedEl = document.getElementById('calc-unblocked');
+
+                            function updateCalculations() {
+                                var lots = parseInt(lotsInput.value, 10);
+                                if (isNaN(lots) || lots < 0) lots = 0;
+                                if (lots > maxLots) lots = maxLots;
+                                
+                                // Auto-calculate shares from lots
+                                var shares = lots * lotSize;
+                                sharesInput.value = shares;
+
+                                var price = parseFloat(priceInput.value);
+                                if (isNaN(price) || price < 0) price = 0;
+
+                                var debited = shares * price;
+                                var unblocked = Math.max(0, blockedAmount - debited);
+
+                                if (lots === 0) {
+                                    statusEl.textContent = "Not Allotted (100% Refund)";
+                                    statusEl.className = "text-danger";
+                                } else if (lots === maxLots) {
+                                    statusEl.textContent = "Full Allotment";
+                                    statusEl.className = "text-success";
+                                } else {
+                                    statusEl.textContent = "Partial Allotment (" + lots + "/" + maxLots + " lots)";
+                                    statusEl.className = "text-primary";
+                                }
+
+                                debitedEl.textContent = "₹" + debited.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                unblockedEl.textContent = "₹" + unblocked.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            }
+
+                            if (lotsInput && sharesInput && priceInput) {
+                                lotsInput.addEventListener('input', updateCalculations);
+                                priceInput.addEventListener('input', updateCalculations);
+                            }
+                        })();
+                    </script>
                 }
                 else if (allotment is null && !canProcessAllotment && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
                 {

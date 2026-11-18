@@ -9,13 +9,13 @@
                         <span class="ticker-pulse" style="@(Model.Market.IsMarketOpen ? "" : "background:#ef4444; box-shadow:0 0 6px #ef4444;")"></span>
                         Live NSE · BSE Market Terminal
                     </h2>
-                    <small class="text-muted" id="live-market-modal-subtitle">
+                    <small id="live-market-modal-subtitle" style="color:#cbd5e1 !important; font-size:0.8rem;">
                         @(Model.Market.IsMarketOpen 
                             ? "Active Market Session (09:30 AM – 03:30 PM IST) • Streaming real-time quotes" 
                             : "Market Session Closed • Official Trading Hours: Monday – Friday, 09:30 AM to 03:30 PM IST")
                     </small>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="live-market-modal-body">
                 @if (!Model.Market.IsMarketOpen)
@@ -25,7 +25,7 @@
                             <span class="ticker-pulse" style="width:10px; height:10px; background:#ef4444; box-shadow:0 0 8px rgba(239, 68, 68, 0.5);"></span>
                             <div>
                                 <strong class="text-danger" style="font-size:0.9rem;">MARKET SESSION CLOSED (09:30 AM – 03:30 PM IST)</strong>
-                                <div class="text-muted" style="font-size:0.75rem;">Showing official closing prices. Interactive live charts, technicals, and details remain active. Orders execute during active market hours.</div>
+                                <div style="font-size:0.75rem; color:#cbd5e1 !important;">Showing official closing prices. Interactive live charts, technicals, and details remain active. Orders execute during active market hours.</div>
                             </div>
                         </div>
                         <span class="badge bg-secondary px-2 py-1" style="font-size:0.75rem;">Session: Closed</span>
@@ -38,7 +38,7 @@
                             <span class="ticker-pulse" style="width:10px; height:10px; background:#10b981;"></span>
                             <div>
                                 <strong class="text-success" style="font-size:0.9rem;">LIVE TRADING SESSION ACTIVE</strong>
-                                <div class="text-muted" style="font-size:0.75rem;">Official Hours: 09:30 AM &ndash; 03:30 PM IST &middot; Real-Time Dual-Exchange Quotes (NSE &amp; BSE)</div>
+                                <div style="font-size:0.75rem; color:#cbd5e1 !important;">Official Hours: 09:30 AM &ndash; 03:30 PM IST &middot; Real-Time Dual-Exchange Quotes (NSE &amp; BSE)</div>
                             </div>
                         </div>
                         <div class="d-flex align-items-center gap-2">
@@ -106,7 +106,7 @@
                                                     <span class="ticker-pulse" style="width:6px; height:6px;"></span>
                                                     <div>
                                                         <strong class="text-white">@row.StockSymbol</strong>
-                                                        <div class="text-muted small" style="font-size:0.75rem;">@row.CompanyName &middot; @row.IpoName</div>
+                                                        <div class="company-subtext small" style="font-size:0.75rem; color:#94a3b8 !important;">@row.CompanyName &middot; @row.IpoName</div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -128,10 +128,10 @@
                                                     @(bseChg >= 0 ? "+" : "")₹@bseChg.ToString("N2") (@(bsePct >= 0 ? "+" : "")@bsePct.ToString("F2")%)
                                                 </span>
                                             </td>
-                                            <td class="text-muted small" data-live-highlow="@row.IpoId">
+                                            <td class="small" data-live-highlow="@row.IpoId" style="color:#e2e8f0 !important; font-weight:500;">
                                                 ₹@(row.DayHigh?.ToString("N2") ?? "-") / ₹@(row.DayLow?.ToString("N2") ?? "-")
                                             </td>
-                                            <td class="text-muted small" data-live-volume="@row.IpoId">
+                                            <td class="small" data-live-volume="@row.IpoId" style="color:#e2e8f0 !important; font-weight:500;">
                                                 @((row.Volume ?? 0).ToString("N0"))
                                             </td>
                                             <td>
@@ -146,7 +146,7 @@
                                                             title="Instant Simulated Buy">
                                                         Buy
                                                     </button>
-                                                    <a class="btn btn-sm btn-outline-secondary" asp-controller="Dashboard" asp-action="MarketDetails" asp-route-ipoId="@row.IpoId">
+                                                    <a class="btn btn-sm btn-outline-light" style="border-color:#475569; color:#e2e8f0;" asp-controller="Dashboard" asp-action="MarketDetails" asp-route-ipoId="@row.IpoId">
                                                         Details
                                                     </a>
                                                 </div>
@@ -162,11 +162,11 @@
             <div class="modal-footer d-flex justify-content-between">
                 <div class="d-flex align-items-center gap-2">
                     <span class="market-stream-indicator @(Model.Market.IsMarketOpen ? "online" : "offline")"></span>
-                    <small class="text-muted market-stream-label">
+                    <small class="market-stream-label" style="color:#cbd5e1 !important; font-weight:500;">
                         @(Model.Market.IsMarketOpen ? "● LIVE FEED CONNECTED (NSE & BSE)" : "○ MARKET CLOSED (09:30 - 15:30 IST)")
                     </small>
                 </div>
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-outline-light" style="border-color:#475569; color:#e2e8f0;" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -335,7 +335,7 @@
                 <div class="stock-tab-content hidden" id="tab-content-technicals">
                     <div class="technicals-card p-3">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <span class="text-muted small">Technical Trend Summary</span>
+                            <span class="small" style="color:#cbd5e1 !important; font-weight:600;">Technical Trend Summary</span>
                             <span class="badge bg-success" id="tech-summary-badge">BULLISH</span>
                         </div>
                         <div class="row g-3">

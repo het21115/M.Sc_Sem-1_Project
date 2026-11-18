@@ -421,6 +421,83 @@ namespace IPOInvestmentManagement.Services
 
             return builder.Build();
         }
+
+        public async Task<byte[]> GenerateAllotmentAdvicePdfAsync(int applicationId, CancellationToken cancellationToken = default)
+        {
+            IPOApplication? app = await _context.IPOApplications.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Application_id == applicationId, cancellationToken);
+            if (app == null) throw new InvalidOperationException("IPO Application not found.");
+
+            User? user = await _context.Users.AsNoTracking()
+                .FirstOrDefaultAsync(u => u.User_id == app.User_id, cancellationToken);
+            if (user == null) throw new InvalidOperationException("Investor not found.");
+
+            IPO? ipo = await _context.IPOs.AsNoTracking()
+                .FirstOrDefaultAsync(i => i.IPO_id == app.IPO_id, cancellationToken);
+            if (ipo == null) throw new InvalidOperationException("IPO issue not found.");
+
+            IPOAllotment? allotment = await _context.IPOAllotments.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Application_id == applicationId, cancellationToken);
+
+            PaymentRecord? payment = await _context.PaymentRecords.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.RazorpayOrderId == app.Razorpay_order_id, cancellationToken);
+
+            int appliedShares = app.Applied_shares;
+            int appliedLots = app.Applied_lots;
+            int allottedShares = allotment?.Allotted_shares ?? 0;
+            int allottedLots = allotment?.Allotted_lots ?? 0;
+            decimal price = allotment != null && allotment.Allotment_price > 0 ? allotment.Allotment_price : (app.Bid_price ?? 0m);
+            decimal blockedAmount = app.Application_amount ?? (appliedShares * (app.Bid_price ?? 0m));
+            decimal debitedAmount = allottedShares * price;
+            decimal unblockedAmount = Math.Max(0m, blockedAmount - debitedAmount);
+            string resultStatus = allotment?.Status ?? (string.Equals(app.Status, "Submitted", StringComparison.OrdinalIgnoreCase) ? "Awaiting Allotment" : app.Status ?? "Pending");
+
+            string adviceNo = allotment?.Advice_number ?? $"CAN-{DateTime.UtcNow:yyyyMMdd}-{app.Application_id:D5}";
+
+            var builder = new PdfReportBuilder("CONFIRMATION OF ALLOCATION NOTE (CAN)", "Official Allotment Advice & Mandate Settlement Statement");
+            builder.SetInvestor(user);
+
+            float statusR = allottedShares > 0 ? (allottedShares == appliedShares ? 0.15f : 0.08f) : 0.85f;
+            float statusG = allottedShares > 0 ? (allottedShares == appliedShares ? 0.55f : 0.39f) : 0.35f;
+            float statusB = allottedShares > 0 ? (allottedShares == appliedShares ? 0.25f : 0.75f) : 0.15f;
+
+            builder.AddMetricCard("RESULT STATUS", resultStatus.ToUpperInvariant(), $"CAN Ref: {adviceNo}", statusR, statusG, statusB);
+            builder.AddMetricCard("ALLOTTED SHARES", $"{allottedShares:N0} Shares", $"{allottedLots} Lot(s) Allotted", 0.15f, 0.55f, 0.25f);
+            builder.AddMetricCard("DEBITED AMOUNT", $"INR {debitedAmount:N2}", $"Cut-off Price: INR {price:N2}", 0.28f, 0.32f, 0.38f);
+            builder.AddMetricCard("UNBLOCKED AMOUNT", $"INR {unblockedAmount:N2}", $"Refund Status: {payment?.RefundStatus ?? "Processed"}", 0.08f, 0.39f, 0.75f);
+
+            var columns = new List<PdfTableColumn>
+            {
+                new("Allocation Parameter", 240f, PdfTextAlign.Left),
+                new("Particulars / Value", 260f, PdfTextAlign.Left)
+            };
+
+            var rows = new List<List<string>>
+            {
+                new() { "Advice (CAN) Reference Number", adviceNo },
+                new() { "IPO Security Name", ipo.IPO_name },
+                new() { "Application Number", app.Application_number ?? $"#APP-{app.Application_id}" },
+                new() { "Application Date", app.Application_date.ToString("dd MMM yyyy, hh:mm tt") },
+                new() { "Allotment Date", allotment?.Allotment_date.ToString("dd MMM yyyy") ?? ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "Pending" },
+                new() { "Demat Account (DP / Client ID)", app.Demat_account_number ?? user.DematAccountNumber ?? "N/A" },
+                new() { "UPI ID (VPA)", app.Upi_id ?? user.UpiId ?? "N/A" },
+                new() { "Investor Bidding Category", blockedAmount <= 200000m ? "Retail Individual Investor (RII)" : (blockedAmount <= 1000000m ? "Non-Institutional Investor (NII/HNI)" : "Qualified Institutional Buyer (QIB)") },
+                new() { "Bid Lots / Shares Applied", $"{appliedLots} lot(s) / {appliedShares:N0} equity share(s)" },
+                new() { "Lots / Shares Allotted", $"{allottedLots} lot(s) / {allottedShares:N0} equity share(s)" },
+                new() { "Issue / Cut-off Price per Share", $"INR {price:N2}" },
+                new() { "Application Amount Blocked (ASBA)", $"INR {blockedAmount:N2}" },
+                new() { "Total Amount Adjusted / Debited", $"INR {debitedAmount:N2}" },
+                new() { "Total Amount Unblocked / Refunded", $"INR {unblockedAmount:N2}" },
+                new() { "Refund / Mandate Release Ref", payment?.RefundReferenceId ?? "N/A" },
+                new() { "Expected Listing Date on NSE/BSE", ipo.Listing_date?.ToString("dd MMM yyyy") ?? "To be notified" },
+                new() { "Registrar & Share Transfer Agent", "Link Intime / KFin Technologies (Simulated RTA)" }
+            };
+
+            builder.SetTable(columns, rows);
+            builder.SetNotes("Official SEBI Allotment Note: This document serves as formal Confirmation of Allocation Note (CAN). Allotted equity shares are credited directly to the investor's designated CDSL/NSDL Demat account prior to trading commencement. Unallotted funds are unblocked in investor linked bank account under UPI ASBA mandate guidelines.");
+
+            return builder.Build();
+        }
     }
 
     #region Pure C# PDF Report Builder Engine

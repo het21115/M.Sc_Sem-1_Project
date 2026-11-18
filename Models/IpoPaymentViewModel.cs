@@ -13,5 +13,7 @@ namespace IPOInvestmentManagement.Models
         public string UpiId { get; set; } = string.Empty;
         public string RazorpayOrderId { get; set; } = string.Empty;
         public string RazorpayKeyId { get; set; } = string.Empty;
+        public bool IsSimulated { get; set; } = true;
+        public string PaymentMode { get; set; } = "SIMULATED_MANDATE";
     }
 }

@@ -1429,10 +1429,38 @@
             chartCachedData.currentPrice = newPrice;
             chartCachedData.priceChange = newChange;
             chartCachedData.priceChangePercentage = newPct;
+            if (newPrice > (chartCachedData.dayHigh || 0)) chartCachedData.dayHigh = newPrice;
+            if (chartCachedData.dayLow === undefined || newPrice < chartCachedData.dayLow) chartCachedData.dayLow = newPrice;
 
             if (state.currentChartStock.timeframe === "1D" && chartCachedData.points && chartCachedData.points.length > 0) {
-                // Update latest point on curve
-                chartCachedData.points[chartCachedData.points.length - 1].price = newPrice;
+                // If points was loaded with only 2 flat points, reload rich chart data
+                if (chartCachedData.points.length <= 2 && chartCachedData.points[0].price === chartCachedData.points[1]?.price) {
+                    window.loadStockChartData(stock.ipoId, "1D", state.currentChartStock.exchange);
+                    return;
+                }
+
+                const nowLabel = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                const lastIdx = chartCachedData.points.length - 1;
+                const lastPoint = chartCachedData.points[lastIdx];
+
+                if (lastPoint && lastPoint.label === nowLabel) {
+                    lastPoint.price = newPrice;
+                } else if (chartCachedData.points.length < 100) {
+                    chartCachedData.points.push({ label: nowLabel, price: newPrice, volume: Math.floor(Math.random() * 2500) + 500 });
+                } else {
+                    lastPoint.price = newPrice;
+                }
+
+                // Update candle if in candlestick view
+                if (chartCachedData.candles && chartCachedData.candles.length > 0) {
+                    const lastCandle = chartCachedData.candles[chartCachedData.candles.length - 1];
+                    if (lastCandle) {
+                        lastCandle.close = newPrice;
+                        lastCandle.high = Math.max(lastCandle.high || newPrice, newPrice);
+                        lastCandle.low = Math.min(lastCandle.low || newPrice, newPrice);
+                    }
+                }
+
                 renderStockCanvas(chartCachedData);
             }
         }
@@ -1467,12 +1495,12 @@
             <div class="news-card-item">
                 <h5>${sym} reports steady volume expansion in regular trading session</h5>
                 <p>Institutional interest and high retail demand reflect optimistic outlook post recent market expansion.</p>
-                <small class="text-muted">Today &middot; Live Market News</small>
+                <small style="color:#94a3b8; font-weight:500;">Today &middot; Live Market News</small>
             </div>
             <div class="news-card-item">
                 <h5>Dual-Exchange quotes reflect strong liquidity across NSE and BSE</h5>
                 <p>Spreads remain within standard tight band with steady depth across top order book tiers.</p>
-                <small class="text-muted">Yesterday &middot; Exchange Bulletin</small>
+                <small style="color:#94a3b8; font-weight:500;">Yesterday &middot; Exchange Bulletin</small>
             </div>
         `;
     }
@@ -1485,12 +1513,12 @@
             <div class="news-card-item">
                 <h5>Board Meeting &middot; Financial Results</h5>
                 <p>Scheduled audit and approval of upcoming quarterly performance figures and dividend review.</p>
-                <small class="text-success">Upcoming &middot; 28 Nov 2026</small>
+                <small class="text-success fw-bold">Upcoming &middot; 28 Nov 2026</small>
             </div>
             <div class="news-card-item">
                 <h5>Annual General Meeting (AGM)</h5>
                 <p>Discussion on future roadmap, capital expenditure, and investor governance updates.</p>
-                <small class="text-muted">Completed &middot; Previous Month</small>
+                <small style="color:#94a3b8; font-weight:500;">Completed &middot; Previous Month</small>
             </div>
         `;
     }

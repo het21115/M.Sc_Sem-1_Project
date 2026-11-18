@@ -6,14 +6,28 @@
 <div class="admin-console">
     <header class="admin-topbar"><button type="button" class="admin-back-button" data-admin-back="@Url.Action("Index", "Home")" title="Go back">&#8592; Back</button><div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div><span class="admin-mode">ADMINISTRATOR MODE / SECURE SESSION</span><div class="admin-user"><span>@Model.UserName</span><i></i><a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
     <main class="admin-main">
-        <div class="admin-page-actions">
-            <a class="btn btn-primary" href="#available-ipos">Available IPOs</a>
-            <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="SearchIpos">Search IPOs</a>
-            <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#live-market-modal"><span class="ticker-pulse d-inline-block me-1" style="width:7px;height:7px;vertical-align:middle;"></span>Live Market</button>
-            <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="CreateNotification">Create notification</a>
-            <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="EditProfile">Edit profile</a>
+        <div class="admin-actions-toolbar">
+            <div class="admin-live-market-standalone">
+                <button type="button" class="btn admin-live-market-btn" data-bs-toggle="modal" data-bs-target="#live-market-modal" title="Open Real-Time NSE / BSE Dual-Exchange Live Market Terminal">
+                    <span class="admin-live-indicator">
+                        <span class="admin-live-ring"></span>
+                        <span class="admin-live-dot"></span>
+                    </span>
+                    <span class="admin-live-text">Live Market</span>
+                    <span class="admin-market-pill">NSE &middot; BSE</span>
+                    <span class="admin-live-arrow">&#8599;</span>
+                </button>
+            </div>
+            <div class="admin-page-actions">
+                <a class="btn btn-primary" href="#available-ipos">Available IPOs</a>
+                <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="SearchIpos">Search IPOs</a>
+                <a class="btn btn-outline-primary" href="#payment-management">&#128179; Payment Management</a>
+                <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="PaymentManagement">Payment Ledger &#8599;</a>
+                <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="CreateNotification">Create notification</a>
+                <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="EditProfile">Edit profile</a>
+            </div>
         </div>
-        <div class="admin-heading"><div><span class="admin-overline">OPERATIONS CENTER / 01</span><h1>Platform control</h1><p>Monitor the IPO marketplace and clear the work that needs attention.</p></div><div class="admin-status"><i></i> All systems operational</div></div>
+        <div class="admin-heading"><div><span class="admin-overline">OPERATIONS CENTER / 01</span><h1>Platform control</h1><p><span data-time-greeting>@Model.TimeGreeting</span>, @Model.UserName. Monitor the IPO marketplace and clear the work that needs attention.</p></div><div class="admin-status"><i></i> All systems operational</div></div>
         <section class="admin-kpis" aria-label="Platform summary">
             <div class="admin-kpi-primary"><span>Total Investors</span><strong>@Model.UserCount</strong><small>Active investor accounts</small></div>
             <div><span>Total Companies</span><strong>@Model.CompanyCount</strong><small>Company profiles</small></div>
@@ -116,7 +130,7 @@
                 });
             </script>
         }
-        <section class="admin-work-grid"><div class="admin-queue"><div class="admin-section-head"><div><span class="admin-overline">02 / WORK QUEUE</span><h2>Approvals requiring attention</h2></div><span class="queue-count">@(Model.PendingCompanyCount + Model.PendingIpoCount + Model.PendingApplicationCount) OPEN</span></div><div class="queue-items"><div><span class="queue-code company-code">CO</span><div><strong>Company profiles</strong><small>Review new company registrations</small></div><b>@Model.PendingCompanyCount</b><a class="admin-review-link" href="/Dashboard/Index#company-requests" data-review-target="company-requests">Review &#8594;</a></div><div><span class="queue-code ipo-code">IP</span><div><strong>IPO offerings</strong><small>Validate offerings before publication</small></div><b>@Model.PendingIpoCount</b><a class="admin-review-link" href="/Dashboard/Index#ipo-requests" data-review-target="ipo-requests">Review &#8594;</a></div><div><span class="queue-code app-code">AP</span><div><strong>Investor applications</strong><small>Monitor pending application activity</small></div><b>@Model.PendingApplicationCount</b><a class="admin-review-link" asp-controller="Dashboard" asp-action="Applications">Review &#8594;</a></div></div></div><aside class="admin-briefing"><span class="admin-overline">03 / ADMIN BRIEFING</span><h2>Keep the<br /><em>market trusted.</em></h2><p>Accurate company information and timely reviews help every investor make a better decision.</p><div class="admin-briefing-line"><span>ROLE</span><strong>Administrator</strong></div><div class="admin-briefing-line"><span>SESSION</span><strong>Active now</strong></div></aside></section>
+        <section class="admin-work-grid"><div class="admin-queue"><div class="admin-section-head"><div><span class="admin-overline">02 / WORK QUEUE</span><h2>Approvals requiring attention</h2></div><span class="queue-count">@(Model.PendingCompanyCount + Model.PendingIpoCount + Model.PendingApplicationCount + Model.PendingPaymentCount) OPEN</span></div><div class="queue-items"><div><span class="queue-code company-code">CO</span><div><strong>Company profiles</strong><small>Review new company registrations</small></div><b>@Model.PendingCompanyCount</b><a class="admin-review-link" href="/Dashboard/Index#company-requests" data-review-target="company-requests">Review &#8594;</a></div><div><span class="queue-code ipo-code">IP</span><div><strong>IPO offerings</strong><small>Validate offerings before publication</small></div><b>@Model.PendingIpoCount</b><a class="admin-review-link" href="/Dashboard/Index#ipo-requests" data-review-target="ipo-requests">Review &#8594;</a></div><div><span class="queue-code app-code">AP</span><div><strong>Investor applications</strong><small>Monitor pending application activity</small></div><b>@Model.PendingApplicationCount</b><a class="admin-review-link" asp-controller="Dashboard" asp-action="Applications">Review &#8594;</a></div><div><span class="queue-code" style="background:#0284c7;color:#fff;">PM</span><div><strong>Payment ledger</strong><small>Audit successful, failed, pending &amp; refunds</small></div><b>@(Model.PendingPaymentCount + Model.FailedPaymentCount)</b><a class="admin-review-link" href="#payment-management">Audit &#8594;</a></div></div></div><aside class="admin-briefing"><span class="admin-overline">03 / ADMIN BRIEFING</span><h2>Keep the<br /><em>market trusted.</em></h2><p>Accurate company information and timely reviews help every investor make a better decision.</p><div class="admin-briefing-line"><span>ROLE</span><strong>Administrator</strong></div><div class="admin-briefing-line"><span>SESSION</span><strong>Active now</strong></div></aside></section>
         <section class="admin-subscription-panel">
             <div class="admin-section-head">
                 <div><span class="admin-overline">04 / DEMAND INTELLIGENCE</span><h2>IPO subscription statistics</h2><p>Compare shares offered with investor demand and track how many times each IPO is subscribed.</p></div>
@@ -674,7 +688,7 @@
 
         <section class="company-requests" id="company-requests"><div class="admin-section-head"><div><span class="admin-overline">05 / COMPANY REQUESTS</span><h2>Pending Companies</h2></div><span class="admin-muted">Approval required</span></div>@if (Model.PendingCompanies.Count == 0) { <div class="admin-empty">There are no pending Company registrations.</div> } else { foreach (var company in Model.PendingCompanies) { <div class="company-request-row"><div><strong>Company: @company.Company_name</strong><small>CIN: @(company.CIN ?? "Not provided")<br />Email: @(company.Email ?? "Not provided")<br />Status: @(company.Approval_status ?? "Pending")</small></div><div class="company-request-actions"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="CompanyDetails" asp-route-companyId="@company.Company_id">View</a><form asp-controller="Dashboard" asp-action="ApproveCompany" method="post"><input type="hidden" name="companyId" value="@company.Company_id" /><button type="submit" class="btn btn-sm btn-success">Approve</button></form><form asp-controller="Dashboard" asp-action="DenyCompany" method="post"><input type="hidden" name="companyId" value="@company.Company_id" /><button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Reject this Company registration request?');">Reject</button></form></div></div> } }</section>
         <section class="company-requests ipo-requests" id="ipo-requests"><div class="admin-section-head"><div><span class="admin-overline">04 / IPO REQUESTS</span><h2>Pending IPO submissions</h2></div><span class="admin-muted">Approval required before publication</span></div>@if (Model.PendingIpos.Count == 0) { <div class="admin-empty">There are no pending IPO submissions.</div> } else { foreach (var ipo in Model.PendingIpos) { <div class="company-request-row"><div><strong>@ipo.IPO_name</strong><small>@(Model.PendingIpoCompanyNames.GetValueOrDefault(ipo.Company_id, "Company")) &middot; Submitted @ipo.Created_at.ToString("dd MMM yyyy") &middot; ₹@((ipo.Issue_size ?? 0).ToString("N2"))</small></div><div class="company-request-actions"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="IpoDetails" asp-route-ipoId="@ipo.IPO_id">View IPO</a><form asp-controller="Dashboard" asp-action="ApproveIpo" method="post"><input type="hidden" name="ipoId" value="@ipo.IPO_id" /><button type="submit" class="btn btn-sm btn-success">Approve</button></form><form asp-controller="Dashboard" asp-action="DenyIpo" method="post"><input type="hidden" name="ipoId" value="@ipo.IPO_id" /><button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Reject this IPO submission?');">Reject</button></form></div></div> } }</section>
-        <section class="company-requests application-requests" id="application-requests"><div class="admin-section-head"><div><span class="admin-overline">05 / INVESTOR APPLICATIONS</span><h2>Submitted Investor applications</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Applications">View all applications &#8594;</a></div>@if (Model.PendingApplications.Count == 0) { <div class="admin-empty">There are no submitted Investor applications.</div> } else { foreach (var application in Model.PendingApplications) { <div class="company-request-row"><div><strong>@Model.PendingApplicationUserNames.GetValueOrDefault(application.User_id, "Investor")</strong><small>@Model.PendingApplicationIpoNames.GetValueOrDefault(application.IPO_id, "IPO") &middot; @application.Applied_lots lot(s) / @application.Applied_shares share(s) &middot; Submitted @application.Application_date.ToString("dd MMM yyyy")</small></div><div class="company-request-actions"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@application.Application_id">View details</a></div></div> } }</section>
+        <section class="company-requests application-requests" id="application-requests"><div class="admin-section-head"><div><span class="admin-overline">05 / INVESTOR APPLICATIONS</span><h2>Submitted Investor applications</h2></div><div class="d-flex align-items-center gap-2"><a class="btn btn-sm btn-outline-secondary" asp-controller="Dashboard" asp-action="AllotmentHistory">&#128339; Allotment History Archive</a><a class="admin-back-link" asp-controller="Dashboard" asp-action="Applications">View all applications &#8594;</a></div></div>@if (Model.PendingApplications.Count == 0) { <div class="admin-empty">There are no submitted Investor applications.</div> } else { foreach (var application in Model.PendingApplications) { <div class="company-request-row"><div><strong>@Model.PendingApplicationUserNames.GetValueOrDefault(application.User_id, "Investor")</strong><small>@Model.PendingApplicationIpoNames.GetValueOrDefault(application.IPO_id, "IPO") &middot; @application.Applied_lots lot(s) / @application.Applied_shares share(s) &middot; Submitted @application.Application_date.ToString("dd MMM yyyy")</small></div><div class="company-request-actions"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@application.Application_id">View details</a></div></div> } }</section>
         <section class="admin-users"><div class="admin-section-head"><div><span class="admin-overline">04 / PEOPLE</span><h2>Registered users</h2></div><span class="admin-muted">Investors and companies</span></div><div class="admin-user-groups"><div class="admin-user-group"><div class="admin-user-group-head"><h3>Investors</h3><span>@Model.RecentInvestors.Count registered</span></div>@if (Model.RecentInvestors.Count == 0) { <div class="admin-empty">No investors have registered yet.</div> } else { <div class="admin-user-table"><div class="admin-user-head"><span>USER</span><span>EMAIL</span><span>ROLE</span><span>STATUS</span><span>ACTION</span></div>@foreach (var user in Model.RecentInvestors) { <div class="admin-user-row"><div class="admin-person"><span>@(user.First_name?.FirstOrDefault() ?? '?')</span><strong>@user.First_name @user.Last_name</strong></div><span>@user.Email</span><b>Investor</b><em class="active-user">@(user.Is_active ? "Active" : "Inactive")</em><a class="admin-user-details" asp-controller="Dashboard" asp-action="UserDetails" asp-route-userId="@user.User_id">View details</a></div> }</div> }</div><div class="admin-user-group"><div class="admin-user-group-head"><h3>Companies</h3><span>@Model.RecentCompanies.Count registered</span></div>@if (Model.RecentCompanies.Count == 0) { <div class="admin-empty">No companies have registered yet.</div> } else { <div class="admin-user-table"><div class="admin-user-head"><span>USER</span><span>EMAIL</span><span>ROLE</span><span>STATUS</span><span>ACTION</span></div>@foreach (var user in Model.RecentCompanies) { <div class="admin-user-row"><div class="admin-person"><span>@(user.First_name?.FirstOrDefault() ?? '?')</span><strong>@user.First_name @user.Last_name</strong></div><span>@user.Email</span><b>Company</b><em class="active-user">@(user.Is_active ? "Active" : "Inactive")</em><a class="admin-user-details" asp-controller="Dashboard" asp-action="UserDetails" asp-route-userId="@user.User_id">View details</a></div> }</div> }</div></div></section>
         <section class="company-requests approved-ipo-requests" id="approved-ipo-requests">
             <div class="admin-section-head"><div><span class="admin-overline">06 / PUBLICATION QUEUE</span><h2>Approved IPOs ready to publish</h2></div><span class="admin-muted">Admin publication required</span></div>
@@ -689,6 +703,348 @@
                     <div class="company-request-row"><div><strong>@ipo.IPO_name</strong><small>@Model.ApprovedIpoCompanyNames.GetValueOrDefault(ipo.Company_id, "Company") &middot; Approved @ipo.Created_at.ToString("dd MMM yyyy") &middot; Opens @ipo.Open_date.ToString("dd MMM yyyy")</small></div><div class="company-request-actions"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="IpoDetails" asp-route-ipoId="@ipo.IPO_id">View IPO</a><form asp-controller="Dashboard" asp-action="PublishIpo" method="post"><input type="hidden" name="ipoId" value="@ipo.IPO_id" /><button type="submit" class="btn btn-sm btn-success">Publish IPO</button></form></div></div>
                 }
             }
+        </section>
+
+        <!-- 07 / PAYMENT MANAGEMENT -->
+        <section class="company-requests payment-management-section" id="payment-management" style="background:#fff; border-radius:12px; padding:1.5rem; margin-top:1.5rem; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            <div class="admin-section-head d-flex flex-wrap align-items-center justify-content-between mb-3 pb-2 border-bottom">
+                <div>
+                    <span class="admin-overline" style="color:#0284c7; font-weight:700; letter-spacing:0.05em; font-size:0.75rem;">07 / FINANCIAL CONTROL</span>
+                    <h2 style="font-size:1.4rem; font-weight:700; margin-top:0.25rem; margin-bottom:0.25rem;">Payment &amp; Mandate Management</h2>
+                    <p class="text-muted small mb-0">Audit, filter, and track all investor payments across successful, failed, pending, and refunded transactions.</p>
+                </div>
+                <div class="d-flex align-items-center gap-2 mt-2 mt-md-0">
+                    <form asp-controller="Dashboard" asp-action="ReconcilePayments" method="post" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="returnUrl" value="@Url.Action("Index", "Dashboard")#payment-management" />
+                        <button class="btn btn-sm btn-outline-primary fw-bold" type="submit" title="Scan and reconcile pending payments">
+                            &#9889; Reconcile
+                        </button>
+                    </form>
+                    <a class="btn btn-sm btn-outline-secondary" asp-controller="Dashboard" asp-action="ExportPaymentsCsv" title="Export all payment records as CSV">
+                        &#128196; Export CSV
+                    </a>
+                    <a class="btn btn-sm btn-primary" asp-controller="Dashboard" asp-action="PaymentManagement" title="Open full dedicated payment management console">
+                        Full Ledger &#8599;
+                    </a>
+                </div>
+            </div>
+
+            <!-- PAYMENT KPIS -->
+            <div class="row g-2 mb-3">
+                <div class="col-6 col-md-4 col-lg-2">
+                    <div class="p-2 border rounded bg-light text-center h-100">
+                        <span class="text-muted small d-block">Total Volume</span>
+                        <strong class="fs-6 d-block">&#8377;@Model.TotalPaymentVolume.ToString("N2")</strong>
+                        <small class="text-muted" style="font-size:0.7rem;">@Model.AdminPayments.Count Transactions</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-lg-2">
+                    <div class="p-2 border rounded text-center h-100" style="background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.3) !important;">
+                        <span class="small d-block fw-semibold" style="color: #10b981;">&#10003; Successful</span>
+                        <strong class="fs-6 d-block" style="color: #10b981;">&#8377;@Model.SuccessfulPaymentAmount.ToString("N2")</strong>
+                        <small class="text-muted" style="font-size:0.7rem;">@Model.SuccessfulPaymentCount Captured</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-lg-2">
+                    <div class="p-2 border rounded text-center h-100" style="background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.3) !important;">
+                        <span class="small d-block fw-semibold" style="color: #ef4444;">&#10007; Failed</span>
+                        <strong class="fs-6 d-block" style="color: #ef4444;">&#8377;@Model.FailedPaymentAmount.ToString("N2")</strong>
+                        <small class="text-muted" style="font-size:0.7rem;">@Model.FailedPaymentCount Failed</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="p-2 border rounded text-center h-100" style="background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.3) !important;">
+                        <span class="small d-block fw-semibold" style="color: #d97706;">&#9203; Pending Mandates</span>
+                        <strong class="fs-6 d-block" style="color: #d97706;">&#8377;@Model.PendingPaymentAmount.ToString("N2")</strong>
+                        <small class="text-muted" style="font-size:0.7rem;">@Model.PendingPaymentCount Awaiting Auth</small>
+                    </div>
+                </div>
+                <div class="col-12 col-md-4 col-lg-3">
+                    <div class="p-2 border rounded text-center h-100" style="background: rgba(139, 92, 246, 0.08); border-color: rgba(139, 92, 246, 0.3) !important;">
+                        <span class="small d-block fw-semibold" style="color: #8b5cf6;">&#8634; Refunded / Unblocked</span>
+                        <strong class="fs-6 d-block" style="color: #8b5cf6;">&#8377;@Model.RefundedPaymentAmount.ToString("N2")</strong>
+                        <small class="text-muted" style="font-size:0.7rem;">@Model.RefundedPaymentCount Unblocked</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TABS & LIVE SEARCH -->
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                <div class="btn-group flex-wrap" role="group" aria-label="Filter payments by status">
+                    <button type="button" class="btn btn-sm btn-outline-dark admin-pay-tab active" data-admin-pay-tab="all">
+                        All <span class="badge bg-dark ms-1">@Model.AdminPayments.Count</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success admin-pay-tab" data-admin-pay-tab="successful">
+                        &#10003; Successful <span class="badge bg-success ms-1">@Model.SuccessfulPaymentCount</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger admin-pay-tab" data-admin-pay-tab="failed">
+                        &#10007; Failed <span class="badge bg-danger ms-1">@Model.FailedPaymentCount</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning text-dark admin-pay-tab" data-admin-pay-tab="pending">
+                        &#9203; Pending <span class="badge bg-warning text-dark ms-1">@Model.PendingPaymentCount</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary admin-pay-tab" data-admin-pay-tab="refunded">
+                        &#8634; Refunded <span class="badge bg-info ms-1">@Model.RefundedPaymentCount</span>
+                    </button>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-secondary" id="admin-pay-count-badge">Showing @Model.AdminPayments.Count payments</span>
+                </div>
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-7">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white">&#128269;</span>
+                        <input type="text" id="admin-pay-search" class="form-control" placeholder="Search investor, email, demat, order ID, app #, IPO..." />
+                        <button class="btn btn-outline-secondary" type="button" id="admin-pay-search-clear" style="display:none;">&times;</button>
+                    </div>
+                </div>
+                <div class="col-md-5">
+                    <select id="admin-pay-ipo-filter" class="form-select form-select-sm">
+                        <option value="">All IPOs</option>
+                        @foreach (var ipoEntry in Model.PaymentIpoNames.OrderBy(k => k.Value))
+                        {
+                            <option value="@ipoEntry.Key">@ipoEntry.Value</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <!-- PAYMENT TABLE -->
+            <div class="table-responsive border rounded bg-white">
+                <table class="table table-sm table-hover align-middle mb-0" id="admin-pay-table">
+                    <thead class="table-light small text-uppercase text-muted">
+                        <tr>
+                            <th style="min-width:110px;">Date (IST)</th>
+                            <th style="min-width:180px;">Investor Profile</th>
+                            <th style="min-width:150px;">IPO &amp; Application #</th>
+                            <th style="min-width:110px;">Bidding Spec</th>
+                            <th style="min-width:110px;" class="text-end">Amount</th>
+                            <th style="min-width:150px;">Gateway &amp; Order</th>
+                            <th style="min-width:110px;" class="text-center">Status</th>
+                            <th style="min-width:140px;">Refund / Unblock</th>
+                            <th style="min-width:140px;" class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.AdminPayments.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="9" class="text-center py-4 text-muted">
+                                    <div class="fs-2 mb-1">&#128179;</div>
+                                    <div class="fw-semibold">No payment records found</div>
+                                    <small>Transactions will appear here once investors submit IPO applications.</small>
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var payment in Model.AdminPayments)
+                            {
+                                string investorName = Model.PaymentUserNames.GetValueOrDefault(payment.UserId, "Investor");
+                                string investorEmail = Model.PaymentUserEmails.GetValueOrDefault(payment.UserId, "N/A");
+                                string investorDemat = Model.PaymentUserDemats.GetValueOrDefault(payment.UserId, "N/A");
+                                string investorUpi = Model.PaymentUserUpis.GetValueOrDefault(payment.UserId, "N/A");
+                                string ipoName = Model.PaymentIpoNames.GetValueOrDefault(payment.IpoId, "IPO");
+                                int? applicationId = null;
+                                if (!string.IsNullOrEmpty(payment.RazorpayOrderId) && Model.PaymentApplicationIds.TryGetValue(payment.RazorpayOrderId, out int appId))
+                                {
+                                    applicationId = appId;
+                                }
+                                else if (!string.IsNullOrEmpty(payment.ApplicationNumber) && Model.PaymentApplicationIds.TryGetValue(payment.ApplicationNumber, out int appId2))
+                                {
+                                    applicationId = appId2;
+                                }
+
+                                bool isSuccessful = string.Equals(payment.Status, "Captured", StringComparison.OrdinalIgnoreCase) ||
+                                                    string.Equals(payment.Status, "Verified", StringComparison.OrdinalIgnoreCase);
+                                bool isFailed = string.Equals(payment.Status, "Failed", StringComparison.OrdinalIgnoreCase);
+                                bool isPending = string.Equals(payment.Status, "Created", StringComparison.OrdinalIgnoreCase) ||
+                                                 string.Equals(payment.Status, "Pending", StringComparison.OrdinalIgnoreCase);
+                                bool isRefunded = string.Equals(payment.RefundStatus, "Completed", StringComparison.OrdinalIgnoreCase) ||
+                                                  string.Equals(payment.RefundStatus, "Pending Unblock", StringComparison.OrdinalIgnoreCase) ||
+                                                  payment.UnblockedAmount > 0m ||
+                                                  string.Equals(payment.Status, "Refunded", StringComparison.OrdinalIgnoreCase);
+
+                                <tr class="admin-pay-row"
+                                    data-pay-id="@payment.PaymentRecordId"
+                                    data-is-successful="@(isSuccessful ? "true" : "false")"
+                                    data-is-failed="@(isFailed ? "true" : "false")"
+                                    data-is-pending="@(isPending ? "true" : "false")"
+                                    data-is-refunded="@(isRefunded ? "true" : "false")"
+                                    data-ipo-id="@payment.IpoId"
+                                    data-ipo-name="@ipoName.ToLower()"
+                                    data-investor-name="@investorName.ToLower()"
+                                    data-investor-email="@investorEmail.ToLower()"
+                                    data-demat="@investorDemat.ToLower()"
+                                    data-upi="@investorUpi.ToLower()"
+                                    data-app-num="@payment.ApplicationNumber.ToLower()"
+                                    data-order-id="@(payment.RazorpayOrderId?.ToLower() ?? "")"
+                                    data-receipt-num="@(payment.ReceiptNumber?.ToLower() ?? "")">
+
+                                    <!-- Date -->
+                                    <td>
+                                        <div class="fw-semibold small">@payment.CreatedAt.ToString("dd MMM yyyy")</div>
+                                        <div class="text-muted" style="font-size:0.7rem;">@payment.CreatedAt.ToString("hh:mm tt")</div>
+                                    </td>
+
+                                    <!-- Investor -->
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="rounded-circle bg-primary bg-opacity-10 text-primary fw-bold d-flex align-items-center justify-content-center" style="width:28px; height:28px; font-size:0.75rem;">
+                                                @(string.IsNullOrWhiteSpace(investorName) ? "?" : investorName.Substring(0, 1).ToUpper())
+                                            </div>
+                                            <div>
+                                                <a class="fw-bold text-dark text-decoration-none small" asp-controller="Dashboard" asp-action="UserDetails" asp-route-userId="@payment.UserId">
+                                                    @investorName
+                                                </a>
+                                                <div class="text-muted" style="font-size:0.7rem;">@investorEmail</div>
+                                                <div class="text-secondary" style="font-size:0.68rem;">Demat: @investorDemat</div>
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    <!-- IPO & Application -->
+                                    <td>
+                                        <div class="fw-bold text-primary small">@ipoName</div>
+                                        <div class="small text-muted">
+                                            @if (applicationId.HasValue)
+                                            {
+                                                <a asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@applicationId.Value" class="text-decoration-none">
+                                                    #@payment.ApplicationNumber
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <span>#@payment.ApplicationNumber</span>
+                                            }
+                                        </div>
+                                    </td>
+
+                                    <!-- Lots & Shares -->
+                                    <td>
+                                        <div class="fw-semibold small">@payment.AppliedLots Lot(s)</div>
+                                        <div class="text-muted" style="font-size:0.7rem;">@payment.AppliedShares shares &#64; &#8377;@payment.BidPrice.ToString("N2")</div>
+                                    </td>
+
+                                    <!-- Amount -->
+                                    <td class="text-end">
+                                        <strong class="small text-dark">&#8377;@payment.Amount.ToString("N2")</strong>
+                                    </td>
+
+                                    <!-- Gateway & IDs -->
+                                    <td>
+                                        <div>
+                                            @if (payment.IsSimulated)
+                                            {
+                                                <span class="badge bg-light text-dark border" style="font-size:0.65rem;">SIMULATED ASBA</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-info bg-opacity-25 text-primary border" style="font-size:0.65rem;">GATEWAY</span>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(payment.RazorpayOrderId))
+                                        {
+                                            <div class="font-monospace text-muted text-truncate" style="max-width:130px; font-size:0.68rem;" title="Order: @payment.RazorpayOrderId">
+                                                @payment.RazorpayOrderId
+                                            </div>
+                                        }
+                                    </td>
+
+                                    <!-- Status -->
+                                    <td class="text-center">
+                                        @if (isSuccessful)
+                                        {
+                                            <span class="badge bg-success px-2 py-1" style="font-size:0.7rem;">&#10003; Captured</span>
+                                        }
+                                        else if (isFailed)
+                                        {
+                                            <span class="badge bg-danger px-2 py-1" style="font-size:0.7rem;" title="@payment.FailureReason">&#10007; Failed</span>
+                                            @if (!string.IsNullOrEmpty(payment.FailureReason))
+                                            {
+                                                <div class="text-danger text-truncate" style="max-width:90px; font-size:0.65rem;" title="@payment.FailureReason">@payment.FailureReason</div>
+                                            }
+                                        }
+                                        else if (isPending)
+                                        {
+                                            <span class="badge bg-warning text-dark px-2 py-1" style="font-size:0.7rem;">&#9203; Pending</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary px-2 py-1" style="font-size:0.7rem;">@payment.Status</span>
+                                        }
+                                    </td>
+
+                                    <!-- Refund / Unblock -->
+                                    <td>
+                                        @if (string.Equals(payment.RefundStatus, "Completed", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="badge bg-info text-dark" style="font-size:0.7rem;">
+                                                &#10003; Unblocked: &#8377;@((payment.UnblockedAmount > 0 ? payment.UnblockedAmount : payment.Amount).ToString("N2"))
+                                            </span>
+                                        }
+                                        else if (string.Equals(payment.RefundStatus, "Pending Unblock", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="badge bg-warning text-dark" style="font-size:0.7rem;">
+                                                &#9203; Pending: &#8377;@((payment.UnblockedAmount > 0 ? payment.UnblockedAmount : payment.Amount).ToString("N2"))
+                                            </span>
+                                            <form asp-controller="Dashboard" asp-action="ProcessPaymentRefund" method="post" class="d-inline ms-1">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="paymentRecordId" value="@payment.PaymentRecordId" />
+                                                <input type="hidden" name="returnUrl" value="@Url.Action("Index", "Dashboard")#payment-management" />
+                                                <button type="submit" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.65rem;" title="Simulate unblock">Release &#10003;</button>
+                                            </form>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">&mdash;</span>
+                                        }
+                                    </td>
+
+                                    <!-- Actions -->
+                                    <td class="text-end">
+                                        <div class="d-flex justify-content-end gap-1 flex-wrap">
+                                            @if (!string.IsNullOrEmpty(payment.ReceiptNumber) || isSuccessful)
+                                            {
+                                                <a class="btn btn-sm btn-outline-primary py-0 px-1" style="font-size:0.72rem;" asp-controller="Dashboard" asp-action="PaymentReceipt" asp-route-paymentRecordId="@payment.PaymentRecordId" target="_blank" title="View official receipt">
+                                                    Receipt
+                                                </a>
+                                            }
+                                            @if (applicationId.HasValue)
+                                            {
+                                                <a class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:0.72rem;" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@applicationId.Value" title="View application">
+                                                    App
+                                                </a>
+                                            }
+                                            @if (isPending)
+                                            {
+                                                <form asp-controller="Dashboard" asp-action="ReconcilePaymentRecord" method="post" class="d-inline">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="paymentRecordId" value="@payment.PaymentRecordId" />
+                                                    <input type="hidden" name="returnUrl" value="@Url.Action("Index", "Dashboard")#payment-management" />
+                                                    <button type="submit" class="btn btn-sm btn-outline-warning text-dark py-0 px-1" style="font-size:0.68rem;" title="Reconcile with gateway">
+                                                        &#9889; Sync
+                                                    </button>
+                                                </form>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        <tr id="admin-pay-empty-row" style="display:none;">
+                            <td colspan="9" class="text-center py-4 text-muted">
+                                <div class="fs-2 mb-1">&#128269;</div>
+                                <div class="fw-semibold">No matching payments found</div>
+                                <small>Try adjusting your search criteria or switching status tabs.</small>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
         <partial name="_InvestorLiveMarket" model="Model" />
         <footer class="admin-footer"><span>IPO INVESTMENT MANAGEMENT / CONTROL CENTER</span><span>ACCESS IS ROLE-BASED</span></footer>
@@ -804,5 +1160,113 @@
         } catch (e) {
             filterAvailableIpos();
         }
+
+        // ==========================================
+        // Admin Payment Management Client Filtering
+        // ==========================================
+        const adminPayTabs = document.querySelectorAll(".admin-pay-tab");
+        const adminPaySearch = document.getElementById("admin-pay-search");
+        const adminPayClear = document.getElementById("admin-pay-search-clear");
+        const adminPayIpoFilter = document.getElementById("admin-pay-ipo-filter");
+        const adminPayCountBadge = document.getElementById("admin-pay-count-badge");
+        const adminPayRows = document.querySelectorAll(".admin-pay-row");
+        const adminPayEmptyRow = document.getElementById("admin-pay-empty-row");
+
+        let activePayTab = "all";
+
+        function filterAdminPayments() {
+            const query = (adminPaySearch ? adminPaySearch.value.trim().toLowerCase() : "");
+            const selectedIpo = (adminPayIpoFilter ? adminPayIpoFilter.value : "");
+
+            if (adminPayClear) {
+                adminPayClear.style.display = query.length > 0 ? "inline-block" : "none";
+            }
+
+            let visibleCount = 0;
+            adminPayRows.forEach(row => {
+                const isSuccessful = row.getAttribute("data-is-successful") === "true";
+                const isFailed = row.getAttribute("data-is-failed") === "true";
+                const isPending = row.getAttribute("data-is-pending") === "true";
+                const isRefunded = row.getAttribute("data-is-refunded") === "true";
+
+                let matchesStatus = false;
+                if (activePayTab === "all") {
+                    matchesStatus = true;
+                } else if (activePayTab === "successful") {
+                    matchesStatus = isSuccessful;
+                } else if (activePayTab === "failed") {
+                    matchesStatus = isFailed;
+                } else if (activePayTab === "pending") {
+                    matchesStatus = isPending;
+                } else if (activePayTab === "refunded") {
+                    matchesStatus = isRefunded;
+                }
+
+                const rowIpoId = row.getAttribute("data-ipo-id") || "";
+                const matchesIpo = !selectedIpo || (rowIpoId === selectedIpo);
+
+                const investorName = row.getAttribute("data-investor-name") || "";
+                const investorEmail = row.getAttribute("data-investor-email") || "";
+                const demat = row.getAttribute("data-demat") || "";
+                const upi = row.getAttribute("data-upi") || "";
+                const ipoName = row.getAttribute("data-ipo-name") || "";
+                const appNum = row.getAttribute("data-app-num") || "";
+                const orderId = row.getAttribute("data-order-id") || "";
+                const receiptNum = row.getAttribute("data-receipt-num") || "";
+
+                const matchesQuery = !query ||
+                    investorName.includes(query) ||
+                    investorEmail.includes(query) ||
+                    demat.includes(query) ||
+                    upi.includes(query) ||
+                    ipoName.includes(query) ||
+                    appNum.includes(query) ||
+                    orderId.includes(query) ||
+                    receiptNum.includes(query);
+
+                if (matchesStatus && matchesIpo && matchesQuery) {
+                    row.style.display = "";
+                    visibleCount++;
+                } else {
+                    row.style.display = "none";
+                }
+            });
+
+            if (adminPayCountBadge) {
+                const label = activePayTab === "all" ? "Total" : activePayTab.charAt(0).toUpperCase() + activePayTab.slice(1);
+                adminPayCountBadge.textContent = `Showing ${visibleCount} ${label} payment${visibleCount === 1 ? "" : "s"}`;
+            }
+
+            if (adminPayEmptyRow) {
+                adminPayEmptyRow.style.display = (visibleCount === 0 && adminPayRows.length > 0) ? "" : "none";
+            }
+        }
+
+        adminPayTabs.forEach(btn => {
+            btn.addEventListener("click", function () {
+                adminPayTabs.forEach(b => b.classList.remove("active"));
+                this.classList.add("active");
+                activePayTab = this.getAttribute("data-admin-pay-tab") || "all";
+                filterAdminPayments();
+            });
+        });
+
+        if (adminPaySearch) {
+            adminPaySearch.addEventListener("input", filterAdminPayments);
+        }
+
+        if (adminPayClear) {
+            adminPayClear.addEventListener("click", function () {
+                adminPaySearch.value = "";
+                filterAdminPayments();
+                adminPaySearch.focus();
+            });
+        }
+
+        if (adminPayIpoFilter) {
+            adminPayIpoFilter.addEventListener("change", filterAdminPayments);
+        }
+
+        filterAdminPayments();
     });
 </script>

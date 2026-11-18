@@ -15,19 +15,19 @@ GO
 
 -- Set default opening and closing times for existing IPOs where null
 UPDATE [dbo].[IPOs]
-SET [Opening_time] = '09:30:00'
-WHERE [Opening_time] IS NULL;
+SET [Opening_time] = '10:00:00'
+WHERE [Opening_time] IS NULL OR [Opening_time] = '09:30:00';
 GO
 
 UPDATE [dbo].[IPOs]
-SET [Closing_time] = '15:30:00'
-WHERE [Closing_time] IS NULL;
+SET [Closing_time] = '17:00:00'
+WHERE [Closing_time] IS NULL OR [Closing_time] = '15:30:00';
 GO
 
 -- Ensure Vertex Renewable Energy IPO has exact configured opening and closing times
 UPDATE [dbo].[IPOs]
-SET [Opening_time] = '09:30:00',
-    [Closing_time] = '15:30:00',
+SET [Opening_time] = '10:00:00',
+    [Closing_time] = '17:00:00',
     [Open_date] = '2026-12-07',
     [Close_date] = '2026-12-09',
     [Status] = 'Upcoming'

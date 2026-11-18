@@ -1,0 +1,110 @@
+@model List<IPOInvestmentManagement.Models.AllotmentInvestorResultItem>
+
+@if (Model == null || Model.Count == 0)
+{
+    <div class="alert alert-light border text-center py-4 my-3">
+        <span class="text-muted">No applications found in this category.</span>
+    </div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr class="small text-muted text-uppercase">
+                    <th>Application</th>
+                    <th>Investor &amp; Demat</th>
+                    <th>Category</th>
+                    <th>Applied</th>
+                    <th>Allotted</th>
+                    <th>Debited (₹)</th>
+                    <th>Unblocked / Refund</th>
+                    <th>Status</th>
+                    <th class="text-end">Allotment Advice</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td>
+                            <strong>@item.ApplicationNumber</strong>
+                            <small class="d-block text-muted">ID: #@item.ApplicationId</small>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">@item.InvestorName</div>
+                            <small class="text-muted d-block">DP/Client: <code class="text-dark">@item.DematAccountNumber</code></small>
+                            <small class="text-muted">UPI: @item.UpiId</small>
+                        </td>
+                        <td>
+                            <span class="badge @(item.CategoryCode == "RII" ? "bg-primary" : item.CategoryCode == "NII" ? "bg-warning text-dark" : "bg-dark")">
+                                @item.CategoryCode
+                            </span>
+                        </td>
+                        <td>
+                            <strong>@item.AppliedLots lot(s)</strong>
+                            <small class="d-block text-muted">@item.AppliedShares.ToString("N0") shares</small>
+                            <small class="text-muted">₹@item.BlockedAmount.ToString("N2")</small>
+                        </td>
+                        <td>
+                            @if (item.AllottedLots > 0)
+                            {
+                                <strong class="text-success">@item.AllottedLots lot(s)</strong>
+                                <small class="d-block text-success">@item.AllottedShares.ToString("N0") shares</small>
+                                <small class="text-muted">@@ ₹@item.AllotmentPrice.ToString("N2")</small>
+                            }
+                            else
+                            {
+                                <span class="text-muted fw-semibold">0 lots (0 shares)</span>
+                            }
+                        </td>
+                        <td>
+                            <strong class="@(item.DebitedAmount > 0 ? "text-dark" : "text-muted")">
+                                ₹@item.DebitedAmount.ToString("N2")
+                            </strong>
+                        </td>
+                        <td>
+                            @if (item.UnblockedAmount > 0)
+                            {
+                                <strong class="text-warning">₹@item.UnblockedAmount.ToString("N2")</strong>
+                                <small class="d-block text-muted">@item.RefundStatus</small>
+                                @if (!string.IsNullOrWhiteSpace(item.RefundReferenceId))
+                                {
+                                    <small class="d-block font-monospace text-primary" style="font-size: 0.75rem;">@item.RefundReferenceId</small>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted small">₹0.00 (Full Allotment)</span>
+                            }
+                        </td>
+                        <td>
+                            @if (item.Status == "Allotted")
+                            {
+                                <span class="badge bg-success">Allotted</span>
+                            }
+                            else if (item.Status == "Partially Allotted")
+                            {
+                                <span class="badge bg-primary">Partially Allotted</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Not Allotted</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            <div class="btn-group btn-group-sm">
+                                <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="AllotmentAdvice" asp-route-applicationId="@item.ApplicationId" title="View official Confirmation of Allocation Note">
+                                    &#128196; View CAN
+                                </a>
+                                <a class="btn btn-outline-success" asp-controller="Dashboard" asp-action="DownloadAllotmentAdvicePdf" asp-route-applicationId="@item.ApplicationId" target="_blank" title="Download official PDF Allotment Advice">
+                                    &#128190; PDF
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

@@ -1,0 +1,196 @@
+@model IPOInvestmentManagement.Models.AllotmentResultsViewModel
+@{
+    ViewData["Title"] = $"Allotment Results - {Model.Ipo.IPO_name}";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar">
+        <button type="button" class="admin-back-button" data-admin-back="@Url.Action("Applications", "Dashboard", new { ipoId = Model.Ipo.IPO_id })">&#8592; Back</button>
+        <div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div>
+        <span class="admin-mode">ADMINISTRATOR MODE / ALLOTMENT REGISTER</span>
+        <div class="admin-user">
+            <span>@(Context.Session.GetString("UserName") ?? "Admin")</span>
+            <i></i>
+            <a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a>
+        </div>
+    </header>
+
+    <main class="admin-main">
+        <div class="admin-heading">
+            <div>
+                <span class="admin-overline">FINAL ALLOTMENT REGISTER &amp; OUTCOME</span>
+                <h1>@Model.Ipo.IPO_name &mdash; Allotment Results</h1>
+                <p>
+                    Final allotment confirmed on <strong>@Model.AllotmentDate.ToString("dd MMM yyyy, hh:mm tt") IST</strong>
+                    &middot; Status: <span class="badge bg-success">@Model.Ipo.Status</span>
+                    &middot; Cut-off Price: <strong>₹@Model.CutOffPrice.ToString("N2")</strong>
+                    &middot; Lot Size: <strong>@Model.LotSize.ToString("N0") shares</strong>
+                </p>
+            </div>
+            <div class="d-flex gap-2">
+                <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="AllotmentHistory">
+                    &#128339; Allotment History
+                </a>
+                <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="AllotmentReport" asp-route-ipoId="@Model.Ipo.IPO_id">
+                    &#128196; Export CSV Register
+                </a>
+            </div>
+        </div>
+
+        @if (TempData["AdminMessage"] is string msg)
+        {
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <strong>Notification:</strong> @msg
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        }
+
+        <!-- Executive Metrics KPI Grid -->
+        <section class="admin-application-stats mb-4">
+            <div>
+                <span>Total Applications</span>
+                <strong>@Model.TotalApplications.ToString("N0")</strong>
+                <small>@Model.TotalAppliedShares.ToString("N0") shares applied</small>
+            </div>
+            <div>
+                <span>Full Allotments</span>
+                <strong class="text-success">@Model.AllottedCount.ToString("N0")</strong>
+                <small>@(Model.TotalApplications > 0 ? (Model.AllottedCount * 100 / Model.TotalApplications) : 0)% of applicants</small>
+            </div>
+            <div>
+                <span>Partial Allotments</span>
+                <strong class="text-primary">@Model.PartialAllotmentCount.ToString("N0")</strong>
+                <small>Proportionate allocation</small>
+            </div>
+            <div>
+                <span>Non-Allotted</span>
+                <strong class="text-danger">@Model.UnallottedCount.ToString("N0")</strong>
+                <small>100% mandate released</small>
+            </div>
+            <div>
+                <span>Capital Debited</span>
+                <strong>₹@((Model.TotalDebitedAmount / 10000000m).ToString("N2")) Cr</strong>
+                <small>@Model.TotalAllottedShares.ToString("N0") shares allotted</small>
+            </div>
+            <div>
+                <span>Funds Unblocked / Refund</span>
+                <strong class="text-warning">₹@((Model.TotalUnblockedAmount / 10000000m).ToString("N2")) Cr</strong>
+                <small>Mandate release triggered</small>
+            </div>
+        </section>
+
+        <!-- Final Allotment Summary Details Card -->
+        <div class="card shadow-sm border-0 mb-4" style="border-radius: 12px; overflow: hidden;">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-3">
+                <span class="fw-bold fs-6">&#128737; Final Allotment Confirmation &amp; Settlement Summary</span>
+                <span class="badge bg-success px-3 py-2">Finalized &amp; Locked</span>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <small class="text-muted d-block">Oversubscription Ratio</small>
+                        <strong class="fs-5 text-dark">@Model.OversubscriptionMultiple.ToString("0.00")x</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted d-block">Final Cut-Off Price</small>
+                        <strong class="fs-5 text-dark">₹@Model.CutOffPrice.ToString("N2")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted d-block">Total Applied Shares</small>
+                        <strong class="fs-5 text-dark">@Model.TotalAppliedShares.ToString("N0")</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted d-block">Total Allotted Shares</small>
+                        <strong class="fs-5 text-success">@Model.TotalAllottedShares.ToString("N0")</strong>
+                    </div>
+                    <div class="col-12 mt-3 pt-3 border-top">
+                        <div class="d-flex flex-wrap gap-4 text-muted small">
+                            <div>&#10004; <strong>SEBI Allocation Norms:</strong> Applied category-wise quota (RII 35%, NII 15%, QIB 50%) with spillover reconciliation.</div>
+                            <div>&#10004; <strong>Demat Credit:</strong> Shares credited to beneficiary Demat accounts.</div>
+                            <div>&#10004; <strong>Mandate Release:</strong> Bank ASBA / UPI unblock advice published.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filterable Investor Lists Register -->
+        <section class="admin-application-panel">
+            <div class="admin-section-head mb-3">
+                <div>
+                    <span class="admin-overline">INVESTOR ALLOTMENT DIRECTORY</span>
+                    <h2>Allotted &amp; Non-Allotted Investor Lists</h2>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <input type="text" id="investor-search" class="form-control form-control-sm" placeholder="Search investor, Demat, UPI..." style="max-width: 260px;" />
+                </div>
+            </div>
+
+            <!-- Tab Navigation for Lists -->
+            <ul class="nav nav-pills mb-3 gap-2" id="allotmentTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active px-3 py-2 fw-semibold" id="tab-all-btn" data-bs-toggle="pill" data-bs-target="#tab-all" type="button" role="tab">
+                        All Applicants <span class="badge bg-secondary ms-1">@Model.AllApplicants.Count</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link px-3 py-2 fw-semibold" id="tab-allotted-btn" data-bs-toggle="pill" data-bs-target="#tab-allotted" type="button" role="tab" style="color: #198754;">
+                        &#10004; Allotted (Full) <span class="badge bg-success ms-1">@Model.AllottedApplicants.Count</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link px-3 py-2 fw-semibold" id="tab-partial-btn" data-bs-toggle="pill" data-bs-target="#tab-partial" type="button" role="tab" style="color: #0d6efd;">
+                        &#8776; Partially Allotted <span class="badge bg-primary ms-1">@Model.PartiallyAllottedApplicants.Count</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link px-3 py-2 fw-semibold" id="tab-nonallotted-btn" data-bs-toggle="pill" data-bs-target="#tab-nonallotted" type="button" role="tab" style="color: #dc3545;">
+                        &#10008; Non-Allotted <span class="badge bg-danger ms-1">@Model.NonAllottedApplicants.Count</span>
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="allotmentTabContent">
+                <!-- Tab 1: All Applicants -->
+                <div class="tab-pane fade show active" id="tab-all" role="tabpanel">
+                    @await Html.PartialAsync("_AllotmentApplicantTable", Model.AllApplicants)
+                </div>
+
+                <!-- Tab 2: Allotted Investors (Full) -->
+                <div class="tab-pane fade" id="tab-allotted" role="tabpanel">
+                    @await Html.PartialAsync("_AllotmentApplicantTable", Model.AllottedApplicants)
+                </div>
+
+                <!-- Tab 3: Partially Allotted Investors -->
+                <div class="tab-pane fade" id="tab-partial" role="tabpanel">
+                    @await Html.PartialAsync("_AllotmentApplicantTable", Model.PartiallyAllottedApplicants)
+                </div>
+
+                <!-- Tab 4: Non-Allotted Investors -->
+                <div class="tab-pane fade" id="tab-nonallotted" role="tabpanel">
+                    @await Html.PartialAsync("_AllotmentApplicantTable", Model.NonAllottedApplicants)
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+@section Scripts {
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        var searchInput = document.getElementById("investor-search");
+        if (searchInput) {
+            searchInput.addEventListener("input", function () {
+                var query = this.value.toLowerCase().trim();
+                var activePane = document.querySelector(".tab-pane.active");
+                if (!activePane) return;
+                var rows = activePane.querySelectorAll("tbody tr");
+                rows.forEach(function (row) {
+                    var text = row.textContent.toLowerCase();
+                    row.style.display = text.indexOf(query) !== -1 ? "" : "none";
+                });
+            });
+        }
+    });
+</script>
+}

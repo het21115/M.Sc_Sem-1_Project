@@ -35,14 +35,52 @@ namespace IPOInvestmentManagement.Services
 
         public TimeSpan GetConfiguredOpeningTime()
         {
-            string? openStr = _configuration["MarketTrading:OpeningTime"];
-            return TimeSpan.TryParse(openStr, out var ot) ? ot : new TimeSpan(9, 30, 0);
+            string? openStr = _configuration["MarketTrading:IpoBiddingOpeningTime"] ?? _configuration["MarketTrading:OpeningTime"];
+            return TimeSpan.TryParse(openStr, out var ot) ? ot : new TimeSpan(10, 0, 0);
         }
 
         public TimeSpan GetConfiguredClosingTime()
         {
-            string? closeStr = _configuration["MarketTrading:ClosingTime"];
-            return TimeSpan.TryParse(closeStr, out var ct) ? ct : new TimeSpan(15, 30, 0);
+            string? closeStr = _configuration["MarketTrading:IpoBiddingClosingTime"] ?? _configuration["MarketTrading:ClosingTime"];
+            return TimeSpan.TryParse(closeStr, out var ct) ? ct : new TimeSpan(17, 0, 0);
+        }
+
+        public (bool IsOpen, string? Reason) IsBiddingWindowOpen(DateTime? istNow = null)
+        {
+            DateTime now = istNow ?? _clock.NowIst;
+
+            if (now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+            {
+                return (false, "IPO applications can only be submitted during the market period (Monday to Friday, 10:00 AM to 05:00 PM IST). Bidding is closed on weekends.");
+            }
+
+            try
+            {
+                if (_context.MarketTradingHolidays.Any(h => h.HolidayDate.Date == now.Date))
+                {
+                    return (false, "IPO applications are closed today due to an exchange market holiday.");
+                }
+            }
+            catch
+            {
+                // Graceful fallback if database context is not queryable
+            }
+
+            TimeSpan startTime = new TimeSpan(10, 0, 0); // 10:00 AM IST
+            TimeSpan endTime = new TimeSpan(17, 0, 0);   // 05:00 PM IST
+            TimeSpan timeOfDay = now.TimeOfDay;
+
+            if (timeOfDay < startTime)
+            {
+                return (false, "IPO bidding for today opens at 10:00 AM IST. Applications are accepted Monday to Friday between 10:00 AM and 05:00 PM IST.");
+            }
+
+            if (timeOfDay >= endTime)
+            {
+                return (false, "IPO bidding for today closed at 05:00 PM IST. Applications are accepted Monday to Friday between 10:00 AM and 05:00 PM IST.");
+            }
+
+            return (true, null);
         }
 
         public DateTime GetOpeningDateTime(IPO ipo)
@@ -135,6 +173,11 @@ namespace IPOInvestmentManagement.Services
                 return (false, "This IPO is awaiting administrator approval and is not yet open.");
             }
 
+            if (string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, "This IPO is already listed for secondary market trading. Primary applications are closed.");
+            }
+
             DateTime openingDateTime = GetOpeningDateTime(ipo);
             DateTime closingDateTime = GetClosingDateTime(ipo);
 
@@ -148,9 +191,43 @@ namespace IPOInvestmentManagement.Services
                 return (false, $"IPO bidding is closed. The application window closed on {closingDateTime:dd MMM yyyy, hh:mm tt} IST.");
             }
 
-            if (string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase))
+            // Market Period Validation: Monday to Friday only
+            if (now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
             {
-                return (false, "This IPO is already listed for secondary market trading. Primary applications are closed.");
+                return (false, "IPO applications are only accepted during the market period (Monday to Friday, 10:00 AM to 05:00 PM IST). Bidding is closed on weekends.");
+            }
+
+            // Exchange Trading Holiday Validation
+            try
+            {
+                if (_context.MarketTradingHolidays.Any(h => h.HolidayDate.Date == now.Date))
+                {
+                    return (false, "IPO applications are closed today due to an exchange market holiday.");
+                }
+            }
+            catch
+            {
+                // Fallback if context is in non-relational or mock mode
+            }
+
+            // Daily Bidding Hours Validation: 10:00 AM to 05:00 PM IST
+            TimeSpan dailyBiddingStart = new TimeSpan(10, 0, 0); // 10:00 AM IST
+            TimeSpan dailyBiddingEnd = new TimeSpan(17, 0, 0);   // 05:00 PM IST
+            TimeSpan currentTime = now.TimeOfDay;
+
+            if (currentTime < dailyBiddingStart)
+            {
+                return (false, "IPO bidding for today opens at 10:00 AM IST. Applications are accepted Monday to Friday between 10:00 AM and 05:00 PM IST.");
+            }
+
+            if (currentTime >= dailyBiddingEnd)
+            {
+                if (now.Date >= ipo.Close_date.Date)
+                {
+                    return (false, $"IPO bidding is officially closed. The application window closed on {closingDateTime:dd MMM yyyy, hh:mm tt} IST.");
+                }
+
+                return (false, "IPO bidding for today closed at 05:00 PM IST. Applications are accepted Monday to Friday between 10:00 AM and 05:00 PM IST.");
             }
 
             return (true, null);

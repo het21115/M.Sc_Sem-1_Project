@@ -1,0 +1,377 @@
+@model IPOInvestmentManagement.Models.PaymentReceiptViewModel
+@{
+    ViewData["Title"] = $"Payment Receipt - {Model.ReceiptNumber}";
+    Layout = null; // Standalone printable receipt
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - IPO Investment Management</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" />
+    <style>
+        body {
+            background-color: #f8fafc;
+            color: #0f172a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            padding: 2rem 1rem;
+        }
+        .receipt-card {
+            max-width: 820px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+            position: relative;
+        }
+        .receipt-header {
+            background: linear-gradient(135deg, #0f4653 0%, #1e293b 100%);
+            color: #ffffff;
+            padding: 2.25rem 2.5rem;
+            position: relative;
+        }
+        .receipt-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        .receipt-brand-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+        }
+        .receipt-stamp {
+            display: inline-block;
+            padding: 0.35rem 0.85rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .receipt-stamp-captured {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid #10b981;
+        }
+        .receipt-stamp-pending {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border: 1px solid #f59e0b;
+        }
+        .receipt-stamp-unblocked {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+            border: 1px solid #3b82f6;
+        }
+        .workflow-banner {
+            padding: 0.75rem 2.5rem;
+            font-size: 0.825rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .workflow-banner-simulated {
+            background-color: #fffbeb;
+            color: #92400e;
+            border-bottom-color: #fef3c7;
+        }
+        .workflow-banner-live {
+            background-color: #ecfdf5;
+            color: #065f46;
+            border-bottom-color: #a7f3d0;
+        }
+        .receipt-body {
+            padding: 2.5rem;
+        }
+        .receipt-section-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #64748b;
+            margin-bottom: 0.85rem;
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 0.35rem;
+        }
+        .receipt-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.25rem 2rem;
+            margin-bottom: 2rem;
+        }
+        .receipt-item label {
+            display: block;
+            font-size: 0.785rem;
+            color: #64748b;
+            margin-bottom: 0.2rem;
+        }
+        .receipt-item span {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #1e293b;
+            word-break: break-all;
+        }
+        .receipt-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.75rem;
+        }
+        .receipt-table th {
+            background: #f8fafc;
+            color: #475569;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 0.75rem 1rem;
+            border-top: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .receipt-table td {
+            padding: 1rem;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 0.9rem;
+        }
+        .receipt-total-row {
+            background: #f8fafc;
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: #0f4653;
+        }
+        .amount-in-words {
+            font-size: 0.85rem;
+            font-style: italic;
+            color: #475569;
+            margin-top: 0.25rem;
+        }
+        .unblock-highlight-box {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 2rem;
+        }
+        .receipt-footer {
+            border-top: 1px solid #e2e8f0;
+            padding-top: 1.5rem;
+            margin-top: 1.5rem;
+            font-size: 0.785rem;
+            color: #64748b;
+            line-height: 1.5;
+        }
+        .receipt-actions {
+            max-width: 820px;
+            margin: 1.5rem auto 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        @@media print {
+            body {
+                background: #ffffff;
+                padding: 0;
+            }
+            .receipt-card {
+                box-shadow: none;
+                border: none;
+            }
+            .receipt-actions, .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="receipt-actions no-print">
+        <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm">&larr; Back</a>
+        <div>
+            <button onclick="window.print()" class="btn btn-primary btn-sm px-3">
+                🖨️ Print / Save as PDF
+            </button>
+        </div>
+    </div>
+
+    <div class="receipt-card mt-3">
+        <!-- Header -->
+        <div class="receipt-header">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="receipt-brand">
+                        <span class="receipt-brand-dot"></span>
+                        <span>IPO INVESTMENT MANAGEMENT</span>
+                    </div>
+                    <div class="text-white-50 mt-1 small">Official Payment & ASBA Lien Receipt</div>
+                </div>
+                <div class="text-end">
+                    <span class="receipt-stamp @(Model.RefundStatus == "Completed" ? "receipt-stamp-unblocked" : Model.PaymentStatus == "Captured" ? "receipt-stamp-captured" : "receipt-stamp-pending")">
+                        @(Model.RefundStatus == "Completed" ? "MANDATE UNBLOCKED" : Model.PaymentStatus.ToUpperInvariant())
+                    </span>
+                    <div class="mt-2 text-white font-monospace small">@Model.ReceiptNumber</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workflow Banner (Simulated vs Genuine) -->
+        @if (Model.IsSimulated)
+        {
+            <div class="workflow-banner workflow-banner-simulated">
+                <div>
+                    <strong>🧪 SIMULATED ASBA WORKFLOW:</strong>
+                    <span>Razorpay Sandbox testnet environment with simulated SEBI ASBA mandate block/unblock.</span>
+                </div>
+                <span class="badge bg-warning text-dark">Sandbox / Test Mode</span>
+            </div>
+        }
+        else
+        {
+            <div class="workflow-banner workflow-banner-live">
+                <div>
+                    <strong>💳 GENUINE PAYMENT GATEWAY:</strong>
+                    <span>Live production UPI mandate processed via Razorpay Gateway.</span>
+                </div>
+                <span class="badge bg-success">Live Production</span>
+            </div>
+        }
+
+        <div class="receipt-body">
+            <!-- Transaction Reference Grid -->
+            <div class="receipt-section-title">01 / TRANSACTION & GATEWAY IDENTIFIERS</div>
+            <div class="receipt-grid">
+                <div class="receipt-item">
+                    <label>Receipt Number</label>
+                    <span class="font-monospace text-primary">@Model.ReceiptNumber</span>
+                </div>
+                <div class="receipt-item">
+                    <label>Transaction / Razorpay Payment ID</label>
+                    <span class="font-monospace">@(string.IsNullOrWhiteSpace(Model.RazorpayPaymentId) ? "Pending Capture" : Model.RazorpayPaymentId)</span>
+                </div>
+                <div class="receipt-item">
+                    <label>Razorpay Order ID</label>
+                    <span class="font-monospace">@Model.RazorpayOrderId</span>
+                </div>
+                <div class="receipt-item">
+                    <label>Transaction Timestamp (UTC / IST)</label>
+                    <span>@Model.PaymentDate.ToString("dd MMM yyyy, hh:mm tt") UTC (@Model.PaymentDate.AddHours(5.5).ToString("dd MMM yyyy, hh:mm tt") IST)</span>
+                </div>
+            </div>
+
+            <!-- Investor Profile Grid -->
+            <div class="receipt-section-title">02 / APPLICANT & BANKING DETAILS</div>
+            <div class="receipt-grid">
+                <div class="receipt-item">
+                    <label>Investor Full Name</label>
+                    <span>@Model.InvestorName</span>
+                </div>
+                <div class="receipt-item">
+                    <label>Registered Email</label>
+                    <span>@Model.InvestorEmail</span>
+                </div>
+                <div class="receipt-item">
+                    <label>UPI ID (VPA)</label>
+                    <span class="font-monospace">@Model.UpiId</span>
+                </div>
+                <div class="receipt-item">
+                    <label>Demat Account (CDSL / NSDL)</label>
+                    <span class="font-monospace">@Model.DematAccountNumber</span>
+                </div>
+            </div>
+
+            <!-- IPO Application Bidding Breakdown -->
+            <div class="receipt-section-title">03 / IPO BIDDING BREAKDOWN</div>
+            <table class="receipt-table">
+                <thead>
+                    <tr>
+                        <th>IPO Security</th>
+                        <th>Category</th>
+                        <th class="text-center">Lots / Shares</th>
+                        <th class="text-end">Cut-off / Bid Price</th>
+                        <th class="text-end">Blocked Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <strong>@Model.IpoName</strong>
+                            @if (!string.IsNullOrWhiteSpace(Model.CompanySymbol) && Model.CompanySymbol != "N/A")
+                            {
+                                <div class="text-muted small">NSE/BSE: @Model.CompanySymbol</div>
+                            }
+                            <div class="text-muted small">App No: @Model.ApplicationNumber</div>
+                        </td>
+                        <td>@Model.CategoryName</td>
+                        <td class="text-center">@Model.AppliedLots lot(s)<br /><small class="text-muted">(@Model.AppliedShares shares)</small></td>
+                        <td class="text-end">₹@Model.BidPrice.ToString("N2")</td>
+                        <td class="text-end"><strong>₹@Model.TotalAmount.ToString("N2")</strong></td>
+                    </tr>
+                    <tr class="receipt-total-row">
+                        <td colspan="4" class="text-end">TOTAL APPLICATION AMOUNT:</td>
+                        <td class="text-end">₹@Model.TotalAmount.ToString("N2")</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="amount-in-words mb-4">
+                <strong>Amount in words:</strong> @Model.AmountInWords
+            </div>
+
+            <!-- Refund / Unblock Section (if applicable) -->
+            @if (Model.UnblockedAmount > 0 || Model.RefundStatus == "Completed" || Model.RefundStatus == "Pending Unblock")
+            {
+                <div class="receipt-section-title">04 / REFUND & MANDATE UNBLOCK STATUS</div>
+                <div class="unblock-highlight-box">
+                    <div class="row align-items-center">
+                        <div class="col-md-7">
+                            <h6 class="mb-1 text-success">
+                                @(Model.RefundStatus == "Completed" ? "Mandate Amount Successfully Unblocked" : "Mandate Unblock Initiated")
+                            </h6>
+                            <p class="mb-0 small text-secondary">
+                                Funds released back to investor's linked bank account via UPI ID: <strong>@Model.UpiId</strong>
+                            </p>
+                            @if (!string.IsNullOrWhiteSpace(Model.RefundReferenceId))
+                            {
+                                <div class="small mt-1 text-muted">
+                                    Refund Reference ID: <strong class="font-monospace text-dark">@Model.RefundReferenceId</strong>
+                                </div>
+                            }
+                            @if (Model.RefundProcessedAt.HasValue)
+                            {
+                                <div class="small text-muted">
+                                    Processed On: <strong>@Model.RefundProcessedAt.Value.ToString("dd MMM yyyy, hh:mm tt")</strong>
+                                </div>
+                            }
+                        </div>
+                        <div class="col-md-5 text-md-end mt-2 mt-md-0">
+                            <span class="badge @(Model.RefundStatus == "Completed" ? "bg-success" : "bg-warning text-dark") px-3 py-2 mb-1">
+                                Status: @Model.RefundStatus
+                            </span>
+                            <div class="h5 mb-0 font-monospace text-success font-weight-bold">
+                                ₹@Model.UnblockedAmount.ToString("N2")
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Disclaimer and Audit Footer -->
+            <div class="receipt-footer">
+                <p class="mb-1">
+                    <strong>Notice:</strong> In Indian primary capital markets, public issue bidding by retail investors requires ASBA (Application Supported by Blocked Amount) under SEBI ICDR regulations. The application amount is blocked in the applicant's bank account until basis of allotment is finalized.
+                </p>
+                <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top text-muted small">
+                    <span>Generated by IPO Investment Management System &middot; Receipt Verification Code: @(Model.ReceiptNumber.GetHashCode().ToString("X8"))</span>
+                    <span>@(Model.IsSimulated ? "SIMULATED / TESTNET RECEIPT" : "PRODUCTION FINANCIAL RECORD")</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

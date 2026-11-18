@@ -56,15 +56,18 @@ namespace IPOInvestmentManagement.Models
         [StringLength(50)]
         public string? Status { get; set; }
 
+        public bool Allotment_finalized { get; set; } = false;
+        public DateTime? Allotment_finalized_at { get; set; }
+
         public string? Description { get; set; }
 
         public DateTime Created_at { get; set; }
 
         [NotMapped]
-        public TimeSpan EffectiveOpeningTime => Opening_time ?? (Open_date.TimeOfDay != TimeSpan.Zero ? Open_date.TimeOfDay : new TimeSpan(9, 30, 0));
+        public TimeSpan EffectiveOpeningTime => Opening_time ?? (Open_date.TimeOfDay != TimeSpan.Zero ? Open_date.TimeOfDay : new TimeSpan(10, 0, 0));
 
         [NotMapped]
-        public TimeSpan EffectiveClosingTime => Closing_time ?? (Close_date.TimeOfDay != TimeSpan.Zero ? Close_date.TimeOfDay : new TimeSpan(15, 30, 0));
+        public TimeSpan EffectiveClosingTime => Closing_time ?? (Close_date.TimeOfDay != TimeSpan.Zero ? Close_date.TimeOfDay : new TimeSpan(17, 0, 0));
 
         [NotMapped]
         public DateTime OpeningDateTime => Open_date.Date.Add(EffectiveOpeningTime);

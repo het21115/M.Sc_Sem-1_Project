@@ -4,12 +4,65 @@
 }
 
 <div class="investor-terminal">
-    <header class="terminal-bar"><a class="terminal-logo" href="#top"><span></span> IPO / <strong>INVEST</strong></a><nav aria-label="Investor navigation"><a class="active" href="#top">Dashboard</a><a href="#investor-notifications"><span class="badge bg-warning text-dark me-1" style="font-size:0.6rem; vertical-align:middle;">@Model.Notifications.Count</span>Updates</a><a href="#live-market-modal" data-bs-toggle="modal" data-bs-target="#live-market-modal"><span class="ticker-pulse d-inline-block me-1" style="width:7px;height:7px;vertical-align:middle;"></span>Live Market</a><a href="#search-ipo-modal" data-bs-toggle="modal" data-bs-target="#search-ipo-modal">Search IPO</a><a asp-controller="Dashboard" asp-action="Portfolio">Portfolio</a></nav><div class="terminal-user"><span>@Model.UserName</span><i></i><a asp-controller="Dashboard" asp-action="InvestorProfile">Profile</a><a class="investor-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
+    <header class="terminal-bar"><a class="terminal-logo" href="#top"><span></span> IPO / <strong>INVEST</strong></a><nav aria-label="Investor navigation"><a class="active" href="#top">Dashboard</a><a href="#application-history">Applications</a><a href="#investor-notifications"><span class="badge bg-warning text-dark me-1" style="font-size:0.6rem; vertical-align:middle;">@Model.Notifications.Count</span>Updates</a><a href="#search-ipo-modal" data-bs-toggle="modal" data-bs-target="#search-ipo-modal">Search IPO</a><a asp-controller="Dashboard" asp-action="Portfolio">Portfolio</a></nav><div class="terminal-user"><span>@Model.UserName</span><i></i><a asp-controller="Dashboard" asp-action="InvestorProfile">Profile</a><a class="investor-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a></div></header>
     <main class="terminal-main" id="top">
-        <div class="investor-page-actions"><a class="btn btn-outline-warning text-dark fw-bold" href="#investor-notifications">&#128276; Updates <span class="badge bg-warning text-dark border ms-1">@Model.Notifications.Count</span></a><button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#live-market-modal"><span class="ticker-pulse d-inline-block me-1" style="width:7px;height:7px;vertical-align:middle;"></span>Live Market</button><button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#search-ipo-modal"><span>&#128269;</span> Search IPOs</button><a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="Portfolio">My Portfolio</a><a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="InvestorProfile">Edit profile</a></div>
-        <div class="terminal-heading"><div><span class="terminal-overline">PERSONAL MARKET TERMINAL / 01</span><h1>Good morning, @Model.UserName</h1></div><div class="terminal-clock">@DateTime.Now.ToString("dd MMM yyyy")<small><i></i> SYSTEM ONLINE</small></div></div>
+        <div class="investor-actions-toolbar">
+            <div class="investor-live-market-standalone">
+                <button type="button" class="btn investor-live-market-btn" data-bs-toggle="modal" data-bs-target="#live-market-modal" title="Open Real-Time NSE / BSE Dual-Exchange Live Market Terminal">
+                    <span class="investor-live-indicator">
+                        <span class="investor-live-ring"></span>
+                        <span class="investor-live-dot"></span>
+                    </span>
+                    <span class="investor-live-text">Live Market</span>
+                    <span class="investor-market-pill">NSE &middot; BSE</span>
+                    <span class="investor-live-status-pill @(Model.Market.IsMarketOpen ? "is-open" : "is-closed")">
+                        @(Model.Market.IsMarketOpen ? "LIVE" : "CLOSED")
+                    </span>
+                    <span class="investor-live-arrow">&#8599;</span>
+                </button>
+            </div>
+            <div class="investor-page-actions">
+                <a class="btn btn-outline-warning text-dark fw-bold" href="#investor-notifications">&#128276; Updates <span class="badge bg-warning text-dark border ms-1">@Model.Notifications.Count</span></a>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#search-ipo-modal"><span>&#128269;</span> Search IPOs</button>
+                <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="Portfolio">My Portfolio</a>
+                <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="InvestorProfile">Edit profile</a>
+            </div>
+        </div>
+        <div class="terminal-heading"><div><span class="terminal-overline">PERSONAL MARKET TERMINAL / 01</span><h1><span data-time-greeting>@Model.TimeGreeting</span>, @Model.UserName</h1></div><div class="terminal-clock">@DateTime.Now.ToString("dd MMM yyyy")<small><i></i> SYSTEM ONLINE</small></div></div>
         @if (TempData["InvestorMessage"] is string investorMessage) { <div class="alert alert-info investor-dashboard-alert" role="alert">@investorMessage</div> }
-        <section class="terminal-metrics" aria-label="Investment summary"><div><span>OPEN IPOs</span><strong id="metric-open-ipo-count">@Model.OpenIpoCount</strong><a href="#live-market-modal" data-bs-toggle="modal" data-bs-target="#live-market-modal"><span class="ticker-pulse d-inline-block me-1" style="width:6px;height:6px;vertical-align:middle;"></span>Live Market <b aria-hidden="true">&#8594;</b></a></div><div><span>MY WATCHLIST</span><strong>@Model.WatchlistDetails.Count</strong><a href="#watchlist">View Watchlist <b aria-hidden="true">&#8594;</b></a></div><div><span>MY APPLICATIONS</span><strong>@Model.ApplicationCount</strong><a href="#applications-modal" data-bs-toggle="modal" data-bs-target="#applications-modal">Track Status <b aria-hidden="true">&#8594;</b></a></div><div><span>MY PORTFOLIO</span><strong>₹@Model.InvestmentTotal.ToString("N2")</strong><a asp-controller="Dashboard" asp-action="Portfolio">Open Portfolio <b aria-hidden="true">&#8594;</b></a></div></section>
+        <section class="terminal-metrics" aria-label="Investment summary">
+            <div>
+                <span>OPEN IPOs</span>
+                <strong id="metric-open-ipo-count">@Model.OpenIpoCount</strong>
+                <a href="#published-ipos">Active offerings <b aria-hidden="true">&#8594;</b></a>
+            </div>
+            <div>
+                <span>TODAY'S P/L</span>
+                <strong style="color: @(Model.TodayProfitLoss >= 0 ? "#10b981" : "#ef4444");">
+                    @(Model.TodayProfitLoss >= 0 ? "+" : "-")₹@Math.Abs(Model.TodayProfitLoss).ToString("N2")
+                </strong>
+                <a href="#performance-modal" data-bs-toggle="modal" data-bs-target="#performance-modal" style="color: @(Model.TodayProfitLoss >= 0 ? "#10b981" : "#ef4444"); font-weight: 600;">
+                    @(Model.TodayProfitLoss >= 0 ? "▲ +" : "▼ -")@Math.Abs(Model.TodayProfitLossPercentage).ToString("0.00")% today <b aria-hidden="true">&#8594;</b>
+                </a>
+            </div>
+            <div>
+                <span>OVERALL P/L</span>
+                <strong style="color: @(Model.ProfitLoss >= 0 ? "#10b981" : "#ef4444");">
+                    @(Model.ProfitLoss >= 0 ? "+" : "-")₹@Math.Abs(Model.ProfitLoss).ToString("N2")
+                </strong>
+                <a href="#performance-modal" data-bs-toggle="modal" data-bs-target="#performance-modal">P/L Details <b aria-hidden="true">&#8594;</b></a>
+            </div>
+            <div>
+                <span>MY APPLICATIONS</span>
+                <strong>@Model.ApplicationCount</strong>
+                <a href="#application-history">Application History <b aria-hidden="true">&#8594;</b></a>
+            </div>
+            <div>
+                <span>MY PORTFOLIO</span>
+                <strong>₹@Model.InvestmentTotal.ToString("N2")</strong>
+                <a asp-controller="Dashboard" asp-action="Portfolio">Open Portfolio <b aria-hidden="true">&#8594;</b></a>
+            </div>
+        </section>
         <section class="user-notifications" id="investor-notifications" aria-label="System notifications and important updates">
             <div class="terminal-section-head">
                 <div>
@@ -17,7 +70,9 @@
                     <h2>Recent announcements &amp; updates</h2>
                     <p>Live alerts regarding IPO opening, closing, allotment outcomes, listing dates, and payments.</p>
                 </div>
-                <span class="investor-library-note">@Model.Notifications.Count notice(s)</span>
+                <span class="investor-library-note" id="investor-notifications-counter">
+                    @(Model.Notifications.Count > 3 ? $"Showing 3 of {Model.Notifications.Count} notice(s)" : $"{Model.Notifications.Count} notice(s)")
+                </span>
             </div>
             @if (Model.Notifications.Count == 0)
             {
@@ -26,8 +81,13 @@
             else
             {
                 <div class="user-notifications-list">
-                    @foreach (var notification in Model.Notifications)
+                    @for (int i = 0; i < Model.Notifications.Count; i++)
                     {
+                        var notification = Model.Notifications[i];
+                        if (i == 3)
+                        {
+                            @:<div class="user-notifications-extra" id="investor-notifications-extra" style="display: none;">
+                        }
                         <article>
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <strong>@notification.Title</strong>
@@ -36,9 +96,51 @@
                             <p class="mb-0">@notification.Message</p>
                         </article>
                     }
+                    @if (Model.Notifications.Count > 3)
+                    {
+                        @:</div>
+                        <div class="notifications-expand-bar text-center pt-2 mt-2 border-top">
+                            <button type="button" class="btn btn-sm btn-outline-warning text-dark fw-bold px-3 py-1 notification-toggle-btn" id="btn-toggle-investor-notifications" data-expanded="false" style="border-radius: 20px; font-size: 0.82rem; background: rgba(245, 158, 11, 0.08); border-color: rgba(218, 190, 111, 0.5);">
+                                <span class="toggle-icon">&#9660;</span> <span class="toggle-text">Show more updates (@(Model.Notifications.Count - 3) more)</span>
+                            </button>
+                        </div>
+                    }
                 </div>
             }
         </section>
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                var toggleBtn = document.getElementById("btn-toggle-investor-notifications");
+                var extraBox = document.getElementById("investor-notifications-extra");
+                var counter = document.getElementById("investor-notifications-counter");
+                var totalCount = @Model.Notifications.Count;
+
+                if (toggleBtn && extraBox) {
+                    toggleBtn.addEventListener("click", function () {
+                        var isExpanded = toggleBtn.getAttribute("data-expanded") === "true";
+                        if (!isExpanded) {
+                            extraBox.style.display = "block";
+                            toggleBtn.setAttribute("data-expanded", "true");
+                            toggleBtn.innerHTML = '<span class="toggle-icon">&#9650;</span> <span class="toggle-text">Show fewer updates</span>';
+                            if (counter) {
+                                counter.textContent = 'Showing all ' + totalCount + ' notice(s)';
+                            }
+                        } else {
+                            extraBox.style.display = "none";
+                            toggleBtn.setAttribute("data-expanded", "false");
+                            toggleBtn.innerHTML = '<span class="toggle-icon">&#9660;</span> <span class="toggle-text">Show more updates (' + (totalCount - 3) + ' more)</span>';
+                            if (counter) {
+                                counter.textContent = 'Showing 3 of ' + totalCount + ' notice(s)';
+                            }
+                            var section = document.getElementById("investor-notifications");
+                            if (section) {
+                                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                        }
+                    });
+                }
+            });
+        </script>
         <section class="investor-live-market-card" aria-label="Real-time live market pulse">
             <div class="live-market-copy">
                 <span class="terminal-overline">
@@ -70,14 +172,51 @@
                 </span>
             </div>
             <button type="button" class="btn investor-live-market-button" data-bs-toggle="modal" data-bs-target="#live-market-modal">
-                <span class="ticker-pulse d-inline-block me-1" style="width:7px;height:7px;vertical-align:middle;"></span>Live Market <span aria-hidden="true">&#8594;</span>
+                <span class="ticker-pulse d-inline-block me-1" style="width:7px;height:7px;vertical-align:middle;"></span>Open Live Terminal <span aria-hidden="true">&#8594;</span>
             </button>
         </section>
         <section class="terminal-feature-grid"><div class="portfolio-panel"><div class="panel-top"><span>PORTFOLIO ACTIVITY</span><b>01 / 04</b></div><h2>Your investment<br /><em>overview.</em></h2><p>Keep your research, applications, and positions in one place.</p><div class="activity-graph" aria-hidden="true"><div class="graph-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="graph-line"></div></div><small class="graph-caption">YOUR RECENT ACTIVITY <span>VIEW TIMELINE &#8594;</span></small></div><div class="focus-panel"><span class="panel-number">02</span><span class="focus-label">TODAY'S FOCUS</span><h2>Scan the<br /><strong>open market.</strong></h2><p><span id="focus-open-ipo-count">@Model.OpenIpoCount</span> IPOs are currently accepting applications.</p><a href="#watchlist">Review opportunities <span>&#8594;</span></a></div></section>
         <section class="portfolio-card portfolio-performance investor-dashboard-performance" aria-labelledby="dashboard-performance-title">
             <div class="terminal-section-head">
-                <div><span class="terminal-overline">02 / PORTFOLIO PERFORMANCE</span><h2 id="dashboard-performance-title">Transaction cash-flow trend</h2></div>
-                <a class="investor-library-note" asp-controller="Dashboard" asp-action="Portfolio">Open full portfolio &#8594;</a>
+                <div><span class="terminal-overline">02 / PORTFOLIO &amp; TODAY'S PERFORMANCE</span><h2 id="dashboard-performance-title">Profit &amp; Loss Overview</h2></div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge @(Model.TodayProfitLoss >= 0 ? "bg-success" : "bg-danger") px-3 py-2 fs-6">
+                        Today: @(Model.TodayProfitLoss >= 0 ? "+₹" : "-₹")@Math.Abs(Model.TodayProfitLoss).ToString("N2") (@(Model.TodayProfitLoss >= 0 ? "+" : "")@Model.TodayProfitLossPercentage.ToString("0.00")%)
+                    </span>
+                    <a class="investor-library-note" asp-controller="Dashboard" asp-action="Portfolio">Open full portfolio &#8594;</a>
+                </div>
+            </div>
+
+            <!-- Today's P/L Snapshot Box -->
+            <div class="p-3 mb-4 rounded-3 border" style="background: linear-gradient(135deg, @(Model.TodayProfitLoss >= 0 ? "#f0fdf4, #e6f9ed" : "#fef2f2, #fee2e2")); border-color: @(Model.TodayProfitLoss >= 0 ? "#86efac" : "#fca5a5") !important;">
+                <div class="row align-items-center g-3">
+                    <div class="col-md-3">
+                        <small class="text-muted d-block text-uppercase fw-semibold" style="font-size: 0.7rem;">Today's Profit / Loss</small>
+                        <strong class="fs-4 @(Model.TodayProfitLoss >= 0 ? "text-success" : "text-danger")">
+                            @(Model.TodayProfitLoss >= 0 ? "+₹" : "-₹")@Math.Abs(Model.TodayProfitLoss).ToString("N2")
+                        </strong>
+                        <small class="d-block fw-bold @(Model.TodayProfitLoss >= 0 ? "text-success" : "text-danger")">
+                            @(Model.TodayProfitLoss >= 0 ? "▲ +" : "▼ -")@Math.Abs(Model.TodayProfitLossPercentage).ToString("0.00")% today
+                        </small>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted d-block text-uppercase fw-semibold" style="font-size: 0.7rem;">Cumulative Overall P/L</small>
+                        <strong class="fs-5 @(Model.ProfitLoss >= 0 ? "text-success" : "text-danger")">
+                            @(Model.ProfitLoss >= 0 ? "+₹" : "-₹")@Math.Abs(Model.ProfitLoss).ToString("N2")
+                        </strong>
+                        <small class="text-muted d-block">Overall portfolio return</small>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted d-block text-uppercase fw-semibold" style="font-size: 0.7rem;">Invested Capital</small>
+                        <strong class="fs-5 text-dark">₹@Model.InvestmentTotal.ToString("N2")</strong>
+                        <small class="text-muted d-block">Cost basis of holdings</small>
+                    </div>
+                    <div class="col-md-3 text-md-end">
+                        <small class="text-muted d-block text-uppercase fw-semibold" style="font-size: 0.7rem;">Current Valuation</small>
+                        <strong class="fs-5 text-primary">₹@((Model.InvestmentTotal + Model.ProfitLoss).ToString("N2"))</strong>
+                        <small class="text-muted d-block">Live dual-exchange quote</small>
+                    </div>
+                </div>
             </div>
             @if (Model.PortfolioPerformance.Count == 0)
             {
@@ -104,24 +243,469 @@
         <section class="investor-market-launcher" id="ipo-market">
             <div>
                 <span class="terminal-overline">04 / IPO MARKET</span>
-                <strong>Search IPO Offerings &amp; Live Terminal</strong>
-                <small>Search across all IPOs by name, status, type, or launch the live trading terminal.</small>
+                <strong>Search IPO Offerings</strong>
+                <small>Search across all IPOs by name, status, type, and evaluate market opportunities.</small>
             </div>
             <div class="d-flex align-items-center gap-2">
-                <button type="button" class="btn btn-outline-success text-white fw-bold" data-bs-toggle="modal" data-bs-target="#live-market-modal" style="font-size: .68rem; padding: 10px 14px; background: rgba(16,185,129,0.15); border: 1px solid #10b981;">
-                    <span class="ticker-pulse d-inline-block me-1" style="width:7px;height:7px;vertical-align:middle;"></span>Live Market &rarr;
-                </button>
                 <button type="button" class="btn investor-market-launch-button" data-bs-toggle="modal" data-bs-target="#search-ipo-modal">
                     <span>&#128269;</span> Search IPO &rarr;
                 </button>
             </div>
         </section>
-        <section class="investor-ipo-library" id="published-ipos"><div class="terminal-section-head"><div><span class="terminal-overline">05 / PUBLISHED MARKET DATA</span><h2>Published IPO information</h2></div><span class="investor-library-note">Admin-approved offerings</span></div>@if (Model.PublishedIpoDetails.Count == 0) { <div class="terminal-empty">No published IPO information is available yet.</div> } else { foreach (var detail in Model.PublishedIpoDetails) { string publishedCompanyName = Model.CompanyNames.TryGetValue(detail.Ipo.Company_id, out var companyName) ? companyName : "Company"; bool isWatched = Model.WatchlistDetails.Any(item => item.Ipo.IPO_id == detail.Ipo.IPO_id); <details id="ipo-record-@detail.Ipo.IPO_id" class="investor-ipo-record" data-ipo-id="@detail.Ipo.IPO_id" data-ipo-open="@detail.Ipo.OpeningDateTime.ToString("yyyy-MM-ddTHH:mm:ss")" data-ipo-close="@detail.Ipo.ClosingDateTime.ToString("yyyy-MM-ddTHH:mm:ss")"><summary><div><strong>@detail.Ipo.IPO_name</strong><small>@publishedCompanyName &middot; <span class="badge bg-secondary ms-1" data-status-for="@detail.Ipo.IPO_id">@Model.MarketStatuses.GetValueOrDefault(detail.Ipo.IPO_id, detail.Ipo.Status ?? "Upcoming")</span></small>@if (detail.CurrentGmp != null){<span class="badge bg-warning text-dark border ms-2" style="font-size: 0.7rem;" title="Unofficial Grey Market Premium">Unofficial GMP: ₹@detail.CurrentGmp.GMPPrice.ToString("N2") (+@detail.EstimatedGainPercentage%)</span>}</div><span>View full information <b aria-hidden="true">+</b></span></summary><div class="investor-ipo-record-body"><div class="investor-ipo-overview"><span>Opening <b>@detail.Ipo.OpeningDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</b></span><span>Closing <b>@detail.Ipo.ClosingDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</b></span><span>Allotment date <b>@(detail.Ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "Not announced")</b></span><span>Funds revoke date <b>@(detail.Ipo.Funds_unblock_date?.ToString("dd MMM yyyy") ?? "Not announced")</b></span><span>Total shares <b>@detail.Ipo.Total_shares?.ToString("N0")</b></span><span>Price range <b>₹@detail.Ipo.Price_min?.ToString("N2") - ₹@detail.Ipo.Price_max?.ToString("N2")</b></span><span>Lot size <b>@detail.Ipo.Lot_size?.ToString("N0")</b></span><span>Issue size <b>₹@detail.Ipo.Issue_size?.ToString("N2")</b></span><span>Unofficial GMP <b>@(detail.CurrentGmp != null ? $"₹{detail.CurrentGmp.GMPPrice:N2} (Est. ₹{detail.EstimatedListingPrice:N2})" : "No quote")</b></span></div><p class="investor-ipo-description">@(detail.Ipo.Description ?? "No description provided for this offering.")</p><div class="investor-ipo-data-grid"><div><h3>Applications</h3><strong>@detail.ApplicationCount</strong><small>Applications received</small></div><div><h3>Financial information</h3><p>Revenue <b>₹@(detail.Financial?.Revenue?.ToString("N2") ?? "-")</b></p><p>Profit <b>₹@(detail.Financial?.Profit?.ToString("N2") ?? "-")</b></p><p>Net Worth <b>₹@(detail.Financial?.Net_worth?.ToString("N2") ?? "-")</b></p></div><div><h3>Analysis</h3>@if (detail.Analysis is null) { <small>Not available yet.</small> } else { <p>@(detail.Analysis.Analysis_summary ?? "Analysis summary not available.")</p><p>ROE <b>@(detail.Analysis.ROE?.ToString("N2") ?? "-")</b></p><p>Revenue growth <b>@(detail.Analysis.Revenue_growth?.ToString("N2") ?? "-")</b></p><p>Profit growth <b>@(detail.Analysis.Profit_growth?.ToString("N2") ?? "-")</p> }</div><div><h3>Listing</h3>@if (detail.Listing is null) { <small>Not listed yet.</small> } else { <p>Issue Price <b>₹@(detail.Listing.Issue_price?.ToString("N2") ?? "-")</b></p><p>NSE <b>₹@(detail.Listing.NSE_listing_price?.ToString("N2") ?? "-")</b></p><p>BSE <b>₹@(detail.Listing.BSE_listing_price?.ToString("N2") ?? "-")</b></p><p>Listing gain <b>@(detail.Listing.Listing_gain_percentage?.ToString("N2") ?? "-")%</b></p><p>Listed date <b>@(detail.Listing.Listing_date?.ToString("dd MMM yyyy") ?? "-")</p> }</div></div><div class="d-flex flex-wrap align-items-center justify-content-between p-2 mt-3 rounded bg-light border"><div class="d-flex align-items-center gap-2"><span class="badge bg-warning text-dark border">UNOFFICIAL</span><span class="small">Current GMP: <strong>@(detail.CurrentGmp != null ? $"₹{detail.CurrentGmp.GMPPrice:N2}" : "N/A")</strong> &middot; Est. Listing: <strong>@(detail.CurrentGmp != null ? $"₹{detail.EstimatedListingPrice:N2} (+{detail.EstimatedGainPercentage}%)" : "N/A")</strong></span></div><a class="btn btn-sm btn-outline-warning text-dark fw-bold" asp-controller="Dashboard" asp-action="InvestorIpoDetails" asp-route-ipoId="@detail.Ipo.IPO_id" asp-fragment="gmp-tracker">📊 View Historical GMP Chart &rarr;</a></div></div></details> } }</section>
-        <div class="modal fade investor-modal" id="applications-modal" tabindex="-1" aria-labelledby="applications-modal-title" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h2 class="modal-title" id="applications-modal-title">My Applications</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><p class="investor-modal-intro">Browse your recent application records, payments, and allotment statuses.</p>@if (Model.RecentApplications.Count == 0) { <div class="terminal-empty">You have not submitted any IPO applications yet.</div> } else { <div class="investor-modal-list">@foreach (var application in Model.RecentApplications) { var allotment = Model.ApplicationAllotments.GetValueOrDefault(application.Application_id); <div class="investor-modal-row"><div><strong>@Model.ApplicationIpoNames.GetValueOrDefault(application.IPO_id, "IPO")</strong><small>@application.Applied_lots lot(s) / @application.Applied_shares share(s) &middot; @application.Application_date.ToString("dd MMM yyyy") &middot; Payment: @(application.Payment_status ?? "Pending Payment")@if (allotment is not null) { <text> &middot; Result: @allotment.Status</text> } else { <text> &middot; Result: Awaiting allotment</text> }</small></div><div><em>@(application.Status ?? "Pending")</em><a class="btn btn-sm btn-outline-primary mt-2" asp-controller="Dashboard" asp-action="InvestorApplicationDetails" asp-route-applicationId="@application.Application_id">Details</a></div></div> }</div> }</div><div class="modal-footer"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="DownloadIpoApplicationReportPdf" target="_blank">📄 Export Applications PDF</a><a class="btn btn-sm btn-outline-success" asp-controller="Dashboard" asp-action="DownloadAllotmentReportPdf" target="_blank">📄 Export Allotment PDF</a><a class="btn btn-outline-primary" href="#application-history">Full history</a><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div></div></div></div>
-        <section class="investor-calendar" id="payment-history"><div class="terminal-section-head"><div><span class="terminal-overline">06 / PAYMENT HISTORY</span><h2>Payment history</h2><p>Verified Razorpay payment attempts and their current status.</p></div></div>@if (Model.PaymentHistory.Count == 0) { <div class="terminal-empty">No payment attempts yet.</div> } else { <div class="investor-modal-list">@foreach (var payment in Model.PaymentHistory) { <div class="investor-modal-row"><div><strong>@Model.PaymentIpoNames.GetValueOrDefault(payment.IpoId, "IPO")</strong><small>@payment.ApplicationNumber &middot; ₹@payment.Amount.ToString("N2") &middot; @payment.CreatedAt.ToString("dd MMM yyyy HH:mm")</small></div><div><em>@payment.Status</em>@if (payment.Status != "Captured") { <form asp-controller="Dashboard" asp-action="RetryPayment" method="post" class="mt-2">@Html.AntiForgeryToken()<input type="hidden" name="paymentRecordId" value="@payment.PaymentRecordId" /><button type="submit" class="btn btn-sm btn-outline-primary">Retry payment</button></form> }</div></div> }</div> }</section>
-        <section class="investor-calendar" id="application-history"><div class="terminal-section-head"><div><span class="terminal-overline">07 / APPLICATION HISTORY</span><h2>Complete application history</h2><p>Application status and verified payment references are kept separately.</p></div><div class="d-flex align-items-center gap-2"><a class="btn btn-sm btn-outline-primary py-1 px-2" asp-controller="Dashboard" asp-action="DownloadIpoApplicationReportPdf" target="_blank" title="Download official PDF report of all submitted IPO applications">📄 Applications Report (PDF)</a><a class="btn btn-sm btn-outline-success py-1 px-2" asp-controller="Dashboard" asp-action="DownloadAllotmentReportPdf" target="_blank" title="Download official PDF report of IPO allotment outcomes & refunds">📄 Allotment Report (PDF)</a><span class="investor-library-note">@Model.RecentApplications.Count applications</span></div></div>@if (Model.RecentApplications.Count == 0) { <div class="terminal-empty">You have not submitted any IPO applications yet.</div> } else { <div class="investor-modal-list">@foreach (var application in Model.RecentApplications) { var allotment = Model.ApplicationAllotments.GetValueOrDefault(application.Application_id); <div class="investor-modal-row"><div><strong>@Model.ApplicationIpoNames.GetValueOrDefault(application.IPO_id, "IPO")</strong><small>@(application.Application_number ?? $"#{application.Application_id}") &middot; @application.Application_date.ToString("dd MMM yyyy") &middot; Payment: @(application.Payment_status ?? "Pending Payment")@if (!string.IsNullOrWhiteSpace(application.Razorpay_payment_id)) { <text> &middot; Ref: @application.Razorpay_payment_id</text> }</small></div><div><em>@(application.Status ?? "Pending")</em><a class="btn btn-sm btn-outline-primary mt-2" asp-controller="Dashboard" asp-action="InvestorApplicationDetails" asp-route-applicationId="@application.Application_id">View details</a></div></div> }</div> }</section>
+        <section class="investor-ipo-library" id="published-ipos"><div class="terminal-section-head"><div><span class="terminal-overline">05 / PUBLISHED MARKET DATA</span><h2>Published IPO information</h2></div><span class="investor-library-note">Admin-approved offerings</span></div>@if (Model.PublishedIpoDetails.Count == 0) { <div class="terminal-empty">No published IPO information is available yet.</div> } else { foreach (var detail in Model.PublishedIpoDetails) { string publishedCompanyName = Model.CompanyNames.TryGetValue(detail.Ipo.Company_id, out var companyName) ? companyName : "Company"; bool isWatched = Model.WatchlistDetails.Any(item => item.Ipo.IPO_id == detail.Ipo.IPO_id); <details id="ipo-record-@detail.Ipo.IPO_id" class="investor-ipo-record" data-ipo-id="@detail.Ipo.IPO_id" data-ipo-open="@detail.Ipo.OpeningDateTime.ToString("yyyy-MM-ddTHH:mm:ss")" data-ipo-close="@detail.Ipo.ClosingDateTime.ToString("yyyy-MM-ddTHH:mm:ss")"><summary><div><strong>@detail.Ipo.IPO_name</strong><small>@publishedCompanyName &middot; <span class="badge bg-secondary ms-1" data-status-for="@detail.Ipo.IPO_id">@Model.MarketStatuses.GetValueOrDefault(detail.Ipo.IPO_id, detail.Ipo.Status ?? "Upcoming")</span></small>@if (detail.CurrentGmp != null){<span class="badge bg-warning text-dark border ms-2" style="font-size: 0.7rem;" title="Unofficial Grey Market Premium">Unofficial GMP: ₹@detail.CurrentGmp.GMPPrice.ToString("N2") (+@detail.EstimatedGainPercentage%)</span>}</div><span>View full information <b aria-hidden="true">+</b></span></summary><div class="investor-ipo-record-body"><div class="investor-ipo-overview"><span>Opening <b>@detail.Ipo.OpeningDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</b></span><span>Closing <b>@detail.Ipo.ClosingDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</b></span><span>Bidding window <b>10:00 AM &ndash; 05:00 PM IST (Mon&ndash;Fri)</b></span><span>Allotment date <b>@(detail.Ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "Not announced")</b></span><span>Funds revoke date <b>@(detail.Ipo.Funds_unblock_date?.ToString("dd MMM yyyy") ?? "Not announced")</b></span><span>Total shares <b>@detail.Ipo.Total_shares?.ToString("N0")</b></span><span>Price range <b>₹@detail.Ipo.Price_min?.ToString("N2") - ₹@detail.Ipo.Price_max?.ToString("N2")</b></span><span>Lot size <b>@detail.Ipo.Lot_size?.ToString("N0")</b></span><span>Issue size <b>₹@detail.Ipo.Issue_size?.ToString("N2")</b></span><span>Unofficial GMP <b>@(detail.CurrentGmp != null ? $"₹{detail.CurrentGmp.GMPPrice:N2} (Est. ₹{detail.EstimatedListingPrice:N2})" : "No quote")</b></span></div><p class="investor-ipo-description">@(detail.Ipo.Description ?? "No description provided for this offering.")</p><div class="investor-ipo-data-grid"><div><h3>Applications</h3><strong>@detail.ApplicationCount</strong><small>Applications received</small></div><div><h3>Financial information</h3><p>Revenue <b>₹@(detail.Financial?.Revenue?.ToString("N2") ?? "-")</b></p><p>Profit <b>₹@(detail.Financial?.Profit?.ToString("N2") ?? "-")</b></p><p>Net Worth <b>₹@(detail.Financial?.Net_worth?.ToString("N2") ?? "-")</b></p></div><div><h3>Analysis</h3>@if (detail.Analysis is null) { <small>Not available yet.</small> } else { <p>@(detail.Analysis.Analysis_summary ?? "Analysis summary not available.")</p><p>ROE <b>@(detail.Analysis.ROE?.ToString("N2") ?? "-")</b></p><p>Revenue growth <b>@(detail.Analysis.Revenue_growth?.ToString("N2") ?? "-")</b></p><p>Profit growth <b>@(detail.Analysis.Profit_growth?.ToString("N2") ?? "-")</p> }</div><div><h3>Listing</h3>@if (detail.Listing is null) { <small>Not listed yet.</small> } else { <p>Issue Price <b>₹@(detail.Listing.Issue_price?.ToString("N2") ?? "-")</b></p><p>NSE <b>₹@(detail.Listing.NSE_listing_price?.ToString("N2") ?? "-")</b></p><p>BSE <b>₹@(detail.Listing.BSE_listing_price?.ToString("N2") ?? "-")</b></p><p>Listing gain <b>@(detail.Listing.Listing_gain_percentage?.ToString("N2") ?? "-")%</b></p><p>Listed date <b>@(detail.Listing.Listing_date?.ToString("dd MMM yyyy") ?? "-")</p> }</div></div><div class="d-flex flex-wrap align-items-center justify-content-between p-2 mt-3 rounded bg-light border"><div class="d-flex align-items-center gap-2"><span class="badge bg-warning text-dark border">UNOFFICIAL</span><span class="small">Current GMP: <strong>@(detail.CurrentGmp != null ? $"₹{detail.CurrentGmp.GMPPrice:N2}" : "N/A")</strong> &middot; Est. Listing: <strong>@(detail.CurrentGmp != null ? $"₹{detail.EstimatedListingPrice:N2} (+{detail.EstimatedGainPercentage}%)" : "N/A")</strong></span></div><a class="btn btn-sm btn-outline-warning text-dark fw-bold" asp-controller="Dashboard" asp-action="InvestorIpoDetails" asp-route-ipoId="@detail.Ipo.IPO_id" asp-fragment="gmp-tracker">📊 View Historical GMP Chart &rarr;</a></div></div></details> } }</section>
+        <div class="modal fade investor-modal" id="applications-modal" tabindex="-1" aria-labelledby="applications-modal-title" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h2 class="modal-title" id="applications-modal-title">My Applications</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><p class="investor-modal-intro">Browse your recent application records, payments, and allotment statuses.</p>@if (Model.RecentApplications.Count == 0) { <div class="terminal-empty">You have not submitted any IPO applications yet.</div> } else { <div class="investor-modal-list">@foreach (var application in Model.RecentApplications) { var allotment = Model.ApplicationAllotments.GetValueOrDefault(application.Application_id); <div class="investor-modal-row"><div><strong>@Model.ApplicationIpoNames.GetValueOrDefault(application.IPO_id, "IPO")</strong><small>@application.Applied_lots lot(s) / @application.Applied_shares share(s) &middot; @application.Application_date.ToString("dd MMM yyyy") &middot; Payment: @(application.Payment_status ?? "Pending Payment")@if (allotment is not null) { <text> &middot; Result: @allotment.Status</text> } else { <text> &middot; Result: Awaiting allotment</text> }</small></div><div><em>@(application.Status ?? "Pending")</em><div class="d-flex gap-1 mt-2"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="InvestorApplicationDetails" asp-route-applicationId="@application.Application_id">Details</a>@if (allotment is not null) { <a class="btn btn-sm btn-outline-success" asp-controller="Dashboard" asp-action="AllotmentAdvice" asp-route-applicationId="@application.Application_id" title="View official CAN Advice">CAN Advice</a> }</div></div></div> }</div> }</div><div class="modal-footer"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="DownloadIpoApplicationReportPdf" target="_blank">📄 Export Applications PDF</a><a class="btn btn-sm btn-outline-success" asp-controller="Dashboard" asp-action="DownloadAllotmentReportPdf" target="_blank">📄 Export Allotment PDF</a><a class="btn btn-outline-primary" href="#application-history">Full history</a><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div></div></div></div>
+        <section class="investor-calendar" id="payment-history">
+            <div class="terminal-section-head">
+                <div>
+                    <span class="terminal-overline">06 / PAYMENT & MANDATE HISTORY</span>
+                    <h2>Payment history</h2>
+                    <p>Verified gateway transactions, UPI ASBA mandates, official receipts, and refund statuses.</p>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-secondary text-white">@Model.PaymentHistory.Count transactions</span>
+                </div>
+            </div>
+
+            @if (Model.PaymentHistory.Count > 0)
+            {
+                var totalBlocked = Model.PaymentHistory.Where(p => p.Status == "Captured").Sum(p => p.Amount);
+                var totalUnblocked = Model.PaymentHistory.Sum(p => p.UnblockedAmount);
+                var capturedCount = Model.PaymentHistory.Count(p => p.Status == "Captured");
+
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <div class="p-3 rounded border bg-light">
+                            <span class="text-muted small d-block">Total Amount Blocked / Paid</span>
+                            <strong class="h5 mb-0 text-primary">₹@totalBlocked.ToString("N2")</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 rounded border bg-light">
+                            <span class="text-muted small d-block">Verified Mandates / Captures</span>
+                            <strong class="h5 mb-0 text-success">@capturedCount Successful</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 rounded border bg-light">
+                            <span class="text-muted small d-block">Unblocked / Refunded Funds</span>
+                            <strong class="h5 mb-0 text-info">₹@totalUnblocked.ToString("N2")</strong>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (Model.PaymentHistory.Count == 0)
+            {
+                <div class="terminal-empty">No payment or mandate records found.</div>
+            }
+            else
+            {
+                <div class="table-responsive border rounded bg-white">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light small text-uppercase">
+                            <tr>
+                                <th>Date (IST)</th>
+                                <th>IPO & Application</th>
+                                <th>Transaction / Payment ID</th>
+                                <th>Amount</th>
+                                <th>Workflow</th>
+                                <th>Status</th>
+                                <th>Refund / Unblock</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var payment in Model.PaymentHistory)
+                            {
+                                string ipoName = Model.PaymentIpoNames.GetValueOrDefault(payment.IpoId, "IPO");
+                                bool isCaptured = string.Equals(payment.Status, "Captured", StringComparison.OrdinalIgnoreCase);
+                                bool isRefunded = payment.RefundStatus == "Completed";
+                                bool isPendingRefund = payment.RefundStatus == "Pending Unblock";
+
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">@payment.CreatedAt.AddHours(5.5).ToString("dd MMM yyyy")</div>
+                                        <div class="text-muted small">@payment.CreatedAt.AddHours(5.5).ToString("hh:mm tt")</div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-bold">@ipoName</div>
+                                        <div class="text-muted small font-monospace">@payment.ApplicationNumber</div>
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrWhiteSpace(payment.RazorpayPaymentId))
+                                        {
+                                            <div class="font-monospace small text-primary fw-semibold">@payment.RazorpayPaymentId</div>
+                                        }
+                                        else
+                                        {
+                                            <div class="font-monospace small text-muted">@payment.RazorpayOrderId</div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(payment.ReceiptNumber))
+                                        {
+                                            <div class="text-muted small font-monospace">Rec: @payment.ReceiptNumber</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="fw-bold">₹@payment.Amount.ToString("N2")</span>
+                                        <div class="text-muted small">@payment.AppliedLots lot(s) / @payment.AppliedShares sh</div>
+                                    </td>
+                                    <td>
+                                        @if (payment.IsSimulated)
+                                        {
+                                            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning" title="Simulated ASBA Mandate in Sandbox">🧪 Simulated Mandate</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-success-subtle text-success-emphasis border border-success" title="Production Razorpay Gateway">💳 Genuine Gateway</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (isCaptured)
+                                        {
+                                            <span class="badge bg-success">Captured</span>
+                                        }
+                                        else if (payment.Status == "Created" || payment.Status == "Pending")
+                                        {
+                                            <span class="badge bg-warning text-dark">Pending</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">@payment.Status</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (isRefunded)
+                                        {
+                                            <span class="badge bg-info text-dark">Unblocked: ₹@payment.UnblockedAmount.ToString("N2")</span>
+                                            @if (payment.RefundProcessedAt.HasValue)
+                                            {
+                                                <div class="text-muted small">@payment.RefundProcessedAt.Value.ToString("dd MMM")</div>
+                                            }
+                                        }
+                                        else if (isPendingRefund)
+                                        {
+                                            <span class="badge bg-warning text-dark">Pending Unblock: ₹@payment.UnblockedAmount.ToString("N2")</span>
+                                        }
+                                        else if (payment.UnblockedAmount > 0)
+                                        {
+                                            <span class="badge bg-secondary">₹@payment.UnblockedAmount.ToString("N2")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">N/A</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="d-flex justify-content-end gap-1">
+                                            @if (isCaptured || !string.IsNullOrWhiteSpace(payment.RazorpayPaymentId))
+                                            {
+                                                <a class="btn btn-sm btn-outline-success" asp-controller="Dashboard" asp-action="PaymentReceipt" asp-route-paymentRecordId="@payment.PaymentRecordId" target="_blank" title="View & Print Official Receipt">
+                                                    📄 Receipt
+                                                </a>
+                                            }
+                                            @if (!isCaptured)
+                                            {
+                                                <form asp-controller="Dashboard" asp-action="RetryPayment" method="post" class="d-inline">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="paymentRecordId" value="@payment.PaymentRecordId" />
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary" title="Retry this payment">
+                                                        Retry
+                                                    </button>
+                                                </form>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+        <section class="investor-calendar" id="application-history">
+            <div class="terminal-section-head">
+                <div>
+                    <span class="terminal-overline">07 / IPO APPLICATION HISTORY &amp; SETTLEMENT TRACKER</span>
+                    <h2>IPO Application History</h2>
+                    <p>Track all your submitted bids, payment mandates, allotment results, and refund settlements in real time.</p>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <a class="btn btn-sm btn-outline-primary py-1 px-3" asp-controller="Dashboard" asp-action="DownloadIpoApplicationReportPdf" target="_blank" title="Download official PDF report of all submitted IPO applications">
+                        &#128196; Applications Report (PDF)
+                    </a>
+                    <a class="btn btn-sm btn-outline-success py-1 px-3" asp-controller="Dashboard" asp-action="DownloadAllotmentReportPdf" target="_blank" title="Download official PDF report of IPO allotment outcomes &amp; refunds">
+                        &#128190; Allotment Report (PDF)
+                    </a>
+                    <span class="investor-library-note">@Model.RecentApplications.Count total application(s)</span>
+                </div>
+            </div>
+
+            @if (Model.RecentApplications.Count == 0)
+            {
+                <div class="terminal-empty text-center py-5">
+                    <div class="fs-1 text-muted mb-2">&#128196;</div>
+                    <h5>No IPO Applications Yet</h5>
+                    <p class="text-muted">You have not submitted any IPO bids yet. Explore the Open IPO offerings above and submit your first application!</p>
+                    <a class="btn btn-primary" href="#published-ipos">Browse Open IPOs &rarr;</a>
+                </div>
+            }
+            else
+            {
+                <!-- Summary Metrics for Investor Application History -->
+                <div class="row g-3 mb-3">
+                    <div class="col-sm-6 col-md-3">
+                        <div class="p-3 rounded border bg-light">
+                            <span class="text-muted small d-block">Total Applications</span>
+                            <strong class="fs-5 text-dark">@Model.RecentApplications.Count</strong>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-md-3">
+                        <div class="p-3 rounded border bg-light">
+                            <span class="text-muted small d-block">Total Mandate Blocked</span>
+                            <strong class="fs-5 text-primary">₹@Model.RecentApplications.Sum(a => a.Application_amount ?? (a.Applied_shares * (a.Bid_price ?? 0m))).ToString("N2")</strong>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-md-3">
+                        <div class="p-3 rounded border bg-light">
+                            <span class="text-muted small d-block">Total Shares Allotted</span>
+                            <strong class="fs-5 text-success">@Model.ApplicationAllotments.Values.Sum(al => al.Allotted_shares).ToString("N0") shares</strong>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-md-3">
+                        <div class="p-3 rounded border bg-light">
+                            <span class="text-muted small d-block">Unblocked / Refunded</span>
+                            <strong class="fs-5 text-warning">₹@Model.ApplicationAllotments.Values.Sum(al => al.Unblocked_amount).ToString("N2")</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search and Filter Bar -->
+                <div class="card border mb-3 bg-white shadow-sm" style="border-radius: 10px;">
+                    <div class="card-body p-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div class="d-flex flex-wrap gap-1" id="app-filter-buttons">
+                                <button type="button" class="btn btn-sm btn-dark active app-filter-btn" data-filter="all">
+                                    All <span class="badge bg-secondary ms-1">@Model.RecentApplications.Count</span>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-success app-filter-btn" data-filter="allotted">
+                                    Allotted <span class="badge bg-success ms-1">@Model.RecentApplications.Count(a => Model.ApplicationAllotments.GetValueOrDefault(a.Application_id)?.Status == "Allotted")</span>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary app-filter-btn" data-filter="partial">
+                                    Partial <span class="badge bg-primary ms-1">@Model.RecentApplications.Count(a => Model.ApplicationAllotments.GetValueOrDefault(a.Application_id)?.Status == "Partially Allotted")</span>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary app-filter-btn" data-filter="nonallotted">
+                                    Not Allotted <span class="badge bg-secondary ms-1">@Model.RecentApplications.Count(a => Model.ApplicationAllotments.GetValueOrDefault(a.Application_id)?.Status == "Not Allotted")</span>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-warning text-dark app-filter-btn" data-filter="awaiting">
+                                    Awaiting Allotment <span class="badge bg-warning text-dark ms-1">@Model.RecentApplications.Count(a => !Model.ApplicationAllotments.ContainsKey(a.Application_id) && a.Status == "Submitted")</span>
+                                </button>
+                            </div>
+                            <div style="min-width: 240px;">
+                                <input type="text" id="app-history-search" class="form-control form-control-sm" placeholder="Search application, IPO, or ref..." />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Comprehensive Applications Table -->
+                <div class="table-responsive border rounded bg-white shadow-sm mb-3">
+                    <table class="table table-hover align-middle mb-0" id="app-history-table">
+                        <thead class="table-light small text-uppercase">
+                            <tr>
+                                <th>Application &amp; Date</th>
+                                <th>IPO Issue</th>
+                                <th>Applied Details</th>
+                                <th>Mandate / Payment</th>
+                                <th>Allotment Outcome</th>
+                                <th>Mandate Release</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var application in Model.RecentApplications)
+                            {
+                                var allotment = Model.ApplicationAllotments.GetValueOrDefault(application.Application_id);
+                                var payment = Model.ApplicationPayments.GetValueOrDefault(application.Razorpay_order_id ?? "");
+                                string rowCategory = allotment?.Status == "Allotted"
+                                    ? "allotted"
+                                    : (allotment?.Status == "Partially Allotted"
+                                        ? "partial"
+                                        : (allotment?.Status == "Not Allotted"
+                                            ? "nonallotted"
+                                            : "awaiting"));
+                                decimal blockedAmt = application.Application_amount ?? (application.Applied_shares * (application.Bid_price ?? 0m));
+
+                                <tr class="app-row" data-outcome="@rowCategory">
+                                    <td>
+                                        <strong>@(application.Application_number ?? $"#{application.Application_id}")</strong>
+                                        <small class="d-block text-muted">@application.Application_date.AddHours(5.5).ToString("dd MMM yyyy, hh:mm tt") IST</small>
+                                    </td>
+                                    <td>
+                                        <strong class="text-navy">@Model.ApplicationIpoNames.GetValueOrDefault(application.IPO_id, "IPO Offering")</strong>
+                                        <small class="d-block text-muted">ID: #@application.IPO_id</small>
+                                    </td>
+                                    <td>
+                                        <div><strong>@application.Applied_lots lot(s)</strong> (@application.Applied_shares.ToString("N0") shares)</div>
+                                        <small class="text-muted">₹@blockedAmt.ToString("N2") @@ ₹@((application.Bid_price ?? 0m).ToString("N2"))</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge @(application.Payment_status == "Verified" || application.Payment_status == "Captured" ? "bg-success" : "bg-warning text-dark")">
+                                            @(application.Payment_status ?? "Pending")
+                                        </span>
+                                        @if (!string.IsNullOrWhiteSpace(application.Razorpay_payment_id ?? application.Payment_reference))
+                                        {
+                                            <small class="d-block font-monospace text-muted text-truncate" style="max-width: 130px;" title="@(application.Razorpay_payment_id ?? application.Payment_reference)">
+                                                Ref: @(application.Razorpay_payment_id ?? application.Payment_reference)
+                                            </small>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (allotment is not null)
+                                        {
+                                            if (allotment.Status == "Allotted")
+                                            {
+                                                <span class="badge bg-success">Allotted</span>
+                                                <small class="d-block text-success fw-bold">@allotment.Allotted_shares.ToString("N0") shares (@allotment.Allotted_lots lot(s))</small>
+                                                <small class="text-muted">Debited: ₹@allotment.Debited_amount.ToString("N2")</small>
+                                            }
+                                            else if (allotment.Status == "Partially Allotted")
+                                            {
+                                                <span class="badge bg-primary">Partially Allotted</span>
+                                                <small class="d-block text-primary fw-bold">@allotment.Allotted_shares.ToString("N0") shares (@allotment.Allotted_lots lot(s))</small>
+                                                <small class="text-muted">Debited: ₹@allotment.Debited_amount.ToString("N2")</small>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary">Not Allotted</span>
+                                                <small class="d-block text-muted">0 shares</small>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-warning text-dark">Awaiting Allotment</span>
+                                            <small class="d-block text-muted">Decision pending</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (allotment is not null && allotment.Unblocked_amount > 0)
+                                        {
+                                            <strong class="text-warning">₹@allotment.Unblocked_amount.ToString("N2")</strong>
+                                            <small class="d-block text-muted">@(payment?.RefundStatus ?? "Unblocked")</small>
+                                            @if (!string.IsNullOrWhiteSpace(payment?.RefundReferenceId))
+                                            {
+                                                <small class="d-block font-monospace text-primary" style="font-size: 0.72rem;">@payment.RefundReferenceId</small>
+                                            }
+                                        }
+                                        else if (allotment is not null)
+                                        {
+                                            <span class="text-muted small">₹0.00 (Full Allotment)</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">Under ASBA Hold</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="btn-group btn-group-sm">
+                                            <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="InvestorApplicationDetails" asp-route-applicationId="@application.Application_id" title="View Application Details">
+                                                Details
+                                            </a>
+                                            <a class="btn btn-outline-success" asp-controller="Dashboard" asp-action="PaymentReceiptByApplication" asp-route-applicationId="@application.Application_id" target="_blank" title="View Payment Receipt">
+                                                Receipt
+                                            </a>
+                                            @if (allotment is not null)
+                                            {
+                                                <a class="btn btn-outline-info text-dark" asp-controller="Dashboard" asp-action="AllotmentAdvice" asp-route-applicationId="@application.Application_id" title="View official Confirmation of Allocation Note">
+                                                    CAN
+                                                </a>
+                                                <a class="btn btn-success" asp-controller="Dashboard" asp-action="DownloadAllotmentAdvicePdf" asp-route-applicationId="@application.Application_id" target="_blank" title="Download official PDF Allotment Advice">
+                                                    PDF
+                                                </a>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <script>
+                    document.addEventListener("DOMContentLoaded", function () {
+                        var searchBox = document.getElementById("app-history-search");
+                        var filterButtons = document.querySelectorAll(".app-filter-btn");
+                        var rows = document.querySelectorAll("#app-history-table tbody tr.app-row");
+                        var currentFilter = "all";
+
+                        function applyFilterAndSearch() {
+                            var query = searchBox ? searchBox.value.toLowerCase().trim() : "";
+                            rows.forEach(function (row) {
+                                var matchesFilter = currentFilter === "all" || row.getAttribute("data-outcome") === currentFilter;
+                                var matchesSearch = !query || row.textContent.toLowerCase().indexOf(query) !== -1;
+                                row.style.display = (matchesFilter && matchesSearch) ? "" : "none";
+                            });
+                        }
+
+                        if (searchBox) {
+                            searchBox.addEventListener("input", applyFilterAndSearch);
+                        }
+
+                        filterButtons.forEach(function (btn) {
+                            btn.addEventListener("click", function () {
+                                filterButtons.forEach(function (b) { b.classList.remove("active", "btn-dark"); b.classList.add("btn-outline-" + (b.getAttribute("data-filter") === "allotted" ? "success" : b.getAttribute("data-filter") === "partial" ? "primary" : b.getAttribute("data-filter") === "nonallotted" ? "secondary" : b.getAttribute("data-filter") === "awaiting" ? "warning" : "dark")); });
+                                this.classList.remove("btn-outline-dark", "btn-outline-success", "btn-outline-primary", "btn-outline-secondary", "btn-outline-warning");
+                                this.classList.add("active", "btn-dark");
+                                currentFilter = this.getAttribute("data-filter");
+                                applyFilterAndSearch();
+                            });
+                        });
+                    });
+                </script>
+            }
+        </section>
         <div class="modal fade investor-modal" id="portfolio-modal" tabindex="-1" aria-labelledby="portfolio-modal-title" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h2 class="modal-title" id="portfolio-modal-title">My Portfolio</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><div class="investor-modal-total">Total invested <strong>₹@Model.InvestmentTotal.ToString("N2")</strong></div>@if (Model.Investments.Count == 0) { <div class="terminal-empty">Your portfolio does not have any holdings yet.</div> } else { <div class="investor-modal-list">@foreach (var investment in Model.Investments) { decimal investmentCost = investment.Investment_amount ?? ((investment.Buy_price ?? 0m) * investment.Quantity); decimal currentValue = investment.Current_price.HasValue ? investment.Current_price.Value * investment.Quantity : investmentCost; <div class="investor-modal-row"><div><strong>@Model.InvestmentIpoNames.GetValueOrDefault(investment.IPO_id, "IPO")</strong><small>@investment.Quantity share(s) &middot; Buy price ₹@(investment.Buy_price?.ToString("N2") ?? "-")</small></div><b>₹@currentValue.ToString("N2")</b></div> }</div> }</div><div class="modal-footer"><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="DownloadPortfolioStatementPdf" target="_blank">📄 Export Portfolio PDF</a><a class="btn btn-sm btn-outline-success" asp-controller="Dashboard" asp-action="DownloadTransactionReportPdf" target="_blank">📄 Export Transactions PDF</a><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div></div></div></div>
-        <div class="modal fade investor-modal" id="performance-modal" tabindex="-1" aria-labelledby="performance-modal-title" aria-hidden="true"><div class="modal-dialog modal-md"><div class="modal-content"><div class="modal-header"><h2 class="modal-title" id="performance-modal-title">Profit / Loss Details</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><p class="investor-modal-intro">Calculated from the current value of your holdings compared with their invested cost.</p><div class="investor-performance-stats"><div><span>Invested value</span><strong>₹@Model.InvestmentTotal.ToString("N2")</strong></div><div><span>Current gain / loss</span><strong class="@(Model.ProfitLoss >= 0 ? "profit" : "loss")">@(Model.ProfitLoss >= 0 ? "+" : "-")₹@(Math.Abs(Model.ProfitLoss).ToString("N2"))</strong></div></div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div></div></div></div>
+        <div class="modal fade investor-modal" id="performance-modal" tabindex="-1" aria-labelledby="performance-modal-title" aria-hidden="true">
+            <div class="modal-dialog modal-md">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 class="modal-title" id="performance-modal-title">Portfolio Profit / Loss Details</h2>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="investor-modal-intro">Comprehensive calculation of today's market performance and cumulative holding returns.</p>
+                        <div class="investor-performance-stats">
+                            <div class="p-3 mb-3 rounded border" style="background: @(Model.TodayProfitLoss >= 0 ? "#f0fdf4" : "#fef2f2");">
+                                <span class="text-uppercase fw-bold small text-muted">Today's Profit / Loss</span>
+                                <strong class="fs-4 @(Model.TodayProfitLoss >= 0 ? "profit" : "loss")">
+                                    @(Model.TodayProfitLoss >= 0 ? "+" : "-")₹@Math.Abs(Model.TodayProfitLoss).ToString("N2")
+                                </strong>
+                                <small class="d-block fw-semibold @(Model.TodayProfitLoss >= 0 ? "text-success" : "text-danger")">
+                                    @(Model.TodayProfitLoss >= 0 ? "▲ +" : "▼ -")@Math.Abs(Model.TodayProfitLossPercentage).ToString("0.00")% today
+                                </small>
+                            </div>
+                            <div>
+                                <span>Invested Capital</span>
+                                <strong>₹@Model.InvestmentTotal.ToString("N2")</strong>
+                            </div>
+                            <div>
+                                <span>Current Valuation</span>
+                                <strong class="text-primary">₹@((Model.InvestmentTotal + Model.ProfitLoss).ToString("N2"))</strong>
+                            </div>
+                            <div>
+                                <span>Cumulative Return (P/L)</span>
+                                <strong class="@(Model.ProfitLoss >= 0 ? "profit" : "loss")">
+                                    @(Model.ProfitLoss >= 0 ? "+" : "-")₹@Math.Abs(Model.ProfitLoss).ToString("N2")
+                                </strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <a class="btn btn-primary" asp-controller="Dashboard" asp-action="Portfolio">View Full Portfolio &amp; Trades</a>
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
         <partial name="_InvestorApplications" model="Model" />
         <partial name="_InvestorWatchlistActions" model="Model" />
         <partial name="_InvestorLiveMarket" model="Model" />

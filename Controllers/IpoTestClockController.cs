@@ -97,16 +97,17 @@ namespace IPOInvestmentManagement.Controllers
             // Create a standardized test IPO matching user specifications:
             // - Vertex Renewable Energy IPO
             // - Opening Date: 7 December 2026, 09:30 AM IST
-            // - Closing Date: 9 December 2026, 03:30 PM IST (configured closing time)
+            // - Opening Date: 7 December 2026, 10:00 AM IST (configured opening time)
+            // - Closing Date: 9 December 2026, 05:00 PM IST (configured closing time)
             var sampleIpo = new IPO
             {
                 IPO_id = 99999,
                 Company_id = 1,
                 IPO_name = "Vertex Renewable Energy IPO",
                 Open_date = new DateTime(2026, 12, 7),
-                Opening_time = new TimeSpan(9, 30, 0),
+                Opening_time = new TimeSpan(10, 0, 0),
                 Close_date = new DateTime(2026, 12, 9),
-                Closing_time = new TimeSpan(15, 30, 0),
+                Closing_time = new TimeSpan(17, 0, 0),
                 Status = "Approved" // Approved & published by admin
             };
 
@@ -116,9 +117,9 @@ namespace IPOInvestmentManagement.Controllers
                 Company_id = 1,
                 IPO_name = "Rejected Sample IPO",
                 Open_date = new DateTime(2026, 12, 7),
-                Opening_time = new TimeSpan(9, 30, 0),
+                Opening_time = new TimeSpan(10, 0, 0),
                 Close_date = new DateTime(2026, 12, 9),
-                Closing_time = new TimeSpan(15, 30, 0),
+                Closing_time = new TimeSpan(17, 0, 0),
                 Status = "Rejected"
             };
 
@@ -128,9 +129,9 @@ namespace IPOInvestmentManagement.Controllers
                 Company_id = 1,
                 IPO_name = "Cancelled Sample IPO",
                 Open_date = new DateTime(2026, 12, 7),
-                Opening_time = new TimeSpan(9, 30, 0),
+                Opening_time = new TimeSpan(10, 0, 0),
                 Close_date = new DateTime(2026, 12, 9),
-                Closing_time = new TimeSpan(15, 30, 0),
+                Closing_time = new TimeSpan(17, 0, 0),
                 Status = "Cancelled"
             };
 
@@ -140,21 +141,21 @@ namespace IPOInvestmentManagement.Controllers
                 Company_id = 1,
                 IPO_name = "Pending Unapproved IPO",
                 Open_date = new DateTime(2026, 12, 7),
-                Opening_time = new TimeSpan(9, 30, 0),
+                Opening_time = new TimeSpan(10, 0, 0),
                 Close_date = new DateTime(2026, 12, 9),
-                Closing_time = new TimeSpan(15, 30, 0),
+                Closing_time = new TimeSpan(17, 0, 0),
                 Status = "Pending"
             };
 
             var testResults = new List<object>();
 
-            // Test 1: 7 December 2026, 09:29 AM IST -> Upcoming
-            DateTime t1 = new(2026, 12, 7, 9, 29, 0);
+            // Test 1: 7 December 2026, 09:59 AM IST -> Upcoming
+            DateTime t1 = new(2026, 12, 7, 9, 59, 0);
             string s1 = _statusService.CalculateStatus(sampleIpo, t1);
             var (canApply1, reason1) = _statusService.CanApply(sampleIpo, t1);
             testResults.Add(new
             {
-                testCase = "1. Before Opening Time",
+                testCase = "1. Before Opening Time (09:59 AM IST)",
                 timeIst = t1.ToString("dd MMM yyyy, hh:mm tt"),
                 expectedStatus = "Upcoming",
                 actualStatus = s1,
@@ -163,13 +164,13 @@ namespace IPOInvestmentManagement.Controllers
                 applicationValidationReason = reason1
             });
 
-            // Test 2: 7 December 2026, 09:30 AM IST -> Open
-            DateTime t2 = new(2026, 12, 7, 9, 30, 0);
+            // Test 2: 7 December 2026, 10:00 AM IST -> Open
+            DateTime t2 = new(2026, 12, 7, 10, 0, 0);
             string s2 = _statusService.CalculateStatus(sampleIpo, t2);
             var (canApply2, reason2) = _statusService.CanApply(sampleIpo, t2);
             testResults.Add(new
             {
-                testCase = "2. At Exact Opening Time",
+                testCase = "2. At Exact Opening Time (10:00 AM IST)",
                 timeIst = t2.ToString("dd MMM yyyy, hh:mm tt"),
                 expectedStatus = "Open",
                 actualStatus = s2,
@@ -178,8 +179,8 @@ namespace IPOInvestmentManagement.Controllers
                 applicationValidationReason = reason2
             });
 
-            // Test 3: 7 December 2026, 09:31 AM IST -> Open
-            DateTime t3 = new(2026, 12, 7, 9, 31, 0);
+            // Test 3: 7 December 2026, 11:30 AM IST -> Open
+            DateTime t3 = new(2026, 12, 7, 11, 30, 0);
             string s3 = _statusService.CalculateStatus(sampleIpo, t3);
             var (canApply3, reason3) = _statusService.CanApply(sampleIpo, t3);
             testResults.Add(new
@@ -193,13 +194,13 @@ namespace IPOInvestmentManagement.Controllers
                 applicationValidationReason = reason3
             });
 
-            // Test 4: 9 December 2026, before closing time (03:29 PM) -> Open
-            DateTime t4 = new(2026, 12, 9, 15, 29, 0);
+            // Test 4: 9 December 2026, before closing time (04:59 PM) -> Open
+            DateTime t4 = new(2026, 12, 9, 16, 59, 0);
             string s4 = _statusService.CalculateStatus(sampleIpo, t4);
             var (canApply4, reason4) = _statusService.CanApply(sampleIpo, t4);
             testResults.Add(new
             {
-                testCase = "4. Final Day Before Closing Time",
+                testCase = "4. Final Day Before Closing Time (04:59 PM IST)",
                 timeIst = t4.ToString("dd MMM yyyy, hh:mm tt"),
                 expectedStatus = "Open",
                 actualStatus = s4,
@@ -208,13 +209,13 @@ namespace IPOInvestmentManagement.Controllers
                 applicationValidationReason = reason4
             });
 
-            // Test 5: After closing date and time (9 Dec 2026, 03:31 PM) -> Closed
-            DateTime t5 = new(2026, 12, 9, 15, 31, 0);
+            // Test 5: After closing date and time (9 Dec 2026, 05:01 PM) -> Closed
+            DateTime t5 = new(2026, 12, 9, 17, 1, 0);
             string s5 = _statusService.CalculateStatus(sampleIpo, t5);
             var (canApply5, reason5) = _statusService.CanApply(sampleIpo, t5);
             testResults.Add(new
             {
-                testCase = "5. After Closing Date and Time",
+                testCase = "5. After Closing Date and Time (05:01 PM IST)",
                 timeIst = t5.ToString("dd MMM yyyy, hh:mm tt"),
                 expectedStatus = "Closed",
                 actualStatus = s5,
@@ -223,46 +224,74 @@ namespace IPOInvestmentManagement.Controllers
                 applicationValidationReason = reason5
             });
 
-            // Test 6: Rejected IPO -> Must never become Open (even during open window)
-            string s6 = _statusService.CalculateStatus(rejectedIpo, t3);
-            var (canApply6, reason6) = _statusService.CanApply(rejectedIpo, t3);
+            // Test 6: Weekend application restriction (Saturday)
+            DateTime tWeekend = new(2026, 12, 12, 12, 0, 0);
+            var (canApplyWeekend, reasonWeekend) = _statusService.CanApply(sampleIpo, tWeekend);
             testResults.Add(new
             {
-                testCase = "6. Rejected IPO in Bidding Window",
+                testCase = "6. Weekend Restriction (Saturday 12:00 PM IST)",
+                timeIst = tWeekend.ToString("dd MMM yyyy, hh:mm tt"),
+                expectedStatus = "Closed",
+                actualStatus = _statusService.CalculateStatus(sampleIpo, tWeekend),
+                passed = !canApplyWeekend,
+                canApply = canApplyWeekend,
+                applicationValidationReason = reasonWeekend
+            });
+
+            // Test 7: After-hours restriction on market day (06:00 PM IST)
+            DateTime tAfterHours = new(2026, 12, 7, 18, 0, 0);
+            var (canApplyAfterHours, reasonAfterHours) = _statusService.CanApply(sampleIpo, tAfterHours);
+            testResults.Add(new
+            {
+                testCase = "7. After-Hours Restriction (06:00 PM IST)",
+                timeIst = tAfterHours.ToString("dd MMM yyyy, hh:mm tt"),
+                expectedStatus = "Open",
+                actualStatus = _statusService.CalculateStatus(sampleIpo, tAfterHours),
+                passed = !canApplyAfterHours,
+                canApply = canApplyAfterHours,
+                applicationValidationReason = reasonAfterHours
+            });
+
+            // Test 8: Rejected IPO -> Must never become Open (even during open window)
+            string s8 = _statusService.CalculateStatus(rejectedIpo, t3);
+            var (canApply8, reason8) = _statusService.CanApply(rejectedIpo, t3);
+            testResults.Add(new
+            {
+                testCase = "8. Rejected IPO in Bidding Window",
                 timeIst = t3.ToString("dd MMM yyyy, hh:mm tt"),
                 expectedStatus = "Rejected",
-                actualStatus = s6,
-                passed = s6 == "Rejected" && !canApply6,
-                canApply = canApply6,
-                applicationValidationReason = reason6
-            });
-
-            // Test 7: Cancelled IPO -> Must never become Open (even during open window)
-            string s7 = _statusService.CalculateStatus(cancelledIpo, t3);
-            var (canApply7, reason7) = _statusService.CanApply(cancelledIpo, t3);
-            testResults.Add(new
-            {
-                testCase = "7. Cancelled IPO in Bidding Window",
-                timeIst = t3.ToString("dd MMM yyyy, hh:mm tt"),
-                expectedStatus = "Cancelled",
-                actualStatus = s7,
-                passed = s7 == "Cancelled" && !canApply7,
-                canApply = canApply7,
-                applicationValidationReason = reason7
-            });
-
-            // Test 8: Unapproved IPO (Pending) -> Must never become Open
-            string s8 = _statusService.CalculateStatus(unapprovedIpo, t3);
-            var (canApply8, reason8) = _statusService.CanApply(unapprovedIpo, t3);
-            testResults.Add(new
-            {
-                testCase = "8. Unapproved (Pending) IPO in Bidding Window",
-                timeIst = t3.ToString("dd MMM yyyy, hh:mm tt"),
-                expectedStatus = "Pending",
                 actualStatus = s8,
-                passed = s8 == "Pending" && !canApply8,
+                passed = s8 == "Rejected" && !canApply8,
                 canApply = canApply8,
                 applicationValidationReason = reason8
+            });
+
+            // Test 9: Cancelled IPO -> Must never become Open (even during open window)
+            string s9 = _statusService.CalculateStatus(cancelledIpo, t3);
+            var (canApply9, reason9) = _statusService.CanApply(cancelledIpo, t3);
+            testResults.Add(new
+            {
+                testCase = "9. Cancelled IPO in Bidding Window",
+                timeIst = t3.ToString("dd MMM yyyy, hh:mm tt"),
+                expectedStatus = "Cancelled",
+                actualStatus = s9,
+                passed = s9 == "Cancelled" && !canApply9,
+                canApply = canApply9,
+                applicationValidationReason = reason9
+            });
+
+            // Test 10: Unapproved IPO (Pending) -> Must never become Open
+            string s10 = _statusService.CalculateStatus(unapprovedIpo, t3);
+            var (canApply10, reason10) = _statusService.CanApply(unapprovedIpo, t3);
+            testResults.Add(new
+            {
+                testCase = "10. Unapproved (Pending) IPO in Bidding Window",
+                timeIst = t3.ToString("dd MMM yyyy, hh:mm tt"),
+                expectedStatus = "Pending",
+                actualStatus = s10,
+                passed = s10 == "Pending" && !canApply10,
+                canApply = canApply10,
+                applicationValidationReason = reason10
             });
 
             // Also test live database IPO #19 (Vertex Renewable Energy IPO)

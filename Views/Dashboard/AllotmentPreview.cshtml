@@ -18,6 +18,27 @@
             </div>
         </div>
         <section class="admin-user-details-card">
+            @{
+                string outcome = Model.AllottedLots == 0 
+                    ? "Not Allotted" 
+                    : (Model.AllottedLots == Model.Application.Applied_lots ? "Full Allotment" : "Partial Allotment");
+            }
+            <div class="alert @(outcome == "Full Allotment" ? "alert-success" : outcome == "Partial Allotment" ? "alert-primary" : "alert-secondary") mb-3">
+                <strong>Calculated Outcome: @outcome</strong> &mdash; 
+                @if (outcome == "Full Allotment")
+                {
+                    <span>All applied shares will be allotted. Full blocked amount of ₹@Model.AllocatedAmount.ToString("N2") will be debited.</span>
+                }
+                else if (outcome == "Partial Allotment")
+                {
+                    <span>@Model.AllottedShares.ToString("N0") shares will be allotted (₹@Model.AllocatedAmount.ToString("N2") debited). Balance ₹@Model.UnblockedAmount.ToString("N2") will be unblocked/refunded.</span>
+                }
+                else
+                {
+                    <span>No shares will be allotted. Full application amount of ₹@Model.UnblockedAmount.ToString("N2") will be unblocked back to the investor.</span>
+                }
+            </div>
+
             <div class="admin-user-detail-grid">
                 <div><span>Investor Category</span><strong>@Model.CategoryName (@Model.CategoryCode)</strong></div>
                 <div><span>Application status</span><strong>@Model.Application.Status</strong></div>
@@ -26,17 +47,17 @@
                 <div><span>Allotted lots</span><strong>@Model.AllottedLots.ToString("N0")</strong></div>
                 <div><span>Allotted shares</span><strong>@Model.AllottedShares.ToString("N0")</strong></div>
                 <div><span>Allotment price</span><strong>₹@Model.AllotmentPrice.ToString("N2")</strong></div>
-                <div><span>Allocated amount</span><strong>₹@Model.AllocatedAmount.ToString("N2")</strong></div>
-                <div><span>Amount to unblock</span><strong>₹@Model.UnblockedAmount.ToString("N2")</strong></div>
+                <div><span>Allocated / Debited</span><strong class="text-success">₹@Model.AllocatedAmount.ToString("N2")</strong></div>
+                <div><span>Refund / Unblock</span><strong class="text-warning">₹@Model.UnblockedAmount.ToString("N2")</strong></div>
             </div>
-            <div class="company-request-actions admin-detail-actions">
-                <form asp-controller="Dashboard" asp-action="ProcessAllotment" method="post">
+            <div class="company-request-actions admin-detail-actions mt-3">
+                <form asp-controller="Dashboard" asp-action="ProcessAllotment" method="post" onsubmit="return confirm('Confirm and process @outcome for Application #@Model.Application.Application_id? Allotment records and mandate adjustments will be executed immediately.');">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="applicationId" value="@Model.Application.Application_id" />
                     <input type="hidden" name="allottedLots" value="@Model.AllottedLots" />
                     <input type="hidden" name="allottedShares" value="@Model.AllottedShares" />
                     <input type="hidden" name="allotmentPrice" value="@Model.AllotmentPrice" />
-                    <button class="btn btn-primary" type="submit">Confirm allotment</button>
+                    <button class="btn btn-primary" type="submit">Confirm and Commit Allotment</button>
                     <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@Model.Application.Application_id">Cancel</a>
                 </form>
             </div>

@@ -35,8 +35,10 @@ builder.Services.AddScoped<IInvestorReportService, InvestorReportService>();
 builder.Services.AddSingleton<IMarketDataProvider, RealTimeStockMarketDataProvider>();
 builder.Services.AddSingleton<IIpoClock, IpoClock>();
 builder.Services.AddScoped<IIpoStatusService, IpoStatusService>();
+builder.Services.AddScoped<IPaymentReconciliationService, PaymentReconciliationService>();
 builder.Services.AddHostedService<StockPriceBroadcastingService>();
 builder.Services.AddHostedService<IpoStatusBackgroundService>();
+builder.Services.AddHostedService<PaymentReconciliationBackgroundService>();
 builder.Services.AddHttpClient<IRazorpayPaymentService, RazorpayPaymentService>(client =>
 {
     client.BaseAddress = new Uri("https://api.razorpay.com/v1/");
@@ -283,6 +285,83 @@ using (var scope = app.Services.CreateScope())
             ALTER TABLE [IPOs] ADD [Opening_time] time NULL;
         IF COL_LENGTH(N'[IPOs]', N'Closing_time') IS NULL
             ALTER TABLE [IPOs] ADD [Closing_time] time NULL;
+        IF COL_LENGTH(N'[IPOs]', N'Opening_time') IS NOT NULL
+        BEGIN
+            EXEC(N'UPDATE [IPOs] SET [Opening_time] = ''10:00:00'' WHERE [Opening_time] IS NULL OR [Opening_time] = ''09:30:00'';
+                   UPDATE [IPOs] SET [Closing_time] = ''17:00:00'' WHERE [Closing_time] IS NULL OR [Closing_time] = ''15:30:00'';');
+        END
+        IF COL_LENGTH(N'[PaymentRecords]', N'PaymentMode') IS NULL
+            ALTER TABLE [PaymentRecords] ADD [PaymentMode] nvarchar(40) NOT NULL CONSTRAINT [DF_PaymentRecords_PaymentMode] DEFAULT ('SIMULATED_MANDATE');
+        IF COL_LENGTH(N'[PaymentRecords]', N'IsSimulated') IS NULL
+            ALTER TABLE [PaymentRecords] ADD [IsSimulated] bit NOT NULL CONSTRAINT [DF_PaymentRecords_IsSimulated] DEFAULT (1);
+        IF COL_LENGTH(N'[PaymentRecords]', N'RefundReferenceId') IS NULL
+            ALTER TABLE [PaymentRecords] ADD [RefundReferenceId] nvarchar(50) NULL;
+        IF COL_LENGTH(N'[PaymentRecords]', N'ReceiptNumber') IS NULL
+            ALTER TABLE [PaymentRecords] ADD [ReceiptNumber] nvarchar(40) NULL;
+        IF COL_LENGTH(N'[PaymentRecords]', N'FailureReason') IS NULL
+            ALTER TABLE [PaymentRecords] ADD [FailureReason] nvarchar(500) NULL;
+        IF COL_LENGTH(N'[PaymentRecords]', N'ReconciledAt') IS NULL
+            ALTER TABLE [PaymentRecords] ADD [ReconciledAt] datetime2 NULL;
+        IF COL_LENGTH(N'[PaymentRecords]', N'ReconciliationStatus') IS NULL
+            ALTER TABLE [PaymentRecords] ADD [ReconciliationStatus] nvarchar(50) NULL;
+        IF COL_LENGTH(N'[IPOApplications]', N'Payment_mode') IS NULL
+            ALTER TABLE [IPOApplications] ADD [Payment_mode] nvarchar(40) NULL;
+        IF COL_LENGTH(N'[IPOApplications]', N'Is_simulated_payment') IS NULL
+            ALTER TABLE [IPOApplications] ADD [Is_simulated_payment] bit NULL;
+        IF COL_LENGTH(N'[IPOApplications]', N'Receipt_number') IS NULL
+            ALTER TABLE [IPOApplications] ADD [Receipt_number] nvarchar(40) NULL;
+        IF OBJECT_ID(N'[PaymentWebhookLogs]', N'U') IS NULL
+        BEGIN
+            CREATE TABLE [PaymentWebhookLogs] (
+                [WebhookLogId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_PaymentWebhookLogs] PRIMARY KEY,
+                [EventId] nvarchar(100) NOT NULL,
+                [EventType] nvarchar(100) NOT NULL,
+                [RazorpayOrderId] nvarchar(50) NULL,
+                [RazorpayPaymentId] nvarchar(50) NULL,
+                [Payload] nvarchar(max) NOT NULL,
+                [Status] nvarchar(30) NOT NULL CONSTRAINT [DF_PaymentWebhookLogs_Status] DEFAULT ('Received'),
+                [RetryCount] int NOT NULL CONSTRAINT [DF_PaymentWebhookLogs_RetryCount] DEFAULT (0),
+                [ErrorMessage] nvarchar(1000) NULL,
+                [ReceivedAt] datetime2 NOT NULL,
+                [ProcessedAt] datetime2 NULL
+            );
+            CREATE INDEX [IX_PaymentWebhookLogs_EventId] ON [PaymentWebhookLogs] ([EventId]);
+            CREATE INDEX [IX_PaymentWebhookLogs_Status_RetryCount] ON [PaymentWebhookLogs] ([Status], [RetryCount]);
+            CREATE INDEX [IX_PaymentWebhookLogs_RazorpayOrderId] ON [PaymentWebhookLogs] ([RazorpayOrderId]);
+        END
+        IF COL_LENGTH(N'[IPOAllotments]', N'Debited_amount') IS NULL
+            ALTER TABLE [IPOAllotments] ADD [Debited_amount] decimal(18,2) NOT NULL CONSTRAINT [DF_IPOAllotments_Debited_amount] DEFAULT (0);
+        IF COL_LENGTH(N'[IPOAllotments]', N'Unblocked_amount') IS NULL
+            ALTER TABLE [IPOAllotments] ADD [Unblocked_amount] decimal(18,2) NOT NULL CONSTRAINT [DF_IPOAllotments_Unblocked_amount] DEFAULT (0);
+        IF COL_LENGTH(N'[IPOAllotments]', N'Advice_number') IS NULL
+            ALTER TABLE [IPOAllotments] ADD [Advice_number] nvarchar(50) NULL;
+        IF COL_LENGTH(N'[IPOs]', N'Allotment_finalized') IS NULL
+            ALTER TABLE [IPOs] ADD [Allotment_finalized] bit NOT NULL CONSTRAINT [DF_IPOs_Allotment_finalized] DEFAULT (0);
+        IF COL_LENGTH(N'[IPOs]', N'Allotment_finalized_at') IS NULL
+            ALTER TABLE [IPOs] ADD [Allotment_finalized_at] datetime2 NULL;
+        IF OBJECT_ID(N'[IPOAllotmentHistories]', N'U') IS NULL
+        BEGIN
+            CREATE TABLE [IPOAllotmentHistories] (
+                [AllotmentHistoryId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_IPOAllotmentHistories] PRIMARY KEY,
+                [IPOId] int NOT NULL,
+                [FinalizedByUserId] int NOT NULL,
+                [FinalizedAt] datetime2 NOT NULL,
+                [TotalApplications] int NOT NULL,
+                [AllottedApplications] int NOT NULL,
+                [PartialAllotmentCount] int NOT NULL,
+                [UnallottedCount] int NOT NULL,
+                [TotalAppliedShares] bigint NOT NULL,
+                [TotalAllottedShares] bigint NOT NULL,
+                [TotalDebitedAmount] decimal(18,2) NOT NULL,
+                [TotalUnblockedAmount] decimal(18,2) NOT NULL,
+                [OversubscriptionMultiple] decimal(10,2) NOT NULL,
+                [CutOffPrice] decimal(18,2) NOT NULL,
+                [Notes] nvarchar(500) NULL,
+                CONSTRAINT [FK_IPOAllotmentHistories_IPOs] FOREIGN KEY ([IPOId]) REFERENCES [IPOs] ([IPO_id]) ON DELETE CASCADE
+            );
+            CREATE INDEX [IX_IPOAllotmentHistories_IPOId] ON [IPOAllotmentHistories] ([IPOId]);
+            CREATE INDEX [IX_IPOAllotmentHistories_FinalizedAt] ON [IPOAllotmentHistories] ([FinalizedAt]);
+        END
         """);
 }
 
@@ -342,87 +421,97 @@ if (args.Contains("--run-ipo-status-tests"))
         IPO_id = 99999,
         IPO_name = "Vertex Renewable Energy IPO",
         Open_date = new DateTime(2026, 12, 7),
-        Opening_time = new TimeSpan(9, 30, 0),
+        Opening_time = new TimeSpan(10, 0, 0),
         Close_date = new DateTime(2026, 12, 9),
-        Closing_time = new TimeSpan(15, 30, 0),
+        Closing_time = new TimeSpan(17, 0, 0),
         Status = "Approved"
     };
 
-    // 1. 7 Dec 2026, 09:29 AM IST -> Upcoming
-    DateTime t1 = new(2026, 12, 7, 9, 29, 0);
+    // 1. 7 Dec 2026, 09:59 AM IST -> Upcoming
+    DateTime t1 = new(2026, 12, 7, 9, 59, 0);
     string s1 = statusService.CalculateStatus(testIpo, t1);
     var (canApply1, reason1) = statusService.CanApply(testIpo, t1);
-    AssertTest("1. 7 Dec 2026 09:29 AM IST", s1 == "Upcoming" && !canApply1, $"Status={s1}, CanApply={canApply1} ({reason1})");
+    AssertTest("1. 7 Dec 2026 09:59 AM IST", s1 == "Upcoming" && !canApply1, $"Status={s1}, CanApply={canApply1} ({reason1})");
 
-    // 2. 7 Dec 2026, 09:30 AM IST -> Open
-    DateTime t2 = new(2026, 12, 7, 9, 30, 0);
+    // 2. 7 Dec 2026, 10:00 AM IST -> Open
+    DateTime t2 = new(2026, 12, 7, 10, 0, 0);
     string s2 = statusService.CalculateStatus(testIpo, t2);
     var (canApply2, reason2) = statusService.CanApply(testIpo, t2);
-    AssertTest("2. 7 Dec 2026 09:30 AM IST", s2 == "Open" && canApply2, $"Status={s2}, CanApply={canApply2}");
+    AssertTest("2. 7 Dec 2026 10:00 AM IST", s2 == "Open" && canApply2, $"Status={s2}, CanApply={canApply2}");
 
-    // 3. 7 Dec 2026, 09:31 AM IST -> Open
-    DateTime t3 = new(2026, 12, 7, 9, 31, 0);
+    // 3. 7 Dec 2026, 11:30 AM IST -> Open
+    DateTime t3 = new(2026, 12, 7, 11, 30, 0);
     string s3 = statusService.CalculateStatus(testIpo, t3);
     var (canApply3, reason3) = statusService.CanApply(testIpo, t3);
-    AssertTest("3. 7 Dec 2026 09:31 AM IST", s3 == "Open" && canApply3, $"Status={s3}, CanApply={canApply3}");
+    AssertTest("3. 7 Dec 2026 11:30 AM IST", s3 == "Open" && canApply3, $"Status={s3}, CanApply={canApply3}");
 
-    // 4. 9 Dec 2026, before closing time (15:29:59 IST) -> Open
-    DateTime t4 = new(2026, 12, 9, 15, 29, 59);
+    // 4. 9 Dec 2026, before closing time (16:59:59 IST) -> Open
+    DateTime t4 = new(2026, 12, 9, 16, 59, 59);
     string s4 = statusService.CalculateStatus(testIpo, t4);
     var (canApply4, reason4) = statusService.CanApply(testIpo, t4);
-    AssertTest("4. 9 Dec 2026 before closing (15:29:59)", s4 == "Open" && canApply4, $"Status={s4}, CanApply={canApply4}");
+    AssertTest("4. 9 Dec 2026 before closing (16:59:59)", s4 == "Open" && canApply4, $"Status={s4}, CanApply={canApply4}");
 
-    // 5. After closing date and time (9 Dec 2026 15:30:01 IST) -> Closed
-    DateTime t5 = new(2026, 12, 9, 15, 30, 1);
+    // 5. After closing date and time (9 Dec 2026 17:00:01 IST) -> Closed
+    DateTime t5 = new(2026, 12, 9, 17, 0, 1);
     string s5 = statusService.CalculateStatus(testIpo, t5);
     var (canApply5, reason5) = statusService.CanApply(testIpo, t5);
-    AssertTest("5. After closing date and time (15:30:01)", s5 == "Closed" && !canApply5, $"Status={s5}, CanApply={canApply5} ({reason5})");
+    AssertTest("5. After closing date and time (17:00:01)", s5 == "Closed" && !canApply5, $"Status={s5}, CanApply={canApply5} ({reason5})");
 
     // 6. Rejected IPO -> Must never become Open
-    var rejectedIpo = new IPO { IPO_name = "Rejected IPO", Open_date = new(2026, 12, 7), Opening_time = new(9, 30, 0), Close_date = new(2026, 12, 9), Closing_time = new(15, 30, 0), Status = "Rejected" };
+    var rejectedIpo = new IPO { IPO_name = "Rejected IPO", Open_date = new(2026, 12, 7), Opening_time = new(10, 0, 0), Close_date = new(2026, 12, 9), Closing_time = new(17, 0, 0), Status = "Rejected" };
     string s6 = statusService.CalculateStatus(rejectedIpo, t2);
     var (canApply6, reason6) = statusService.CanApply(rejectedIpo, t2);
     AssertTest("6. Rejected IPO during open window", s6 == "Rejected" && !canApply6, $"Status={s6}, CanApply={canApply6} ({reason6})");
 
     // 7. Cancelled IPO -> Must never become Open
-    var cancelledIpo = new IPO { IPO_name = "Cancelled IPO", Open_date = new(2026, 12, 7), Opening_time = new(9, 30, 0), Close_date = new(2026, 12, 9), Closing_time = new(15, 30, 0), Status = "Cancelled" };
+    var cancelledIpo = new IPO { IPO_name = "Cancelled IPO", Open_date = new(2026, 12, 7), Opening_time = new(10, 0, 0), Close_date = new(2026, 12, 9), Closing_time = new(17, 0, 0), Status = "Cancelled" };
     string s7 = statusService.CalculateStatus(cancelledIpo, t2);
     var (canApply7, reason7) = statusService.CanApply(cancelledIpo, t2);
     AssertTest("7. Cancelled IPO during open window", s7 == "Cancelled" && !canApply7, $"Status={s7}, CanApply={canApply7} ({reason7})");
 
     // 8. Unapproved (Pending) IPO -> Must never become Open
-    var pendingIpo = new IPO { IPO_name = "Pending IPO", Open_date = new(2026, 12, 7), Opening_time = new(9, 30, 0), Close_date = new(2026, 12, 9), Closing_time = new(15, 30, 0), Status = "Pending" };
+    var pendingIpo = new IPO { IPO_name = "Pending IPO", Open_date = new(2026, 12, 7), Opening_time = new(10, 0, 0), Close_date = new(2026, 12, 9), Closing_time = new(17, 0, 0), Status = "Pending" };
     string s8 = statusService.CalculateStatus(pendingIpo, t2);
     var (canApply8, reason8) = statusService.CanApply(pendingIpo, t2);
     AssertTest("8. Unapproved (Pending) IPO during open window", s8 == "Pending" && !canApply8, $"Status={s8}, CanApply={canApply8} ({reason8})");
 
-    // 9. Live Database Vertex Renewable Energy IPO synchronization test
+    // 9. Weekend Test (12 Dec 2026 is Saturday) -> Not allowed
+    DateTime weekendTime = new(2026, 12, 12, 12, 0, 0);
+    var (canApplyWeekend, reasonWeekend) = statusService.CanApply(testIpo, weekendTime);
+    AssertTest("9. Weekend application restriction (Saturday)", !canApplyWeekend, $"CanApply={canApplyWeekend} ({reasonWeekend})");
+
+    // 10. After-Hours Test (7 Dec 2026 18:00:00 IST -> After 05:00 PM) -> Not allowed
+    DateTime afterHoursTime = new(2026, 12, 7, 18, 0, 0);
+    var (canApplyAfterHours, reasonAfterHours) = statusService.CanApply(testIpo, afterHoursTime);
+    AssertTest("10. After-hours application restriction (06:00 PM IST)", !canApplyAfterHours, $"CanApply={canApplyAfterHours} ({reasonAfterHours})");
+
+    // 11. Live Database Vertex Renewable Energy IPO synchronization test
     var vertexDb = await db.IPOs.FirstOrDefaultAsync(i => i.IPO_id == 19 || i.IPO_name.Contains("Vertex"));
     if (vertexDb != null)
     {
         Console.WriteLine("\n--- Live Database Synchronization Tests (Vertex Renewable Energy IPO) ---");
 
-        // A. Set clock to 7 Dec 2026, 09:29 AM -> DB Status should become Upcoming
+        // A. Set clock to 7 Dec 2026, 09:59 AM -> DB Status should become Upcoming
         clock.SetSimulatedIstTime(t1);
         await statusService.SynchronizeIpoStatusesAsync();
         var reloaded1 = await db.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == vertexDb.IPO_id);
-        AssertTest("9A. DB Sync at 09:29 AM", reloaded1?.Status == "Upcoming", $"DB Status={reloaded1?.Status}");
+        AssertTest("11A. DB Sync at 09:59 AM", reloaded1?.Status == "Upcoming", $"DB Status={reloaded1?.Status}");
 
-        // B. Set clock to 7 Dec 2026, 09:30 AM -> DB Status should become Open
+        // B. Set clock to 7 Dec 2026, 10:00 AM -> DB Status should become Open
         clock.SetSimulatedIstTime(t2);
         await statusService.SynchronizeIpoStatusesAsync();
         var reloaded2 = await db.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == vertexDb.IPO_id);
-        AssertTest("9B. DB Sync at 09:30 AM", reloaded2?.Status == "Open", $"DB Status={reloaded2?.Status}");
+        AssertTest("11B. DB Sync at 10:00 AM", reloaded2?.Status == "Open", $"DB Status={reloaded2?.Status}");
 
-        // C. Set clock to 9 Dec 2026, 15:31 PM -> DB Status should become Closed
+        // C. Set clock to 9 Dec 2026, 17:01 PM -> DB Status should become Closed
         clock.SetSimulatedIstTime(t5);
         await statusService.SynchronizeIpoStatusesAsync();
         var reloaded3 = await db.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == vertexDb.IPO_id);
-        AssertTest("9C. DB Sync after closing (15:31 PM)", reloaded3?.Status == "Closed", $"DB Status={reloaded3?.Status}");
+        AssertTest("11C. DB Sync after closing (17:01 PM)", reloaded3?.Status == "Closed", $"DB Status={reloaded3?.Status}");
 
         // D. Verify AuditLog was recorded for transitions
         var auditCount = await db.AuditLogs.CountAsync(a => a.EntityType == "IPO" && a.EntityId == vertexDb.IPO_id.ToString());
-        AssertTest("9D. Audit Log History Recorded", auditCount > 0, $"Recorded {auditCount} audit events for IPO {vertexDb.IPO_id}");
+        AssertTest("11D. Audit Log History Recorded", auditCount > 0, $"Recorded {auditCount} audit events for IPO {vertexDb.IPO_id}");
 
         // Reset clock
         clock.ResetSimulatedTime();

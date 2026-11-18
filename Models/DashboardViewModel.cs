@@ -13,6 +13,8 @@ namespace IPOInvestmentManagement.Models
         public int InvestmentCount { get; set; }
         public decimal InvestmentTotal { get; set; }
         public decimal ProfitLoss { get; set; }
+        public decimal TodayProfitLoss { get; set; }
+        public decimal TodayProfitLossPercentage { get; set; }
         public int UserCount { get; set; }
         public int ActiveIpoCount { get; set; }
         public int UpcomingIpoCount { get; set; }
@@ -58,6 +60,7 @@ namespace IPOInvestmentManagement.Models
         public List<User> RecentCompanies { get; set; } = new();
         public List<IPOApplication> RecentApplications { get; set; } = new();
         public Dictionary<int, IPOAllotment> ApplicationAllotments { get; set; } = new();
+        public Dictionary<string, PaymentRecord> ApplicationPayments { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public List<IPOApplication> PendingApplications { get; set; } = new();
         public List<Investment> Investments { get; set; } = new();
         public List<PortfolioPerformancePoint> PortfolioPerformance { get; set; } = new();
@@ -77,5 +80,62 @@ namespace IPOInvestmentManagement.Models
         public string? AdminIpoSearchQuery { get; set; }
         public string? AdminIpoSearchStatus { get; set; }
         public string? AdminIpoSearchType { get; set; }
+
+        // Admin Payment Management
+        public List<PaymentRecord> AdminPayments { get; set; } = new();
+        public Dictionary<int, string> PaymentUserNames { get; set; } = new();
+        public Dictionary<int, string> PaymentUserEmails { get; set; } = new();
+        public Dictionary<int, string> PaymentUserDemats { get; set; } = new();
+        public Dictionary<int, string> PaymentUserUpis { get; set; } = new();
+        public Dictionary<string, int> PaymentApplicationIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public int SuccessfulPaymentCount { get; set; }
+        public int FailedPaymentCount { get; set; }
+        public int PendingPaymentCount { get; set; }
+        public int RefundedPaymentCount { get; set; }
+
+        public decimal SuccessfulPaymentAmount { get; set; }
+        public decimal FailedPaymentAmount { get; set; }
+        public decimal PendingPaymentAmount { get; set; }
+        public decimal RefundedPaymentAmount { get; set; }
+        public decimal TotalPaymentVolume { get; set; }
+
+        public string TimeGreeting => GetTimeBasedGreeting();
+
+        public static string GetTimeBasedGreeting()
+        {
+            DateTime now;
+            try
+            {
+                TimeZoneInfo indiaTimeZone;
+                try
+                {
+                    indiaTimeZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+                }
+                catch
+                {
+                    indiaTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata");
+                }
+                now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, indiaTimeZone);
+            }
+            catch
+            {
+                now = DateTime.Now;
+            }
+
+            int hour = now.Hour;
+            if (hour >= 5 && hour < 12)
+            {
+                return "Good morning";
+            }
+            else if (hour >= 12 && hour < 17)
+            {
+                return "Good afternoon";
+            }
+            else
+            {
+                return "Good evening";
+            }
+        }
     }
 }

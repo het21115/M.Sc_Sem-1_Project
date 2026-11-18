@@ -7,20 +7,101 @@
     <section class="company-hero mb-4">
         <div class="company-hero-copy">
             <p class="company-kicker mb-2"><span></span> Company workspace / live</p>
-            <p class="company-hero-welcome">Welcome back,</p>
+            <p class="company-hero-welcome"><span data-time-greeting>@Model.TimeGreeting</span>,</p>
             <h1>@Model.UserName</h1>
             <p>Shape your profile, monitor approvals, and move your next offering forward.</p>
             <div class="company-hero-meta"><span><i></i> Account active</span><span>Management console</span></div>
         </div>
         <div class="company-hero-mark" aria-hidden="true"><span>IPO</span><strong>+</strong><small>HQ</small></div>
-        <div class="d-flex align-items-center gap-2">
-            <button type="button" class="btn btn-outline-light" data-bs-toggle="modal" data-bs-target="#live-market-modal">
-                <span class="ticker-pulse d-inline-block me-1" style="width:7px;height:7px;vertical-align:middle;"></span>Live Market
+        <div class="company-hero-live-market">
+            <button type="button" class="btn company-live-market-btn" data-bs-toggle="modal" data-bs-target="#live-market-modal" title="Open Real-Time NSE / BSE Dual-Exchange Live Market Terminal">
+                <span class="company-live-indicator">
+                    <span class="company-live-ring"></span>
+                    <span class="company-live-dot"></span>
+                </span>
+                <span class="company-live-text">Live Market</span>
+                <span class="company-market-pill">NSE &middot; BSE</span>
+                <span class="company-live-status-pill @(Model.Market.IsMarketOpen ? "is-open" : "is-closed")">
+                    @(Model.Market.IsMarketOpen ? "LIVE" : "CLOSED")
+                </span>
+                <span class="company-live-arrow">&#8599;</span>
             </button>
-            <a class="btn company-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&rarr;</span></a>
         </div>
+        <a class="btn company-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&rarr;</span></a>
     </section>
-    @if (Model.Notifications.Count > 0) { <section class="user-notifications"><div class="company-section-head"><div><span class="company-overline">SYSTEM NOTIFICATIONS</span><h2>Updates for you</h2></div></div>@foreach (var notification in Model.Notifications) { <article><strong>@notification.Title</strong><p>@notification.Message</p><small>@notification.Created_at.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</small></article> }</section> }
+    @if (Model.Notifications.Count > 0)
+    {
+        <section class="user-notifications" id="company-notifications">
+            <div class="company-section-head">
+                <div>
+                    <span class="company-overline">SYSTEM NOTIFICATIONS</span>
+                    <h2>Updates for you</h2>
+                </div>
+                <span class="text-muted small" id="company-notifications-counter">
+                    @(Model.Notifications.Count > 3 ? $"Showing 3 of {Model.Notifications.Count} notice(s)" : $"{Model.Notifications.Count} notice(s)")
+                </span>
+            </div>
+            <div class="user-notifications-list">
+                @for (int i = 0; i < Model.Notifications.Count; i++)
+                {
+                    var notification = Model.Notifications[i];
+                    if (i == 3)
+                    {
+                        @:<div class="user-notifications-extra" id="company-notifications-extra" style="display: none;">
+                    }
+                    <article>
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <strong>@notification.Title</strong>
+                            <small>@notification.Created_at.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</small>
+                        </div>
+                        <p class="mb-0">@notification.Message</p>
+                    </article>
+                }
+                @if (Model.Notifications.Count > 3)
+                {
+                    @:</div>
+                    <div class="notifications-expand-bar text-center pt-2 mt-2 border-top">
+                        <button type="button" class="btn btn-sm btn-outline-warning text-dark fw-bold px-3 py-1 notification-toggle-btn" id="btn-toggle-company-notifications" data-expanded="false" style="border-radius: 20px; font-size: 0.82rem; background: rgba(245, 158, 11, 0.08); border-color: rgba(218, 190, 111, 0.5);">
+                            <span class="toggle-icon">&#9660;</span> <span class="toggle-text">Show more updates (@(Model.Notifications.Count - 3) more)</span>
+                        </button>
+                    </div>
+                }
+            </div>
+        </section>
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                var toggleBtn = document.getElementById("btn-toggle-company-notifications");
+                var extraBox = document.getElementById("company-notifications-extra");
+                var counter = document.getElementById("company-notifications-counter");
+                var totalCount = @Model.Notifications.Count;
+
+                if (toggleBtn && extraBox) {
+                    toggleBtn.addEventListener("click", function () {
+                        var isExpanded = toggleBtn.getAttribute("data-expanded") === "true";
+                        if (!isExpanded) {
+                            extraBox.style.display = "block";
+                            toggleBtn.setAttribute("data-expanded", "true");
+                            toggleBtn.innerHTML = '<span class="toggle-icon">&#9650;</span> <span class="toggle-text">Show fewer updates</span>';
+                            if (counter) {
+                                counter.textContent = 'Showing all ' + totalCount + ' notice(s)';
+                            }
+                        } else {
+                            extraBox.style.display = "none";
+                            toggleBtn.setAttribute("data-expanded", "false");
+                            toggleBtn.innerHTML = '<span class="toggle-icon">&#9660;</span> <span class="toggle-text">Show more updates (' + (totalCount - 3) + ' more)</span>';
+                            if (counter) {
+                                counter.textContent = 'Showing 3 of ' + totalCount + ' notice(s)';
+                            }
+                            var section = document.getElementById("company-notifications");
+                            if (section) {
+                                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                        }
+                    });
+                }
+            });
+        </script>
+    }
 
     @if (TempData["CompanyMessage"] is string companyMessage)
     {
@@ -71,29 +152,438 @@
     }
 
     <div class="company-detail-grid mb-4">
-        <details class="company-detail-panel company-detail-wide company-feature-section">
-            <summary class="company-feature-summary"><div><span class="company-section-label">01 / Portfolio</span><strong>My IPOs</strong><small>View every IPO submitted by your company.</small></div><span class="company-section-symbol" aria-hidden="true">01</span></summary>
-            @if (Model.CompanyIpoDetails.Count == 0) { <p class="company-empty">No IPOs have been submitted yet.</p> } else { foreach (var detail in Model.CompanyIpoDetails) { <div class="company-feature-row"><div><strong>@detail.Ipo.IPO_name</strong><small>@detail.Ipo.Open_date.ToString("dd MMM yyyy") &mdash; @detail.Ipo.Close_date.ToString("dd MMM yyyy")</small></div><div class="company-ipo-row-actions"><span class="badge company-status">@(detail.Ipo.Status ?? "Pending")</span>@if (string.Equals(detail.Ipo.Status, "Approved", StringComparison.OrdinalIgnoreCase)) { <span class="badge bg-info-subtle text-info border border-info ms-2">Approved (Awaiting Admin Launch)</span> }</div></div> } }
+        <details class="company-detail-panel company-detail-wide company-feature-section" id="section-my-ipos">
+            <summary class="company-feature-summary">
+                <div>
+                    <span class="company-section-label">01 / Portfolio</span>
+                    <strong>My IPOs</strong>
+                    <small>View every IPO submitted by your company with live status &amp; bidding progress.</small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="company-section-count-badge">@Model.CompanyIpoDetails.Count @(Model.CompanyIpoDetails.Count == 1 ? "Offering" : "Offerings")</span>
+                    <span class="company-section-symbol" aria-hidden="true">01</span>
+                </div>
+            </summary>
+            <div class="company-section-body">
+                @if (Model.CompanyIpoDetails.Count == 0)
+                {
+                    <div class="company-empty-state">
+                        <div class="company-empty-icon">&#128210;</div>
+                        <h6>No IPOs submitted yet</h6>
+                        <p>Begin by submitting your draft offering to platform administrators for review and approval.</p>
+                        <a href="#submit-ipo" class="btn btn-sm btn-outline-success">Submit an IPO &rarr;</a>
+                    </div>
+                }
+                else
+                {
+                    <div class="company-offering-cards">
+                        @foreach (var detail in Model.CompanyIpoDetails)
+                        {
+                            string status = detail.Ipo.Status ?? "Pending";
+                            string statusClass = status.ToLowerInvariant() switch
+                            {
+                                "open" => "status-open",
+                                "upcoming" => "status-upcoming",
+                                "closed" => "status-closed",
+                                "listed" => "status-listed",
+                                "approved" => "status-approved",
+                                _ => "status-pending"
+                            };
+
+                            <div class="company-offering-card">
+                                <div class="company-offering-head">
+                                    <div>
+                                        <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+                                            <strong class="company-offering-title">@detail.Ipo.IPO_name</strong>
+                                            @if (detail.CurrentGmp != null)
+                                            {
+                                                <span class="badge bg-warning text-dark border" title="Unofficial Grey Market Premium">
+                                                    Unofficial GMP: ₹@detail.CurrentGmp.GMPPrice.ToString("N2") (+@detail.EstimatedGainPercentage%)
+                                                </span>
+                                            }
+                                        </div>
+                                        <small class="company-offering-dates">
+                                            &#128197; Bidding Window: <b>@detail.Ipo.OpeningDateTime.ToString("dd MMM yyyy, hh:mm tt")</b> &ndash; <b>@detail.Ipo.ClosingDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</b>
+                                        </small>
+                                    </div>
+                                    <div class="company-offering-status-box">
+                                        <span class="company-status-badge @statusClass">
+                                            @if (string.Equals(status, "Open", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <i class="ticker-pulse d-inline-block me-1"></i><span>ACCEPTING BIDS</span>
+                                            }
+                                            else if (string.Equals(status, "Approved", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <span>APPROVED &middot; READY TO LAUNCH</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@status.ToUpperInvariant()</span>
+                                            }
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="company-offering-metrics-grid">
+                                    <div class="metric-pill">
+                                        <span>Price Range</span>
+                                        <strong>₹@(detail.Ipo.Price_min?.ToString("N2") ?? "-") &ndash; ₹@(detail.Ipo.Price_max?.ToString("N2") ?? "-")</strong>
+                                    </div>
+                                    <div class="metric-pill">
+                                        <span>Issue Size</span>
+                                        <strong>₹@(detail.Ipo.Issue_size?.ToString("N2") ?? "-") Cr</strong>
+                                    </div>
+                                    <div class="metric-pill">
+                                        <span>Lot Size</span>
+                                        <strong>@(detail.Ipo.Lot_size?.ToString("N0") ?? "-") Shares</strong>
+                                    </div>
+                                    <div class="metric-pill">
+                                        <span>Total Shares</span>
+                                        <strong>@(detail.Ipo.Total_shares?.ToString("N0") ?? "-")</strong>
+                                    </div>
+                                    <div class="metric-pill">
+                                        <span>Applications</span>
+                                        <strong class="text-primary">@detail.ApplicationCount</strong>
+                                    </div>
+                                </div>
+
+                                <div class="company-offering-footer">
+                                    <span class="text-muted small">
+                                        Allotment Date: <b>@(detail.Ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "Awaiting schedule")</b> &middot; Revoke Funds: <b>@(detail.Ipo.Funds_unblock_date?.ToString("dd MMM yyyy") ?? "Not announced")</b>
+                                    </span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="InvestorIpoDetails" asp-route-ipoId="@detail.Ipo.IPO_id">
+                                            Public View &#8599;
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
         </details>
 
-        <details class="company-detail-panel company-detail-wide company-detail-coral company-feature-section">
-            <summary class="company-feature-summary"><div><span class="company-section-label">02 / Demand</span><strong>My IPO Applications</strong><small>See applications received for each company IPO.</small></div><span class="company-section-symbol company-section-symbol-coral" aria-hidden="true">02</span></summary>
-            @if (Model.CompanyIpoDetails.Count == 0) { <p class="company-empty">Applications will appear after an IPO is submitted.</p> } else { foreach (var detail in Model.CompanyIpoDetails) { <div class="company-feature-row"><div><strong>Applications received for @detail.Ipo.IPO_name</strong><small>Investor demand recorded for this offering</small></div><b class="company-feature-value">@detail.ApplicationCount</b></div> } }
+        <details class="company-detail-panel company-detail-wide company-detail-coral company-feature-section" id="section-my-applications">
+            <summary class="company-feature-summary">
+                <div>
+                    <span class="company-section-label">02 / Demand</span>
+                    <strong>My IPO Applications</strong>
+                    <small>Real-time investor subscriptions, lot breakdown, and demand momentum.</small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="company-section-count-badge company-badge-coral">
+                        @Model.CompanyIpoDetails.Sum(d => d.ApplicationCount) Total Bids
+                    </span>
+                    <span class="company-section-symbol company-section-symbol-coral" aria-hidden="true">02</span>
+                </div>
+            </summary>
+            <div class="company-section-body">
+                @if (Model.CompanyIpoDetails.Count == 0)
+                {
+                    <div class="company-empty-state">
+                        <div class="company-empty-icon">&#128101;</div>
+                        <h6>No Active Offerings</h6>
+                        <p>Investor demand and verified bids will appear here once an offering is published.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="company-demand-cards">
+                        @foreach (var detail in Model.CompanyIpoDetails)
+                        {
+                            decimal totalLotsEstimated = detail.ApplicationCount;
+                            decimal sharesEstimated = totalLotsEstimated * (detail.Ipo.Lot_size ?? 1);
+                            decimal valueEstimated = sharesEstimated * (detail.Ipo.Price_max ?? detail.Ipo.Price_min ?? 0m);
+
+                            <div class="company-demand-card">
+                                <div class="company-demand-header">
+                                    <div>
+                                        <strong class="company-demand-title">@detail.Ipo.IPO_name</strong>
+                                        <small class="d-block text-muted">Investor subscription demand recorded for this offering</small>
+                                    </div>
+                                    <span class="badge bg-light text-dark border">
+                                        @(detail.Ipo.Status ?? "Draft")
+                                    </span>
+                                </div>
+
+                                <div class="company-demand-kpi-row">
+                                    <div class="demand-kpi-cell">
+                                        <span class="kpi-label">TOTAL APPLICATIONS</span>
+                                        <strong class="kpi-number text-coral">@detail.ApplicationCount</strong>
+                                        <small class="kpi-note">Verified retail &amp; HNI bids</small>
+                                    </div>
+                                    <div class="demand-kpi-cell">
+                                        <span class="kpi-label">EST. SHARES APPLIED</span>
+                                        <strong class="kpi-number">@sharesEstimated.ToString("N0")</strong>
+                                        <small class="kpi-note">Across @detail.ApplicationCount application(s)</small>
+                                    </div>
+                                    <div class="demand-kpi-cell">
+                                        <span class="kpi-label">EST. BID VALUE</span>
+                                        <strong class="kpi-number text-success">₹@valueEstimated.ToString("N2")</strong>
+                                        <small class="kpi-note">Estimated committed capital</small>
+                                    </div>
+                                </div>
+
+                                <div class="company-demand-footer">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="ticker-pulse d-inline-block" style="width:6px;height:6px;"></span>
+                                        <small class="text-muted">Applications accepted weekdays 10:00 AM &ndash; 05:00 PM IST via UPI &amp; NetBanking</small>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
         </details>
 
-        <details class="company-detail-panel company-feature-section">
-            <summary class="company-feature-summary"><div><span class="company-section-label">03 / Performance</span><strong>My Financial Information</strong><small>Review Revenue, Profit, and Net Worth for every IPO.</small></div><span class="company-section-symbol company-section-symbol-gold" aria-hidden="true">03</span></summary>
-            @if (Model.CompanyIpoDetails.Count == 0) { <p class="company-empty">Financial information will appear with your IPO.</p> } else { foreach (var detail in Model.CompanyIpoDetails) { <div class="company-detail-block"><strong>@detail.Ipo.IPO_name</strong><small>FY @(detail.Financial?.Financial_year.ToString() ?? "Not available")</small><div class="company-value-grid"><span>Revenue <b>@(detail.Financial?.Revenue?.ToString("N2") ?? "Not available")</b></span><span>Profit <b>@(detail.Financial?.Profit?.ToString("N2") ?? "Not available")</b></span><span>Net Worth <b>@(detail.Financial?.Net_worth?.ToString("N2") ?? "Not available")</b></span></div></div> } }
+        <details class="company-detail-panel company-feature-section" id="section-my-financials">
+            <summary class="company-feature-summary">
+                <div>
+                    <span class="company-section-label">03 / Performance</span>
+                    <strong>My Financial Information</strong>
+                    <small>Audited Revenue, Profit After Tax (PAT), and Net Worth disclosures.</small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="company-section-count-badge company-badge-gold">Audited Data</span>
+                    <span class="company-section-symbol company-section-symbol-gold" aria-hidden="true">03</span>
+                </div>
+            </summary>
+            <div class="company-section-body">
+                @if (Model.CompanyIpoDetails.Count == 0)
+                {
+                    <div class="company-empty-state">
+                        <div class="company-empty-icon">&#128202;</div>
+                        <h6>No Financial Statements</h6>
+                        <p>Financial records filed with your IPO prospectus will display here.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="company-financial-cards">
+                        @foreach (var detail in Model.CompanyIpoDetails)
+                        {
+                            decimal? rev = detail.Financial?.Revenue;
+                            decimal? pat = detail.Financial?.Profit;
+                            decimal? nw = detail.Financial?.Net_worth;
+                            decimal? margin = (rev.HasValue && rev.Value > 0 && pat.HasValue) ? Math.Round((pat.Value / rev.Value) * 100m, 2) : null;
+
+                            <div class="company-financial-card">
+                                <div class="company-financial-head">
+                                    <div>
+                                        <strong class="company-financial-title">@detail.Ipo.IPO_name</strong>
+                                        <span class="badge bg-warning-subtle text-warning border border-warning ms-2">
+                                            FY @(detail.Financial?.Financial_year.ToString() ?? "2026")
+                                        </span>
+                                    </div>
+                                    @if (margin.HasValue)
+                                    {
+                                        <span class="badge bg-success-subtle text-success border border-success">
+                                            PAT Margin: @margin.Value%
+                                        </span>
+                                    }
+                                </div>
+
+                                <div class="company-financial-tiles">
+                                    <div class="financial-tile tile-revenue">
+                                        <span class="tile-label">REVENUE (TURNOVER)</span>
+                                        <strong class="tile-val">₹@(rev?.ToString("N2") ?? "Not available")</strong>
+                                        <small class="tile-sub">Total Top-Line Turnover</small>
+                                    </div>
+                                    <div class="financial-tile tile-profit">
+                                        <span class="tile-label">PROFIT AFTER TAX (PAT)</span>
+                                        <strong class="tile-val">₹@(pat?.ToString("N2") ?? "Not available")</strong>
+                                        <small class="tile-sub">Net Profit / Earnings</small>
+                                    </div>
+                                    <div class="financial-tile tile-networth">
+                                        <span class="tile-label">NET WORTH</span>
+                                        <strong class="tile-val">₹@(nw?.ToString("N2") ?? "Not available")</strong>
+                                        <small class="tile-sub">Total Equity Base</small>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
         </details>
 
-        <details class="company-detail-panel company-detail-teal company-feature-section">
-            <summary class="company-feature-summary"><div><span class="company-section-label">04 / Insight</span><strong>My IPO Analysis</strong><small>Review analysis and growth indicators for each IPO.</small></div><span class="company-section-symbol company-section-symbol-teal" aria-hidden="true">04</span></summary>
-            @if (Model.CompanyIpoDetails.Count == 0) { <p class="company-empty">Analysis will appear after your IPO is reviewed.</p> } else { foreach (var detail in Model.CompanyIpoDetails) { <div class="company-detail-block"><strong>Analysis of @detail.Ipo.IPO_name</strong>@if (detail.Analysis is null) { <small>Not available yet</small> } else { <small>@(detail.Analysis.Analysis_summary ?? "Analysis summary not available.")</small><div class="company-value-grid"><span>ROE <b>@(detail.Analysis.ROE?.ToString("N2") ?? "-")</b></span><span>Revenue growth <b>@(detail.Analysis.Revenue_growth?.ToString("N2") ?? "-")</b></span><span>Profit growth <b>@(detail.Analysis.Profit_growth?.ToString("N2") ?? "-")</b></span></div> }</div> } }
+        <details class="company-detail-panel company-detail-teal company-feature-section" id="section-my-analysis">
+            <summary class="company-feature-summary">
+                <div>
+                    <span class="company-section-label">04 / Insight</span>
+                    <strong>My IPO Analysis</strong>
+                    <small>Analyst scorecard, Return on Equity (ROE), and compound annual growth rates.</small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="company-section-count-badge company-badge-teal">Scorecard</span>
+                    <span class="company-section-symbol company-section-symbol-teal" aria-hidden="true">04</span>
+                </div>
+            </summary>
+            <div class="company-section-body">
+                @if (Model.CompanyIpoDetails.Count == 0)
+                {
+                    <div class="company-empty-state">
+                        <div class="company-empty-icon">&#128269;</div>
+                        <h6>No Analysis Reports Yet</h6>
+                        <p>Detailed fundamental analysis is generated once the draft prospectus is reviewed.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="company-analysis-cards">
+                        @foreach (var detail in Model.CompanyIpoDetails)
+                        {
+                            <div class="company-analysis-card">
+                                <div class="company-analysis-head">
+                                    <strong class="company-analysis-title">@detail.Ipo.IPO_name</strong>
+                                    <span class="badge bg-info-subtle text-info border border-info">FUNDAMENTAL SCORECARD</span>
+                                </div>
+
+                                @if (detail.Analysis is null)
+                                {
+                                    <div class="p-3 my-2 bg-light rounded text-muted small border">
+                                        <em>Analysis pending review by platform equity analysts.</em>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="company-analysis-quote">
+                                        <p class="mb-0">@(detail.Analysis.Analysis_summary ?? "Consistent fundamental metrics and market position.")</p>
+                                    </div>
+
+                                    <div class="company-analysis-kpi-row">
+                                        <div class="analysis-kpi-box">
+                                            <span class="kpi-label">RETURN ON EQUITY (ROE)</span>
+                                            <strong class="kpi-val text-teal">@(detail.Analysis.ROE?.ToString("N2") ?? "-")%</strong>
+                                            <small class="kpi-desc">Capital Efficiency Ratio</small>
+                                        </div>
+                                        <div class="analysis-kpi-box">
+                                            <span class="kpi-label">REVENUE GROWTH</span>
+                                            <strong class="kpi-val text-success">&plus;@(detail.Analysis.Revenue_growth?.ToString("N2") ?? "-")%</strong>
+                                            <small class="kpi-desc">Top-Line Expansion YoY</small>
+                                        </div>
+                                        <div class="analysis-kpi-box">
+                                            <span class="kpi-label">PROFIT GROWTH</span>
+                                            <strong class="kpi-val text-success">&plus;@(detail.Analysis.Profit_growth?.ToString("N2") ?? "-")%</strong>
+                                            <small class="kpi-desc">Earnings Growth YoY</small>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
         </details>
 
-        <details class="company-detail-panel company-detail-wide company-detail-listing company-feature-section">
-            <summary class="company-feature-summary"><div><span class="company-section-label">05 / Market debut</span><strong>My IPO Listing</strong><small>View issue price, exchange prices, gain, and listed date.</small></div><span class="company-section-symbol company-section-symbol-green" aria-hidden="true">05</span></summary>
-            @if (Model.CompanyIpoDetails.Count == 0) { <p class="company-empty">Listing information will appear after your IPO is listed.</p> } else { foreach (var detail in Model.CompanyIpoDetails) { <div class="company-detail-block"><strong>@detail.Ipo.IPO_name</strong>@if (detail.Listing is null) { <small>Not listed yet</small> } else { <div class="company-listing-grid"><span>Issue Price <b>@(detail.Listing.Issue_price?.ToString("N2") ?? "-")</b></span><span>NSE Listing Price <b>@(detail.Listing.NSE_listing_price?.ToString("N2") ?? "-")</b></span><span>BSE Listing Price <b>@(detail.Listing.BSE_listing_price?.ToString("N2") ?? "-")</b></span><span>Listing Gain <b>@(detail.Listing.Listing_gain_percentage?.ToString("N2") ?? "-")%</b></span><span>Listed Date <b>@(detail.Listing.Listing_date?.ToString("dd MMM yyyy") ?? "-")</b></span></div> }</div> } }
+        <details class="company-detail-panel company-detail-wide company-detail-listing company-feature-section" id="section-my-listing">
+            <summary class="company-feature-summary">
+                <div>
+                    <span class="company-section-label">05 / Market debut</span>
+                    <strong>My IPO Listing</strong>
+                    <small>Exchange opening prices, listing day premium, and dual-market performance.</small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="company-section-count-badge company-badge-green">Exchange Debut</span>
+                    <span class="company-section-symbol company-section-symbol-green" aria-hidden="true">05</span>
+                </div>
+            </summary>
+            <div class="company-section-body">
+                @if (Model.CompanyIpoDetails.Count == 0)
+                {
+                    <div class="company-empty-state">
+                        <div class="company-empty-icon">&#128200;</div>
+                        <h6>No Listings Scheduled Yet</h6>
+                        <p>Exchange listing data will populate automatically following allotment completion.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="company-listing-cards">
+                        @foreach (var detail in Model.CompanyIpoDetails)
+                        {
+                            <div class="company-listing-card">
+                                <div class="company-listing-head">
+                                    <div>
+                                        <strong class="company-listing-title">@detail.Ipo.IPO_name</strong>
+                                        <span class="badge bg-secondary ms-2">NSE &middot; BSE Dual Listing</span>
+                                    </div>
+                                    @if (detail.Listing is not null)
+                                    {
+                                        <span class="company-listing-gain-badge @(detail.Listing.Listing_gain_percentage >= 0 ? "gain-positive" : "gain-negative")">
+                                            @(detail.Listing.Listing_gain_percentage >= 0 ? "▲ +" : "▼ -")@Math.Abs(detail.Listing.Listing_gain_percentage ?? 0m).ToString("N2")% Listing Gain
+                                        </span>
+                                    }
+                                </div>
+
+                                @if (detail.Listing is null)
+                                {
+                                    <div class="company-listing-stepper">
+                                        <div class="stepper-step is-complete">
+                                            <span class="step-dot">&#10003;</span>
+                                            <span class="step-label">Draft Filed</span>
+                                        </div>
+                                        <div class="stepper-line @(string.Equals(detail.Ipo.Status, "Approved", StringComparison.OrdinalIgnoreCase) || string.Equals(detail.Ipo.Status, "Open", StringComparison.OrdinalIgnoreCase) ? "is-active" : "")"></div>
+                                        <div class="stepper-step @(string.Equals(detail.Ipo.Status, "Approved", StringComparison.OrdinalIgnoreCase) || string.Equals(detail.Ipo.Status, "Open", StringComparison.OrdinalIgnoreCase) ? "is-complete" : "")">
+                                            <span class="step-dot">2</span>
+                                            <span class="step-label">Offering Approved</span>
+                                        </div>
+                                        <div class="stepper-line @(string.Equals(detail.Ipo.Status, "Closed", StringComparison.OrdinalIgnoreCase) ? "is-active" : "")"></div>
+                                        <div class="stepper-step @(string.Equals(detail.Ipo.Status, "Closed", StringComparison.OrdinalIgnoreCase) ? "is-complete" : "")">
+                                            <span class="step-dot">3</span>
+                                            <span class="step-label">Allotment</span>
+                                        </div>
+                                        <div class="stepper-line"></div>
+                                        <div class="stepper-step is-pending">
+                                            <span class="step-dot">4</span>
+                                            <span class="step-label">Exchange Debut (@(detail.Ipo.Listing_date?.ToString("dd MMM yyyy") ?? "Scheduled"))</span>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="company-listing-stats-grid">
+                                        <div class="listing-stat-box">
+                                            <span class="stat-lbl">ISSUE PRICE</span>
+                                            <strong class="stat-num">₹@(detail.Listing.Issue_price?.ToString("N2") ?? "-")</strong>
+                                            <small class="stat-sub">Fixed / Cut-off price</small>
+                                        </div>
+                                        <div class="listing-stat-box">
+                                            <span class="stat-lbl">NSE LISTING PRICE</span>
+                                            <strong class="stat-num text-success">₹@(detail.Listing.NSE_listing_price?.ToString("N2") ?? "-")</strong>
+                                            <small class="stat-sub">National Stock Exchange</small>
+                                        </div>
+                                        <div class="listing-stat-box">
+                                            <span class="stat-lbl">BSE LISTING PRICE</span>
+                                            <strong class="stat-num text-success">₹@(detail.Listing.BSE_listing_price?.ToString("N2") ?? "-")</strong>
+                                            <small class="stat-sub">Bombay Stock Exchange</small>
+                                        </div>
+                                        <div class="listing-stat-box">
+                                            <span class="stat-lbl">LISTING GAIN</span>
+                                            <strong class="stat-num @(detail.Listing.Listing_gain_percentage >= 0 ? "text-success" : "text-danger")">
+                                                @(detail.Listing.Listing_gain_percentage >= 0 ? "+" : "")@(detail.Listing.Listing_gain_percentage?.ToString("N2") ?? "-")%
+                                            </strong>
+                                            <small class="stat-sub">First day market surge</small>
+                                        </div>
+                                        <div class="listing-stat-box">
+                                            <span class="stat-lbl">LISTED DATE</span>
+                                            <strong class="stat-num">@(detail.Listing.Listing_date?.ToString("dd MMM yyyy") ?? "-")</strong>
+                                            <small class="stat-sub">Bell ringing ceremony</small>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 text-end">
+                                        <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#live-market-modal">
+                                            <span class="ticker-pulse d-inline-block me-1" style="width:6px;height:6px;"></span>Stream Live Quotes &rarr;
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
         </details>
     </div>
 

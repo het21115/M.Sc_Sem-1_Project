@@ -5,9 +5,9 @@
 
 <div class="registration-form-shell">
     <div class="registration-form-intro registration-form-intro-investor">
-        <p class="gateway-kicker"><span></span> Secure payment</p>
+        <p class="gateway-kicker"><span></span> Secure payment & ASBA mandate</p>
         <h1>Complete your IPO application.</h1>
-        <p>Review the application summary and confirm payment through the demo payment gateway.</p>
+        <p>Review the application summary and authorize the payment/mandate block through the gateway.</p>
     </div>
     <div class="card registration-form-card">
         <div class="card-body p-4 p-lg-5">
@@ -15,24 +15,69 @@
                 <div><span class="form-overline">Payment gateway</span><h2>@Model.IpoName</h2></div>
                 <span class="form-step">02 / 02</span>
             </div>
+
+            <!-- Workflow Distinction Notice -->
+            @if (Model.IsSimulated)
+            {
+                <div class="alert alert-warning mb-4 border-warning" role="alert">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span class="fs-5">🧪</span>
+                        <strong>SIMULATED ASBA MANDATE (SANDBOX TESTNET)</strong>
+                    </div>
+                    <div class="small">
+                        In genuine Indian IPOs, funds are not immediately debited; they are blocked via a UPI ASBA mandate in your bank account until allotment. This system uses Razorpay Sandbox with simulated ASBA lien blocking and automated unblock/refund tracking. No real money will be charged.
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-success mb-4 border-success" role="alert">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span class="fs-5">💳</span>
+                        <strong>GENUINE PAYMENT GATEWAY (PRODUCTION)</strong>
+                    </div>
+                    <div class="small">
+                        You are submitting a live payment transaction through the official Razorpay payment gateway.
+                    </div>
+                </div>
+            }
+
             <div class="investor-payment-summary">
                 <p><span>Application number</span><strong>@Model.ApplicationNumber</strong></p>
                 <p><span>Investor</span><strong>@Model.InvestorName</strong></p>
                 <p><span>Bid price</span><strong>₹@Model.BidPrice.ToString("N2")</strong></p>
                 <p><span>Lots / shares</span><strong>@Model.AppliedLots / @Model.AppliedShares</strong></p>
-                <p><span>Total amount</span><strong>₹@Model.ApplicationAmount.ToString("N2")</strong></p>
+                <p><span>Total amount to block</span><strong>₹@Model.ApplicationAmount.ToString("N2")</strong></p>
+                <p><span>Razorpay order ID</span><strong class="font-monospace small">@Model.RazorpayOrderId</strong></p>
+                <p>
+                    <span>Workflow mode</span>
+                    <strong>
+                        @if (Model.IsSimulated)
+                        {
+                            <span class="badge bg-warning text-dark">Simulated UPI ASBA</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success">Genuine Gateway</span>
+                        }
+                    </strong>
+                </p>
             </div>
+
             <form id="razorpay-confirmation-form" asp-controller="Dashboard" asp-action="ConfirmIpoPayment" method="post">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="razorpayPaymentId" id="razorpayPaymentId" />
                 <input type="hidden" name="razorpayOrderId" id="razorpayOrderId" />
                 <input type="hidden" name="razorpaySignature" id="razorpaySignature" />
                 <div class="mb-4">
-                    <label class="form-label" for="upi-id">UPI ID</label>
-                    <input type="text" id="upi-id" name="upiId" class="form-control" inputmode="email" autocomplete="off" placeholder="example@upi" maxlength="100" />
-                    <div class="form-text">Enter your UPI ID, then approve the payment in Razorpay Checkout.</div>
+                    <label class="form-label" for="upi-id">UPI ID (Virtual Payment Address)</label>
+                    <input type="text" id="upi-id" name="upiId" value="@Model.UpiId" class="form-control" inputmode="email" autocomplete="off" placeholder="example@upi" maxlength="100" />
+                    <div class="form-text">Enter your UPI ID to authorize the mandate block via Razorpay Checkout.</div>
                 </div>
-                <button type="button" id="razorpay-pay-button" class="btn registration-submit">Pay with UPI <span aria-hidden="true">&rarr;</span></button>
+                <button type="button" id="razorpay-pay-button" class="btn registration-submit">
+                    <span id="button-text">Authorize & Pay with UPI <span aria-hidden="true">&rarr;</span></span>
+                    <span id="button-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                </button>
                 <a class="registration-back-link" asp-controller="Dashboard" asp-action="Index">Cancel</a>
             </form>
         </div>
@@ -44,9 +89,13 @@
     <script>
         const payButton = document.getElementById("razorpay-pay-button");
         const upiInput = document.getElementById("upi-id");
+        const buttonText = document.getElementById("button-text");
+        const buttonSpinner = document.getElementById("button-spinner");
+        let isSubmitting = false;
 
         payButton.addEventListener("click", function () {
-            const button = this;
+            if (isSubmitting) return;
+
             const upiId = upiInput.value.trim();
             if (!/^[^@@\s]+@@[^@@\s]+$/.test(upiId)) {
                 upiInput.focus();
@@ -54,7 +103,9 @@
                 return;
             }
 
-            button.disabled = true;
+            payButton.disabled = true;
+            buttonSpinner.classList.remove("d-none");
+
             const checkout = new Razorpay({
                 key: @Html.Raw(Json.Serialize(Model.RazorpayKeyId)),
                 amount: @Html.Raw(Json.Serialize((long)Math.Round(Model.ApplicationAmount * 100m, 0))),
@@ -69,6 +120,9 @@
                     vpa: upiId
                 },
                 handler: function (response) {
+                    isSubmitting = true;
+                    buttonText.textContent = "Verifying & submitting...";
+                    payButton.disabled = true;
                     document.getElementById("razorpayPaymentId").value = response.razorpay_payment_id;
                     document.getElementById("razorpayOrderId").value = response.razorpay_order_id;
                     document.getElementById("razorpaySignature").value = response.razorpay_signature;
@@ -76,17 +130,24 @@
                 },
                 modal: {
                     ondismiss: function () {
-                        button.disabled = false;
+                        if (!isSubmitting) {
+                            payButton.disabled = false;
+                            buttonSpinner.classList.add("d-none");
+                        }
                     }
                 },
                 theme: {
                     color: "#0f4653"
                 }
             });
-            checkout.on("payment.failed", function () {
-                button.disabled = false;
-                window.alert("Payment failed. Your IPO application was not submitted.");
+
+            checkout.on("payment.failed", function (resp) {
+                payButton.disabled = false;
+                buttonSpinner.classList.add("d-none");
+                const desc = resp.error ? resp.error.description : "Payment failed or was cancelled.";
+                window.alert("Payment authorization failed: " + desc);
             });
+
             checkout.open();
         });
     </script>

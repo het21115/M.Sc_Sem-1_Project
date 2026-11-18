@@ -20,11 +20,13 @@ namespace IPOInvestmentManagement.Data
         public DbSet<IPOListing> IPOListings { get; set; }
         public DbSet<IPOApplication> IPOApplications { get; set; }
         public DbSet<IPOAllotment> IPOAllotments { get; set; }
+        public DbSet<IPOAllotmentHistory> IPOAllotmentHistories { get; set; }
         public DbSet<Investment> Investments { get; set; }
         public DbSet<InvestmentTransaction> InvestmentTransactions { get; set; }
         public DbSet<IPOWatchlist> IPOWatchlists { get; set; }
         public DbSet<SystemNotification> SystemNotifications { get; set; }
         public DbSet<PaymentRecord> PaymentRecords { get; set; }
+        public DbSet<PaymentWebhookLog> PaymentWebhookLogs { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<StockMarketData> StockMarketData { get; set; }
         public DbSet<MarketTradingHoliday> MarketTradingHolidays { get; set; }

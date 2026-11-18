@@ -31,11 +31,30 @@ namespace IPOInvestmentManagement.Models
 
         [StringLength(20)]
         public string Status { get; set; } = "Created";
-        [StringLength(20)]
+        [StringLength(30)]
         public string RefundStatus { get; set; } = "Not Applicable";
         [Column(TypeName = "decimal(18,2)")]
         public decimal UnblockedAmount { get; set; }
         public DateTime? RefundProcessedAt { get; set; }
+
+        [StringLength(50)]
+        public string? RefundReferenceId { get; set; }
+
+        [StringLength(40)]
+        public string? ReceiptNumber { get; set; }
+
+        [StringLength(40)]
+        public string PaymentMode { get; set; } = "SIMULATED_MANDATE";
+
+        public bool IsSimulated { get; set; } = true;
+
+        [StringLength(500)]
+        public string? FailureReason { get; set; }
+
+        public DateTime? ReconciledAt { get; set; }
+
+        [StringLength(50)]
+        public string? ReconciliationStatus { get; set; }
 
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

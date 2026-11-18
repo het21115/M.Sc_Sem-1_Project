@@ -14,6 +14,7 @@ namespace IPOInvestmentManagement.Services
         private readonly ConcurrentDictionary<string, CachedQuoteEntry> _quoteCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<int, (decimal NseBase, decimal BseBase)> _ipoBasePrices = new();
         private bool _isSimulationMode;
+        private readonly bool _enableSimulationFallback;
         private readonly string _configuredProvider;
         private readonly string _apiKey;
         private readonly string _baseUrl;
@@ -44,9 +45,10 @@ namespace IPOInvestmentManagement.Services
             _cacheDuration = TimeSpan.FromSeconds(Math.Max(5, cacheSec));
 
             // 2. Resolve simulation mode
-            string tradingProvider = _configuration["MarketTrading:Provider"] ?? "Live";
+            string tradingProvider = _configuration["MarketTrading:Provider"] ?? "Simulation";
             bool forceSimulation = string.Equals(tradingProvider, "Simulation", StringComparison.OrdinalIgnoreCase);
-            bool enableSimulationFallback = _configuration.GetValue<bool>("MarketData:EnableSimulationFallback", false);
+            bool enableSimulationFallback = _configuration.GetValue<bool>("MarketData:EnableSimulationFallback", true);
+            _enableSimulationFallback = enableSimulationFallback;
 
             if (forceSimulation)
             {
@@ -54,8 +56,8 @@ namespace IPOInvestmentManagement.Services
             }
             else if (string.IsNullOrWhiteSpace(_apiKey))
             {
-                // In Live mode, if credentials are missing, do not fake live data!
-                // We keep Live mode (with unconfigured warning) unless fallback is explicitly requested.
+                // In Live mode, if credentials are missing, automatically enable simulation fallback
+                // so prices constantly fluctuate with realistic Indian circuit-bounded tick dynamics.
                 _isSimulationMode = enableSimulationFallback;
             }
             else
@@ -149,8 +151,15 @@ namespace IPOInvestmentManagement.Services
             }
 
             // 4. Provider unconfigured or live fetch failed:
-            // NEVER output random fake numbers as genuine market data.
-            // Return cached or static verified quote marked as STALE with clear notice.
+            // If simulation mode or fallback is enabled, generate realistic circuit-bounded market tick
+            if (_isSimulationMode || _enableSimulationFallback)
+            {
+                var simQuote = GenerateSimulatedTick(ipoId, cleanSym, exch, defaultPrice, cached?.Quote, now);
+                _quoteCache[key] = new CachedQuoteEntry(simQuote, now);
+                return simQuote;
+            }
+
+            // Otherwise, return cached or static verified quote marked as STALE with clear notice.
             decimal fallbackPrice = cached?.Quote.CurrentPrice ?? (defaultPrice > 0 ? defaultPrice : 100m);
             decimal fallbackPrev = cached?.Quote.PreviousClose ?? fallbackPrice;
             decimal change = fallbackPrice - fallbackPrev;
@@ -200,7 +209,7 @@ namespace IPOInvestmentManagement.Services
                     return (nse, bse);
                 });
 
-                if (_isSimulationMode)
+                if (_isSimulationMode || _enableSimulationFallback)
                 {
                     string clean = CleanStockSymbol(symbol, string.Empty);
                     string keyNse = BuildKey(ipoId, clean, "NSE");

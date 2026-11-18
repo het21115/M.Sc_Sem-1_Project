@@ -16,11 +16,46 @@
         <section class="admin-application-panel">
             <div class="admin-section-head"><div><span class="admin-overline">APPLICATION REGISTER</span><h2>All applications</h2></div><a class="admin-back-link" asp-controller="Dashboard" asp-action="Index" asp-fragment="application-requests">Back to dashboard</a></div>
             <div class="alert alert-info">Eligible for allotment: <strong>@Model.EligibleApplications.Count</strong> submitted application(s) with verified payment.</div>
-            @if (Model.SelectedIpoId.HasValue)
-            {
-                <a class="btn btn-outline-primary mb-3" asp-controller="Dashboard" asp-action="AllotmentReport" asp-route-ipoId="@Model.SelectedIpoId.Value">Download allotment report</a>
-                <a class="btn btn-outline-primary mb-3" asp-controller="Dashboard" asp-action="AutomaticAllotmentPreview" asp-route-ipoId="@Model.SelectedIpoId.Value">Preview automatic allotment</a>
-            }
+            <div class="d-flex flex-wrap align-items-center justify-content-between p-3 mb-3 bg-light border rounded">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fs-5">🔄</span>
+                    <div>
+                        <strong>Payment Reconciliation & Gateway Management</strong>
+                        <div class="small text-muted">Automatically reconcile pending/failed orders, verify captured mandates, sync refunds, and retry webhooks.</div>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-2 mt-md-0">
+                    <form asp-controller="Dashboard" asp-action="ReconcilePayments" method="post" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <button class="btn btn-sm btn-outline-primary fw-bold" type="submit" title="Reconcile pending/created payments and unblocked funds with gateway">
+                            ⚡ Reconcile Payments Now
+                        </button>
+                    </form>
+                    <form asp-controller="Dashboard" asp-action="RetryWebhooks" method="post" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <button class="btn btn-sm btn-outline-secondary" type="submit" title="Re-process failed webhooks">
+                            🔄 Retry Webhooks
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="AllotmentHistory">
+                    &#128339; Allotment History Archive
+                </a>
+                @if (Model.SelectedIpoId.HasValue)
+                {
+                    <a class="btn btn-outline-success" asp-controller="Dashboard" asp-action="AllotmentResults" asp-route-ipoId="@Model.SelectedIpoId.Value">
+                        &#128737; View Allotment Results
+                    </a>
+                    <a class="btn btn-outline-primary" asp-controller="Dashboard" asp-action="AutomaticAllotmentPreview" asp-route-ipoId="@Model.SelectedIpoId.Value">
+                        &#9881; Preview Automatic Allotment
+                    </a>
+                    <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="AllotmentReport" asp-route-ipoId="@Model.SelectedIpoId.Value">
+                        &#128196; Download Allotment CSV
+                    </a>
+                }
+            </div>
             <form class="admin-application-filters" asp-controller="Dashboard" asp-action="Applications" method="get">
                 <label>Filter by IPO<select name="ipoId"><option value="">All IPOs</option>@foreach (var ipo in Model.AvailableIpos) { <option value="@ipo.IPO_id" selected="@(Model.SelectedIpoId == ipo.IPO_id)">@ipo.IPO_name</option> }</select></label>
                 <label>Filter by status<select name="status"><option value="">All statuses</option><option value="Submitted" selected="@(Model.SelectedStatus == "Submitted")">Submitted</option><option value="Allotted" selected="@(Model.SelectedStatus == "Allotted")">Allotted</option><option value="Partially Allotted" selected="@(Model.SelectedStatus == "Partially Allotted")">Partially Allotted</option><option value="Not Allotted" selected="@(Model.SelectedStatus == "Not Allotted")">Not Allotted</option><option value="Rejected" selected="@(Model.SelectedStatus == "Rejected")">Rejected</option><option value="Cancelled" selected="@(Model.SelectedStatus == "Cancelled")">Cancelled</option></select></label>
@@ -38,7 +73,7 @@
                 }
                 <div class="admin-application-list">
                     @foreach (var item in Model.Applications) {
-                        <div class="admin-application-row"><div>@if (Model.SelectedIpoId.HasValue && item.Allotment is null && item.AllotmentWindowOpen && item.Application.Status == "Submitted" && item.Application.Payment_status == "Verified") { <input type="checkbox" name="ApplicationIds" value="@item.Application.Application_id" form="bulk-allotment-form" /> }<strong>@item.IpoName</strong><small>@item.InvestorName &middot; @item.InvestorEmail &middot; Applied @item.Application.Applied_shares.ToString("N0") shares on @item.Application.Application_date.ToString("dd MMM yyyy")@if (item.Allotment is not null) { <text> &middot; Allotted @item.Allotment.Allotted_shares.ToString("N0") shares</text> }@if (item.Allotment is null && !item.AllotmentWindowOpen) { <text> &middot; @(string.IsNullOrWhiteSpace(item.AllotmentTimingStatus) ? $"Allotment date: {item.Ipo?.Allotment_date?.ToString("dd MMM yyyy") ?? "Not configured"}" : item.AllotmentTimingStatus)</text> }</small></div><div class="admin-application-row-meta"><span class="admin-application-status">@item.Application.Status</span><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@item.Application.Application_id">View details</a></div></div>
+                        <div class="admin-application-row"><div>@if (Model.SelectedIpoId.HasValue && item.Allotment is null && item.AllotmentWindowOpen && item.Application.Status == "Submitted" && item.Application.Payment_status == "Verified") { <input type="checkbox" name="ApplicationIds" value="@item.Application.Application_id" form="bulk-allotment-form" /> }<strong>@item.IpoName</strong><small>@item.InvestorName &middot; @item.InvestorEmail &middot; Applied @item.Application.Applied_shares.ToString("N0") shares on @item.Application.Application_date.ToString("dd MMM yyyy")@if (item.Allotment is not null) { <text> &middot; Allotted @item.Allotment.Allotted_shares.ToString("N0") shares</text> }@if (item.Allotment is null && !item.AllotmentWindowOpen) { <text> &middot; @(string.IsNullOrWhiteSpace(item.AllotmentTimingStatus) ? $"Allotment date: {item.Ipo?.Allotment_date?.ToString("dd MMM yyyy") ?? "Not configured"}" : item.AllotmentTimingStatus)</text> }</small></div><div class="admin-application-row-meta"><span class="admin-application-status">@item.Application.Status</span><a class="btn btn-sm btn-outline-primary" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@item.Application.Application_id">View details</a><a class="btn btn-sm btn-outline-success ms-1" asp-controller="Dashboard" asp-action="PaymentReceiptByApplication" asp-route-applicationId="@item.Application.Application_id" target="_blank" title="View official payment receipt">📄 Receipt</a>@if (item.Allotment is not null) { <a class="btn btn-sm btn-outline-info ms-1 text-dark" asp-controller="Dashboard" asp-action="AllotmentAdvice" asp-route-applicationId="@item.Application.Application_id" title="View Confirmation of Allocation Note">📄 CAN Advice</a><a class="btn btn-sm btn-outline-secondary ms-1" asp-controller="Dashboard" asp-action="DownloadAllotmentAdvicePdf" asp-route-applicationId="@item.Application.Application_id" target="_blank" title="Download PDF Allotment Advice">💾 PDF</a> }</div></div>
                     }
                 </div>
             }

@@ -24,6 +24,7 @@ namespace IPOInvestmentManagement.Services
     {
         string CalculateStatus(IPO ipo, DateTime? istNow = null);
         (bool CanApply, string? ErrorReason) CanApply(IPO ipo, DateTime? istNow = null);
+        (bool IsOpen, string? Reason) IsBiddingWindowOpen(DateTime? istNow = null);
         DateTime GetOpeningDateTime(IPO ipo);
         DateTime GetClosingDateTime(IPO ipo);
         TimeSpan GetConfiguredOpeningTime();

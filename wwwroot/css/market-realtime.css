@@ -1174,3 +1174,156 @@
 .btn-chart-buy:hover {
     background: #00a866;
 }
+
+/* ==========================================================================
+   9. LIVE MARKET CONTRAST & VISIBILITY ENHANCEMENTS
+   ========================================================================== */
+#live-market-modal .modal-content {
+    background: #0d1826 !important;
+    color: #f8fafc !important;
+    border: 1px solid #1e334d !important;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.7) !important;
+}
+
+#live-market-modal .modal-header {
+    background: #09121d !important;
+    border-bottom: 1px solid #1e334d !important;
+    color: #ffffff !important;
+}
+
+#live-market-modal .modal-title {
+    color: #ffffff !important;
+}
+
+#live-market-modal #live-market-modal-subtitle,
+#live-market-modal .modal-header small,
+#live-market-modal .modal-header .text-muted {
+    color: #cbd5e1 !important;
+}
+
+#live-market-modal .modal-body {
+    background: #0d1826 !important;
+    color: #f8fafc !important;
+}
+
+#live-market-modal .market-closed-banner .text-muted,
+#live-market-modal .market-closed-banner small,
+#live-market-modal .modal-body .text-muted {
+    color: #cbd5e1 !important;
+}
+
+#live-market-modal table.table-dark {
+    background: #101c2c !important;
+    color: #f8fafc !important;
+}
+
+#live-market-modal table.table-dark thead th {
+    background: #17283d !important;
+    color: #e2e8f0 !important;
+    font-weight: 700 !important;
+    border-bottom: 2px solid #233b59 !important;
+}
+
+#live-market-modal table.table-dark tbody td {
+    border-bottom: 1px solid #1e334d !important;
+    color: #f8fafc !important;
+}
+
+#live-market-modal table.table-dark tbody td .company-subtext,
+#live-market-modal table.table-dark tbody td .text-muted {
+    color: #94a3b8 !important;
+}
+
+#live-market-modal table.table-dark tbody td[data-live-highlow] {
+    color: #e2e8f0 !important;
+    font-weight: 500;
+}
+
+#live-market-modal table.table-dark tbody td[data-live-volume] {
+    color: #e2e8f0 !important;
+    font-weight: 500;
+}
+
+#live-market-modal .btn-outline-secondary {
+    color: #e2e8f0 !important;
+    border-color: #475569 !important;
+}
+
+#live-market-modal .btn-outline-secondary:hover {
+    background: #1e293b !important;
+    color: #ffffff !important;
+    border-color: #94a3b8 !important;
+}
+
+#live-market-modal .modal-footer {
+    background: #09121d !important;
+    border-top: 1px solid #1e334d !important;
+}
+
+#live-market-modal .market-stream-label,
+#live-market-modal .modal-footer small,
+#live-market-modal .modal-footer .text-muted {
+    color: #cbd5e1 !important;
+}
+
+/* Stock Chart Modal Contrast */
+.stock-chart-modal .range-sub,
+.range-sub {
+    color: #cbd5e1 !important;
+}
+
+.stock-chart-modal .fund-item span,
+.fund-item span {
+    color: #cbd5e1 !important;
+}
+
+.stock-chart-modal .delta-tf {
+    color: #cbd5e1 !important;
+}
+
+.stock-chart-modal .stock-sym-exchange {
+    color: #cbd5e1 !important;
+}
+
+.stock-chart-modal .stock-sym-exchange .dot-sep {
+    color: #94a3b8 !important;
+}
+
+.stock-chart-modal .tech-box small {
+    color: #cbd5e1 !important;
+}
+
+.stock-chart-modal .news-card-item p {
+    color: #e2e8f0 !important;
+}
+
+.stock-chart-modal .news-card-item small,
+.stock-chart-modal .news-card-item .text-muted {
+    color: #94a3b8 !important;
+}
+
+.stock-chart-modal .chart-prev-close-pill {
+    color: #cbd5e1 !important;
+}
+
+.stock-chart-modal .chart-prev-close-pill strong {
+    color: #ffffff !important;
+}
+
+.stock-chart-modal .tf-pill {
+    color: #cbd5e1 !important;
+}
+
+.stock-chart-modal .tf-pill:hover,
+.stock-chart-modal .tf-pill.active {
+    color: #ffffff !important;
+}
+
+.stock-chart-modal .stock-tab-btn {
+    color: #cbd5e1 !important;
+}
+
+.stock-chart-modal .stock-tab-btn:hover,
+.stock-chart-modal .stock-tab-btn.active {
+    color: #ffffff !important;
+}

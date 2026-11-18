@@ -1,4 +1,10 @@
 @model IPOInvestmentManagement.Models.DashboardViewModel
+@inject IPOInvestmentManagement.Services.IIpoStatusService IpoStatusService
+@inject IPOInvestmentManagement.Services.IIpoClock IpoClock
+
+@{
+    DateTime nowIst = IpoClock.NowIst;
+}
 
 @foreach (var detail in Model.PublishedIpoDetails.Where(d => 
     !string.Equals(d.Ipo.Status, "Rejected", StringComparison.OrdinalIgnoreCase) &&
@@ -7,24 +13,50 @@
 {
     var currentStatus = Model.MarketStatuses.GetValueOrDefault(detail.Ipo.IPO_id, "Upcoming");
     bool isOpen = currentStatus == "Open";
+    var (canApplyNow, applyReason) = IpoStatusService.CanApply(detail.Ipo, nowIst);
     decimal minimumLotAmount = (detail.Ipo.Lot_size ?? 0) * (detail.Ipo.Price_min ?? 0m);
 
     <template class="investor-apply-template" 
               data-ipo-id="@detail.Ipo.IPO_id" 
               data-status="@currentStatus"
+              data-can-apply="@(canApplyNow ? "true" : "false")"
+              data-apply-reason="@(applyReason ?? "")"
               data-opening-dt="@detail.Ipo.OpeningDateTime.ToString("yyyy-MM-ddTHH:mm:ss")"
               data-closing-dt="@detail.Ipo.ClosingDateTime.ToString("yyyy-MM-ddTHH:mm:ss")">
         
         <div class="investor-ipo-application-wrapper" data-ipo-app-container="@detail.Ipo.IPO_id">
             <div class="investor-apply-pending-banner alert alert-info mb-3" style="@(currentStatus == "Upcoming" ? "" : "display:none;")">
                 <span class="fs-5 me-2">&#9200;</span>
-                <strong>Upcoming Offering:</strong> Applications open on <strong>@detail.Ipo.OpeningDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</strong>. Bidding will unlock automatically at opening time.
+                <strong>Upcoming Offering:</strong> Applications open on <strong>@detail.Ipo.OpeningDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</strong>. Bidding will unlock automatically during market hours (<strong>10:00 AM &ndash; 05:00 PM IST, Monday to Friday</strong>).
             </div>
 
             <div class="investor-apply-closed-banner alert alert-secondary mb-3" style="@(currentStatus == "Closed" ? "" : "display:none;")">
                 <span class="fs-5 me-2">&#128274;</span>
                 <strong>Offering Closed:</strong> Bidding concluded on <strong>@detail.Ipo.ClosingDateTime.ToString("dd MMM yyyy, hh:mm tt") IST</strong>. Applications are no longer accepted for this IPO.
             </div>
+
+            @if (isOpen && canApplyNow)
+            {
+                <div class="alert alert-success py-2 px-3 mb-3 small d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="ticker-pulse d-inline-block" style="width:8px;height:8px;vertical-align:middle;"></span>
+                        <span><strong>Bidding Window Active:</strong> Applications are open now until <strong>05:00 PM IST</strong> today.</span>
+                    </div>
+                    <span class="badge bg-success text-white">Market Hours: 10:00 AM &ndash; 05:00 PM IST (Mon&ndash;Fri)</span>
+                </div>
+            }
+            else if (isOpen && !canApplyNow)
+            {
+                <div class="investor-apply-inactive-banner alert alert-warning mb-3">
+                    <div class="d-flex align-items-start gap-2">
+                        <span class="fs-5">&#9200;</span>
+                        <div>
+                            <strong>Bidding Window Inactive:</strong> @applyReason
+                            <div class="small mt-1 text-muted">Investors can apply for any IPO between <strong>10:00 AM and 05:00 PM IST</strong> during the market period (Monday to Friday).</div>
+                        </div>
+                    </div>
+                </div>
+            }
 
             <form class="investor-apply-row investor-bid-form" 
                   asp-controller="Dashboard" 
@@ -33,23 +65,24 @@
                   data-lot-size="@detail.Ipo.Lot_size" 
                   data-price-min="@detail.Ipo.Price_min" 
                   data-price-max="@detail.Ipo.Price_max"
+                  data-can-apply="@(canApplyNow ? "true" : "false")"
                   style="@(isOpen ? "" : "display:none;")">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="IpoId" value="@detail.Ipo.IPO_id" />
                 <div class="investor-bid-heading">
                     <strong>@detail.Ipo.IPO_name</strong>
-                    <small>Investor: @Context.Session.GetString("UserName") &middot; Bid range ₹@(detail.Ipo.Price_min?.ToString("N2") ?? "-") - ₹@(detail.Ipo.Price_max?.ToString("N2") ?? "-") &middot; Closes @detail.Ipo.ClosingDateTime.ToString("dd MMM yyyy, hh:mm tt") IST &middot; Allotment @(detail.Ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "Not announced") &middot; Funds release @(detail.Ipo.Funds_unblock_date?.ToString("dd MMM yyyy") ?? "Not announced")</small>
+                    <small>Investor: @Context.Session.GetString("UserName") &middot; Bid range ₹@(detail.Ipo.Price_min?.ToString("N2") ?? "-") - ₹@(detail.Ipo.Price_max?.ToString("N2") ?? "-") &middot; Bidding window: <strong>10:00 AM &ndash; 05:00 PM IST (Mon&ndash;Fri)</strong> &middot; Closes @detail.Ipo.ClosingDateTime.ToString("dd MMM yyyy, hh:mm tt") IST &middot; Allotment @(detail.Ipo.Allotment_date?.ToString("dd MMM yyyy") ?? "Not announced") &middot; Funds release @(detail.Ipo.Funds_unblock_date?.ToString("dd MMM yyyy") ?? "Not announced")</small>
                 </div>
                 <div class="investor-bid-controls">
                     <label>Investor name<input type="text" value="@(Context.Session.GetString("UserName") ?? "Investor")" readonly /></label>
                     <label>IPO name<input type="text" value="@detail.Ipo.IPO_name" readonly /></label>
-                    <label>Bid price<input class="investor-bid-price" type="number" name="BidPrice" min="@detail.Ipo.Price_min" max="@detail.Ipo.Price_max" step="0.01" value="@detail.Ipo.Price_min" required /></label>
+                    <label>Bid price<input class="investor-bid-price" type="number" name="BidPrice" min="@detail.Ipo.Price_min" max="@detail.Ipo.Price_max" step="0.01" value="@detail.Ipo.Price_min" required @(canApplyNow ? null : "disabled") /></label>
                     <label>Lot size<input type="number" value="@detail.Ipo.Lot_size" readonly /></label>
                     <label>Number of lots
                         <div class="investor-stepper">
-                            <button type="button" data-lot-adjust="-1" aria-label="Decrease lots">−</button>
-                            <input type="number" name="AppliedLots" min="1" value="1" required />
-                            <button type="button" data-lot-adjust="1" aria-label="Increase lots">+</button>
+                            <button type="button" data-lot-adjust="-1" aria-label="Decrease lots" @(canApplyNow ? null : "disabled")>−</button>
+                            <input type="number" name="AppliedLots" min="1" value="1" required @(canApplyNow ? null : "disabled") />
+                            <button type="button" data-lot-adjust="1" aria-label="Increase lots" @(canApplyNow ? null : "disabled")>+</button>
                         </div>
                     </label>
                 </div>
@@ -58,9 +91,16 @@
                     <span>Total amount <strong data-bid-total>₹@minimumLotAmount.ToString("N2")</strong></span>
                 </div>
                 <label class="investor-terms">
-                    <input type="checkbox" name="AcceptTerms" value="true" required /> I accept the <strong>Terms &amp; Conditions</strong> and <strong>Privacy Policy</strong>
+                    <input type="checkbox" name="AcceptTerms" value="true" required @(canApplyNow ? null : "disabled") /> I accept the <strong>Terms &amp; Conditions</strong> and <strong>Privacy Policy</strong>
                 </label>
-                <button type="submit" class="btn investor-apply-button">Submit Application</button>
+                @if (canApplyNow)
+                {
+                    <button type="submit" class="btn investor-apply-button">Submit Application</button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-secondary disabled investor-apply-button-disabled" disabled title="@applyReason">&#128274; Bidding Closed (10:00 AM &ndash; 05:00 PM Mon&ndash;Fri)</button>
+                }
             </form>
         </div>
     </template>

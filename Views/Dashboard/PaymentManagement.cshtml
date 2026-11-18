@@ -1,0 +1,603 @@
+@model IPOInvestmentManagement.Models.AdminPaymentManagementViewModel
+@{
+    ViewData["Title"] = "Payment Management - Admin";
+}
+
+<div class="admin-console">
+    <header class="admin-topbar">
+        <button type="button" class="admin-back-button" data-admin-back="@Url.Action("Index", "Dashboard")" title="Go back">&#8592; Back</button>
+        <div class="admin-brand"><span></span> IPO <strong>CONTROL</strong></div>
+        <span class="admin-mode">PAYMENT LEDGER / FINANCIAL RECONCILIATION</span>
+        <div class="admin-user">
+            <span>@(Context.Session.GetString("UserName") ?? "Admin")</span>
+            <i></i>
+            <a class="admin-signout" asp-controller="Account" asp-action="Logout">Sign out <span aria-hidden="true">&#8599;</span></a>
+        </div>
+    </header>
+
+    <main class="admin-main">
+        <div class="admin-heading">
+            <div>
+                <span class="admin-overline">FINANCIAL AUDIT &amp; MANDATE CONTROL</span>
+                <h1>Payment Management</h1>
+                <p>Monitor, audit, and reconcile all investor payments across successful, failed, pending, and refunded transactions.</p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Index" asp-fragment="payment-management">&#8592; Admin Dashboard</a>
+                <a class="btn btn-outline-success" asp-controller="Dashboard" asp-action="ExportPaymentsCsv">
+                    &#128196; Export All CSV
+                </a>
+            </div>
+        </div>
+
+        @if (TempData["AdminMessage"] is string adminMessage)
+        {
+            <div class="alert alert-info alert-dismissible fade show mt-3" role="alert">
+                <strong>Notification:</strong> @adminMessage
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        }
+
+        <!-- EXECUTIVE FINANCIAL KPIS -->
+        <section class="admin-kpis payment-kpis-grid" aria-label="Payment metrics summary">
+            <div class="admin-kpi-primary">
+                <span>Total Payment Volume</span>
+                <strong>&#8377;@Model.TotalVolume.ToString("N2")</strong>
+                <small>@Model.TotalTransactions.ToString("N0") Total Transactions</small>
+            </div>
+            <div style="border-top: 3px solid #10b981;">
+                <span style="color: #10b981;">&#10003; Successful (Captured)</span>
+                <strong style="color: #10b981;">&#8377;@Model.SuccessfulVolume.ToString("N2")</strong>
+                <small>@Model.SuccessfulCount.ToString("N0") Verified Mandates</small>
+            </div>
+            <div style="border-top: 3px solid #ef4444;">
+                <span style="color: #ef4444;">&#10007; Failed Payments</span>
+                <strong style="color: #ef4444;">&#8377;@Model.FailedVolume.ToString("N2")</strong>
+                <small>@Model.FailedCount.ToString("N0") Failed / Expired</small>
+            </div>
+            <div style="border-top: 3px solid #f59e0b;">
+                <span style="color: #f59e0b;">&#9203; Pending Mandates</span>
+                <strong style="color: #f59e0b;">&#8377;@Model.PendingVolume.ToString("N2")</strong>
+                <small>@Model.PendingCount.ToString("N0") Awaiting Authorization</small>
+            </div>
+            <div style="border-top: 3px solid #8b5cf6;">
+                <span style="color: #8b5cf6;">&#8634; Refunded / Unblocked</span>
+                <strong style="color: #8b5cf6;">&#8377;@Model.RefundedVolume.ToString("N2")</strong>
+                <small>@Model.RefundedCount.ToString("N0") Released to Investors</small>
+            </div>
+        </section>
+
+        <!-- RECONCILIATION ACTION BANNER -->
+        <div class="d-flex flex-wrap align-items-center justify-content-between p-3 mb-4 bg-light border rounded shadow-sm">
+            <div class="d-flex align-items-center gap-3">
+                <span class="fs-3">&#9881;</span>
+                <div>
+                    <h5 class="mb-0 fw-bold">Automated Payment &amp; ASBA Mandate Reconciliation</h5>
+                    <div class="small text-muted">Sync pending UPI mandates with payment gateway, verify captured orders, heal orphaned bids, and process unblocks.</div>
+                </div>
+            </div>
+            <div class="d-flex gap-2 mt-2 mt-md-0">
+                <form asp-controller="Dashboard" asp-action="ReconcilePayments" method="post" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="returnUrl" value="@Url.Action("PaymentManagement", "Dashboard")" />
+                    <button class="btn btn-sm btn-primary fw-bold px-3 py-2" type="submit" title="Scan and reconcile pending payments">
+                        &#9889; Reconcile All Payments Now
+                    </button>
+                </form>
+                <form asp-controller="Dashboard" asp-action="RetryWebhooks" method="post" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <button class="btn btn-sm btn-outline-secondary px-3 py-2" type="submit" title="Retry webhook events">
+                        &#8635; Retry Webhooks
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- PAYMENT MANAGEMENT PANEL -->
+        <section class="admin-application-panel">
+            <div class="admin-section-head">
+                <div>
+                    <span class="admin-overline">TRANSACTION AUDIT LEDGER</span>
+                    <h2>All Payment Records</h2>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-secondary" id="payment-count-badge">Showing @Model.Payments.Count payments</span>
+                    <a class="btn btn-sm btn-outline-secondary" id="btn-export-filtered" asp-controller="Dashboard" asp-action="ExportPaymentsCsv">
+                        &#128196; Download CSV
+                    </a>
+                </div>
+            </div>
+
+            <!-- FILTER TABS: All, Successful, Failed, Pending, Refunded -->
+            <div class="payment-tabs-wrapper mb-3">
+                <div class="btn-group" role="group" aria-label="Filter by payment status">
+                    <button type="button" class="btn btn-outline-dark payment-tab-btn active" data-filter-status="all">
+                        All Payments <span class="badge bg-dark ms-1">@Model.TotalTransactions</span>
+                    </button>
+                    <button type="button" class="btn btn-outline-success payment-tab-btn" data-filter-status="successful">
+                        &#10003; Successful (Captured) <span class="badge bg-success ms-1">@Model.SuccessfulCount</span>
+                    </button>
+                    <button type="button" class="btn btn-outline-danger payment-tab-btn" data-filter-status="failed">
+                        &#10007; Failed <span class="badge bg-danger ms-1">@Model.FailedCount</span>
+                    </button>
+                    <button type="button" class="btn btn-outline-warning text-dark payment-tab-btn" data-filter-status="pending">
+                        &#9203; Pending Mandates <span class="badge bg-warning text-dark ms-1">@Model.PendingCount</span>
+                    </button>
+                    <button type="button" class="btn btn-outline-primary payment-tab-btn" data-filter-status="refunded">
+                        &#8634; Refunded / Unblocked <span class="badge bg-info ms-1">@Model.RefundedCount</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- SEARCH AND IPO FILTER BAR -->
+            <div class="row g-2 mb-3 align-items-center">
+                <div class="col-md-6 col-lg-5">
+                    <div class="input-group">
+                        <span class="input-group-text bg-white">&#128269;</span>
+                        <input type="text" id="payment-search-input" class="form-control" placeholder="Search investor name, email, application #, txn ID, order ID, IPO..." value="@Model.SearchQuery" />
+                        <button class="btn btn-outline-secondary" type="button" id="payment-search-clear" style="display:none;">&times;</button>
+                    </div>
+                </div>
+                <div class="col-md-4 col-lg-4">
+                    <select id="payment-ipo-filter" class="form-select">
+                        <option value="">All IPO Offerings</option>
+                        @foreach (var ipo in Model.AllIpos)
+                        {
+                            <option value="@ipo.IPO_id" selected="@(Model.SelectedIpoId == ipo.IPO_id)">@ipo.IPO_name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2 col-lg-3 text-md-end">
+                    <button type="button" class="btn btn-sm btn-link text-muted" id="btn-reset-filters">Reset filters</button>
+                </div>
+            </div>
+
+            <!-- TABLE OF PAYMENTS -->
+            <div class="table-responsive bg-white rounded border">
+                <table class="table table-hover align-middle mb-0" id="payment-records-table">
+                    <thead class="table-light">
+                        <tr class="small text-uppercase text-muted">
+                            <th style="min-width: 130px;">Date &amp; Time (IST)</th>
+                            <th style="min-width: 200px;">Investor Profile</th>
+                            <th style="min-width: 170px;">IPO &amp; Application #</th>
+                            <th style="min-width: 120px;">Bidding Spec</th>
+                            <th style="min-width: 120px;" class="text-end">Amount</th>
+                            <th style="min-width: 180px;">Gateway &amp; IDs</th>
+                            <th style="min-width: 130px;" class="text-center">Status</th>
+                            <th style="min-width: 150px;">Refund / Unblock</th>
+                            <th style="min-width: 170px;" class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.Payments.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="9" class="text-center py-5 text-muted">
+                                    <div class="fs-1 mb-2">&#128179;</div>
+                                    <h5>No payment records found</h5>
+                                    <p class="small">Transactions will appear here when investors submit applications and authorize payments.</p>
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var payment in Model.Payments)
+                            {
+                                string investorName = Model.UserNames.GetValueOrDefault(payment.UserId, "Unknown Investor");
+                                string investorEmail = Model.UserEmails.GetValueOrDefault(payment.UserId, "N/A");
+                                string investorDemat = Model.UserDemats.GetValueOrDefault(payment.UserId, "N/A");
+                                string investorUpi = Model.UserUpis.GetValueOrDefault(payment.UserId, "N/A");
+                                string ipoName = Model.IpoNames.GetValueOrDefault(payment.IpoId, "IPO");
+                                int? applicationId = null;
+                                if (!string.IsNullOrEmpty(payment.RazorpayOrderId) && Model.ApplicationIds.TryGetValue(payment.RazorpayOrderId, out int appId))
+                                {
+                                    applicationId = appId;
+                                }
+                                else if (!string.IsNullOrEmpty(payment.ApplicationNumber) && Model.ApplicationIds.TryGetValue(payment.ApplicationNumber, out int appId2))
+                                {
+                                    applicationId = appId2;
+                                }
+
+                                bool isSuccessful = string.Equals(payment.Status, "Captured", StringComparison.OrdinalIgnoreCase) ||
+                                                    string.Equals(payment.Status, "Verified", StringComparison.OrdinalIgnoreCase);
+                                bool isFailed = string.Equals(payment.Status, "Failed", StringComparison.OrdinalIgnoreCase);
+                                bool isPending = string.Equals(payment.Status, "Created", StringComparison.OrdinalIgnoreCase) ||
+                                                 string.Equals(payment.Status, "Pending", StringComparison.OrdinalIgnoreCase);
+                                bool isRefunded = string.Equals(payment.RefundStatus, "Completed", StringComparison.OrdinalIgnoreCase) ||
+                                                  string.Equals(payment.RefundStatus, "Pending Unblock", StringComparison.OrdinalIgnoreCase) ||
+                                                  payment.UnblockedAmount > 0m ||
+                                                  string.Equals(payment.Status, "Refunded", StringComparison.OrdinalIgnoreCase);
+
+                                string categoryStatus = isSuccessful ? "successful" : (isFailed ? "failed" : (isPending ? "pending" : "other"));
+                                string refundCategory = isRefunded ? "refunded" : "not-refunded";
+
+                                <tr class="payment-row"
+                                    data-payment-id="@payment.PaymentRecordId"
+                                    data-status="@categoryStatus"
+                                    data-refund="@refundCategory"
+                                    data-is-successful="@(isSuccessful ? "true" : "false")"
+                                    data-is-failed="@(isFailed ? "true" : "false")"
+                                    data-is-pending="@(isPending ? "true" : "false")"
+                                    data-is-refunded="@(isRefunded ? "true" : "false")"
+                                    data-ipo-id="@payment.IpoId"
+                                    data-ipo-name="@ipoName.ToLower()"
+                                    data-investor-name="@investorName.ToLower()"
+                                    data-investor-email="@investorEmail.ToLower()"
+                                    data-demat="@investorDemat.ToLower()"
+                                    data-upi="@investorUpi.ToLower()"
+                                    data-app-num="@payment.ApplicationNumber.ToLower()"
+                                    data-order-id="@(payment.RazorpayOrderId?.ToLower() ?? "")"
+                                    data-payment-txn-id="@(payment.RazorpayPaymentId?.ToLower() ?? "")"
+                                    data-receipt-num="@(payment.ReceiptNumber?.ToLower() ?? "")">
+                                    
+                                    <!-- Date & Time -->
+                                    <td>
+                                        <div class="fw-semibold small">@payment.CreatedAt.ToString("dd MMM yyyy")</div>
+                                        <div class="text-muted" style="font-size: 0.75rem;">@payment.CreatedAt.ToString("hh:mm tt") IST</div>
+                                    </td>
+
+                                    <!-- Investor Profile -->
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="rounded-circle bg-primary bg-opacity-10 text-primary fw-bold d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; font-size: 0.85rem;">
+                                                @(string.IsNullOrWhiteSpace(investorName) ? "?" : investorName.Substring(0, 1).ToUpper())
+                                            </div>
+                                            <div>
+                                                <a class="fw-bold text-dark text-decoration-none" asp-controller="Dashboard" asp-action="UserDetails" asp-route-userId="@payment.UserId">
+                                                    @investorName
+                                                </a>
+                                                <div class="text-muted" style="font-size: 0.75rem;">@investorEmail</div>
+                                                <div class="text-secondary" style="font-size: 0.72rem;">Demat: @investorDemat</div>
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    <!-- IPO & Application -->
+                                    <td>
+                                        <div class="fw-bold text-primary">@ipoName</div>
+                                        <div class="small text-muted">
+                                            @if (applicationId.HasValue)
+                                            {
+                                                <a asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@applicationId.Value" class="text-decoration-none fw-semibold">
+                                                    #@payment.ApplicationNumber
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <span>#@payment.ApplicationNumber</span>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(payment.ReceiptNumber))
+                                        {
+                                            <div class="text-muted" style="font-size: 0.72rem;">Receipt: @payment.ReceiptNumber</div>
+                                        }
+                                    </td>
+
+                                    <!-- Bidding Spec -->
+                                    <td>
+                                        <div class="fw-semibold">@payment.AppliedLots Lot(s)</div>
+                                        <small class="text-muted">@payment.AppliedShares Share(s)</small>
+                                        <div class="text-secondary" style="font-size: 0.75rem;">&#64; &#8377;@payment.BidPrice.ToString("N2")</div>
+                                    </td>
+
+                                    <!-- Amount -->
+                                    <td class="text-end">
+                                        <strong class="fs-6 text-dark">&#8377;@payment.Amount.ToString("N2")</strong>
+                                    </td>
+
+                                    <!-- Gateway & IDs -->
+                                    <td>
+                                        <div>
+                                            @if (payment.IsSimulated)
+                                            {
+                                                <span class="badge bg-light text-dark border" style="font-size: 0.7rem;">SIMULATED ASBA</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-info bg-opacity-25 text-primary border" style="font-size: 0.7rem;">GATEWAY</span>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(payment.RazorpayOrderId))
+                                        {
+                                            <div class="font-monospace text-muted text-truncate" style="max-width: 160px; font-size: 0.72rem;" title="Order ID: @payment.RazorpayOrderId">
+                                                Ord: @payment.RazorpayOrderId
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(payment.RazorpayPaymentId))
+                                        {
+                                            <div class="font-monospace text-primary text-truncate" style="max-width: 160px; font-size: 0.72rem;" title="Payment ID: @payment.RazorpayPaymentId">
+                                                Txn: @payment.RazorpayPaymentId
+                                            </div>
+                                        }
+                                    </td>
+
+                                    <!-- Payment Status -->
+                                    <td class="text-center">
+                                        @if (isSuccessful)
+                                        {
+                                            <span class="badge bg-success px-2 py-1">
+                                                &#10003; Captured
+                                            </span>
+                                            @if (payment.ReconciledAt.HasValue)
+                                            {
+                                                <div class="text-muted" style="font-size: 0.68rem;">Reconciled</div>
+                                            }
+                                        }
+                                        else if (isFailed)
+                                        {
+                                            <span class="badge bg-danger px-2 py-1" title="@(payment.FailureReason ?? "Payment failed or expired")">
+                                                &#10007; Failed
+                                            </span>
+                                            @if (!string.IsNullOrEmpty(payment.FailureReason))
+                                            {
+                                                <div class="text-danger text-truncate" style="max-width: 120px; font-size: 0.68rem;" title="@payment.FailureReason">
+                                                    @payment.FailureReason
+                                                </div>
+                                            }
+                                        }
+                                        else if (isPending)
+                                        {
+                                            <span class="badge bg-warning text-dark px-2 py-1">
+                                                &#9203; Pending
+                                            </span>
+                                            <div class="text-muted" style="font-size: 0.68rem;">Awaiting mandate</div>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary px-2 py-1">@payment.Status</span>
+                                        }
+                                    </td>
+
+                                    <!-- Refund / Unblock Status -->
+                                    <td>
+                                        @if (string.Equals(payment.RefundStatus, "Completed", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="badge bg-info text-dark" style="font-size: 0.75rem;">
+                                                &#10003; Unblocked: &#8377;@((payment.UnblockedAmount > 0 ? payment.UnblockedAmount : payment.Amount).ToString("N2"))
+                                            </span>
+                                            @if (!string.IsNullOrEmpty(payment.RefundReferenceId))
+                                            {
+                                                <div class="font-monospace text-muted text-truncate" style="max-width: 140px; font-size: 0.68rem;" title="@payment.RefundReferenceId">
+                                                    Ref: @payment.RefundReferenceId
+                                                </div>
+                                            }
+                                            @if (payment.RefundProcessedAt.HasValue)
+                                            {
+                                                <div class="text-muted" style="font-size: 0.68rem;">@payment.RefundProcessedAt.Value.ToString("dd MMM yyyy")</div>
+                                            }
+                                        }
+                                        else if (string.Equals(payment.RefundStatus, "Pending Unblock", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="badge bg-warning text-dark" style="font-size: 0.75rem;">
+                                                &#9203; Pending: &#8377;@((payment.UnblockedAmount > 0 ? payment.UnblockedAmount : payment.Amount).ToString("N2"))
+                                            </span>
+                                            <form asp-controller="Dashboard" asp-action="ProcessPaymentRefund" method="post" class="mt-1">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="paymentRecordId" value="@payment.PaymentRecordId" />
+                                                <input type="hidden" name="returnUrl" value="@Url.Action("PaymentManagement", "Dashboard")" />
+                                                <button type="submit" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size: 0.7rem;" title="Simulate instant mandate unblock/refund">
+                                                    Release Funds &#10003;
+                                                </button>
+                                            </form>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">&mdash;</span>
+                                        }
+                                    </td>
+
+                                    <!-- Actions -->
+                                    <td class="text-end">
+                                        <div class="d-flex justify-content-end gap-1 flex-wrap">
+                                            @if (!string.IsNullOrEmpty(payment.ReceiptNumber) || isSuccessful)
+                                            {
+                                                <a class="btn btn-sm btn-outline-primary py-1 px-2" asp-controller="Dashboard" asp-action="PaymentReceipt" asp-route-paymentRecordId="@payment.PaymentRecordId" target="_blank" title="View official payment receipt">
+                                                    &#128196; Receipt
+                                                </a>
+                                            }
+                                            @if (applicationId.HasValue)
+                                            {
+                                                <a class="btn btn-sm btn-outline-secondary py-1 px-2" asp-controller="Dashboard" asp-action="ApplicationDetails" asp-route-applicationId="@applicationId.Value" title="View application details">
+                                                    Details
+                                                </a>
+                                            }
+                                            @if (isPending)
+                                            {
+                                                <form asp-controller="Dashboard" asp-action="ReconcilePaymentRecord" method="post" class="d-inline">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="paymentRecordId" value="@payment.PaymentRecordId" />
+                                                    <input type="hidden" name="returnUrl" value="@Url.Action("PaymentManagement", "Dashboard")" />
+                                                    <button type="submit" class="btn btn-sm btn-outline-warning text-dark py-1 px-2" title="Verify status with gateway">
+                                                        &#9889; Reconcile
+                                                    </button>
+                                                </form>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        <tr id="empty-search-row" style="display: none;">
+                            <td colspan="9" class="text-center py-5 text-muted">
+                                <div class="fs-1 mb-2">&#128269;</div>
+                                <h5>No matching payments</h5>
+                                <p class="small">Try adjusting your search criteria or switching to the "All Payments" tab.</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</div>
+
+<style>
+    .payment-kpis-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .payment-tabs-wrapper {
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+    }
+    .payment-tabs-wrapper .btn-group {
+        white-space: nowrap;
+    }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const tabButtons = document.querySelectorAll(".payment-tab-btn");
+        const searchInput = document.getElementById("payment-search-input");
+        const clearSearchBtn = document.getElementById("payment-search-clear");
+        const ipoFilterSelect = document.getElementById("payment-ipo-filter");
+        const resetFiltersBtn = document.getElementById("btn-reset-filters");
+        const countBadge = document.getElementById("payment-count-badge");
+        const exportBtn = document.getElementById("btn-export-filtered");
+        const paymentRows = document.querySelectorAll(".payment-row");
+        const emptyRow = document.getElementById("empty-search-row");
+
+        let activeStatus = "all";
+
+        function filterPayments() {
+            const query = (searchInput ? searchInput.value.trim().toLowerCase() : "");
+            const selectedIpo = (ipoFilterSelect ? ipoFilterSelect.value : "");
+
+            if (clearSearchBtn) {
+                clearSearchBtn.style.display = query.length > 0 ? "inline-block" : "none";
+            }
+
+            let visibleCount = 0;
+            paymentRows.forEach(row => {
+                const isSuccessful = row.getAttribute("data-is-successful") === "true";
+                const isFailed = row.getAttribute("data-is-failed") === "true";
+                const isPending = row.getAttribute("data-is-pending") === "true";
+                const isRefunded = row.getAttribute("data-is-refunded") === "true";
+
+                // Tab Status Match
+                let matchesStatus = false;
+                if (activeStatus === "all") {
+                    matchesStatus = true;
+                } else if (activeStatus === "successful") {
+                    matchesStatus = isSuccessful;
+                } else if (activeStatus === "failed") {
+                    matchesStatus = isFailed;
+                } else if (activeStatus === "pending") {
+                    matchesStatus = isPending;
+                } else if (activeStatus === "refunded") {
+                    matchesStatus = isRefunded;
+                }
+
+                // IPO Filter Match
+                const rowIpoId = row.getAttribute("data-ipo-id") || "";
+                const matchesIpo = !selectedIpo || (rowIpoId === selectedIpo);
+
+                // Query Search Match
+                const investorName = row.getAttribute("data-investor-name") || "";
+                const investorEmail = row.getAttribute("data-investor-email") || "";
+                const demat = row.getAttribute("data-demat") || "";
+                const upi = row.getAttribute("data-upi") || "";
+                const ipoName = row.getAttribute("data-ipo-name") || "";
+                const appNum = row.getAttribute("data-app-num") || "";
+                const orderId = row.getAttribute("data-order-id") || "";
+                const txnId = row.getAttribute("data-payment-txn-id") || "";
+                const receiptNum = row.getAttribute("data-receipt-num") || "";
+
+                const matchesQuery = !query ||
+                    investorName.includes(query) ||
+                    investorEmail.includes(query) ||
+                    demat.includes(query) ||
+                    upi.includes(query) ||
+                    ipoName.includes(query) ||
+                    appNum.includes(query) ||
+                    orderId.includes(query) ||
+                    txnId.includes(query) ||
+                    receiptNum.includes(query);
+
+                if (matchesStatus && matchesIpo && matchesQuery) {
+                    row.style.display = "";
+                    visibleCount++;
+                } else {
+                    row.style.display = "none";
+                }
+            });
+
+            if (countBadge) {
+                const label = activeStatus === "all" ? "Total" : activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1);
+                countBadge.textContent = `Showing ${visibleCount} ${label} payment${visibleCount === 1 ? "" : "s"}`;
+            }
+
+            if (emptyRow) {
+                emptyRow.style.display = (visibleCount === 0 && paymentRows.length > 0) ? "" : "none";
+            }
+
+            if (exportBtn) {
+                let exportUrl = "@Url.Action("ExportPaymentsCsv", "Dashboard")";
+                const params = [];
+                if (activeStatus !== "all") params.push("status=" + encodeURIComponent(activeStatus));
+                if (selectedIpo) params.push("ipoId=" + encodeURIComponent(selectedIpo));
+                if (params.length > 0) {
+                    exportUrl += "?" + params.join("&");
+                }
+                exportBtn.href = exportUrl;
+            }
+        }
+
+        tabButtons.forEach(btn => {
+            btn.addEventListener("click", function () {
+                tabButtons.forEach(b => b.classList.remove("active"));
+                this.classList.add("active");
+                activeStatus = this.getAttribute("data-filter-status") || "all";
+                filterPayments();
+            });
+        });
+
+        if (searchInput) {
+            searchInput.addEventListener("input", filterPayments);
+        }
+
+        if (clearSearchBtn) {
+            clearSearchBtn.addEventListener("click", function () {
+                searchInput.value = "";
+                filterPayments();
+                searchInput.focus();
+            });
+        }
+
+        if (ipoFilterSelect) {
+            ipoFilterSelect.addEventListener("change", filterPayments);
+        }
+
+        if (resetFiltersBtn) {
+            resetFiltersBtn.addEventListener("click", function () {
+                if (searchInput) searchInput.value = "";
+                if (ipoFilterSelect) ipoFilterSelect.value = "";
+                const allTab = document.querySelector('.payment-tab-btn[data-filter-status="all"]');
+                if (allTab) {
+                    tabButtons.forEach(b => b.classList.remove("active"));
+                    allTab.classList.add("active");
+                    activeStatus = "all";
+                }
+                filterPayments();
+            });
+        }
+
+        // Support direct linking to a tab from URL query params (e.g. ?status=failed or #status=pending)
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const statusParam = urlParams.get("status");
+            if (statusParam) {
+                const targetBtn = Array.from(tabButtons).find(btn =>
+                    (btn.getAttribute("data-filter-status") || "").toLowerCase() === statusParam.toLowerCase());
+                if (targetBtn) {
+                    targetBtn.click();
+                    return;
+                }
+            }
+        } catch (e) { }
+
+        filterPayments();
+    });
+</script>
