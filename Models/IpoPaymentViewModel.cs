@@ -9,6 +9,7 @@ namespace IPOInvestmentManagement.Models
         public int AppliedLots { get; set; }
         public int AppliedShares { get; set; }
         public decimal ApplicationAmount { get; set; }
+        public decimal WalletBalance { get; set; }
         public string DematAccountNumber { get; set; } = string.Empty;
         public string UpiId { get; set; } = string.Empty;
         public string RazorpayOrderId { get; set; } = string.Empty;

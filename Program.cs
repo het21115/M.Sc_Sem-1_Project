@@ -9,7 +9,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
 
 builder.Services.AddScoped<AdminAuditFilter>();
-builder.Services.AddControllersWithViews(options => options.Filters.AddService<AdminAuditFilter>());
+builder.Services.AddControllersWithViews(options =>
+{
+    options.Filters.AddService<AdminAuditFilter>();
+    options.Conventions.Add(new TestClockEnvironmentConvention(builder.Environment));
+});
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
@@ -36,6 +40,8 @@ builder.Services.AddSingleton<IMarketDataProvider, RealTimeStockMarketDataProvid
 builder.Services.AddSingleton<IIpoClock, IpoClock>();
 builder.Services.AddScoped<IIpoStatusService, IpoStatusService>();
 builder.Services.AddScoped<IPaymentReconciliationService, PaymentReconciliationService>();
+builder.Services.AddScoped<IStockSipService, StockSipService>();
+builder.Services.AddScoped<IWalletWithdrawalService, WalletWithdrawalService>();
 builder.Services.AddHostedService<StockPriceBroadcastingService>();
 builder.Services.AddHostedService<IpoStatusBackgroundService>();
 builder.Services.AddHostedService<PaymentReconciliationBackgroundService>();
@@ -267,6 +273,40 @@ using (var scope = app.Services.CreateScope())
             );
             CREATE INDEX [IX_StockPriceHistory_IPOId_Exchange_Timestamp] ON [StockPriceHistory] ([IPOId], [Exchange], [Timestamp]);
         END
+        IF OBJECT_ID(N'[StockSipPlans]', N'U') IS NULL
+        BEGIN
+            CREATE TABLE [StockSipPlans] (
+                [SipId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_StockSipPlans] PRIMARY KEY,
+                [UserId] int NOT NULL,
+                [IPOId] int NOT NULL,
+                [StockSymbol] nvarchar(30) NOT NULL,
+                [Exchange] nvarchar(10) NOT NULL CONSTRAINT [DF_StockSipPlans_Exchange] DEFAULT ('NSE'),
+                [Frequency] nvarchar(20) NOT NULL CONSTRAINT [DF_StockSipPlans_Frequency] DEFAULT ('Monthly'),
+                [InstallmentAmount] decimal(18,2) NOT NULL,
+                [InstallmentDay] int NOT NULL CONSTRAINT [DF_StockSipPlans_InstallmentDay] DEFAULT (5),
+                [StartDate] datetime2 NOT NULL,
+                [EndDate] datetime2 NULL,
+                [NextExecutionDate] datetime2 NOT NULL,
+                [LastExecutedDate] datetime2 NULL,
+                [InstallmentsCompleted] int NOT NULL CONSTRAINT [DF_StockSipPlans_InstallmentsCompleted] DEFAULT (0),
+                [TotalInvested] decimal(18,2) NOT NULL CONSTRAINT [DF_StockSipPlans_TotalInvested] DEFAULT (0),
+                [TotalSharesAccumulated] int NOT NULL CONSTRAINT [DF_StockSipPlans_TotalSharesAccumulated] DEFAULT (0),
+                [Status] nvarchar(20) NOT NULL CONSTRAINT [DF_StockSipPlans_Status] DEFAULT ('Active'),
+                [CreatedAt] datetime2 NOT NULL,
+                [UpdatedAt] datetime2 NULL,
+                CONSTRAINT [FK_StockSipPlans_Users] FOREIGN KEY ([UserId]) REFERENCES [Users] ([User_id]),
+                CONSTRAINT [FK_StockSipPlans_IPOs] FOREIGN KEY ([IPOId]) REFERENCES [IPOs] ([IPO_id])
+            );
+            CREATE INDEX [IX_StockSipPlans_UserId] ON [StockSipPlans] ([UserId]);
+            CREATE INDEX [IX_StockSipPlans_IPOId] ON [StockSipPlans] ([IPOId]);
+            CREATE INDEX [IX_StockSipPlans_Status] ON [StockSipPlans] ([Status]);
+        END
+        IF OBJECT_ID(N'[SystemNotifications]', N'U') IS NOT NULL
+        BEGIN
+            UPDATE [SystemNotifications]
+            SET [Created_at] = DATEADD(minute, -330, [Created_at])
+            WHERE [Title] LIKE '%Stock SIP%' AND [Created_at] > GETUTCDATE();
+        END
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Users_Email_Unique' AND object_id = OBJECT_ID(N'[Users]'))
             EXEC(N'CREATE UNIQUE INDEX [IX_Users_Email_Unique] ON [Users] ([Email])');
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_IPOApplications_ApplicationNumber_Unique' AND object_id = OBJECT_ID(N'[IPOApplications]'))
@@ -362,6 +402,25 @@ using (var scope = app.Services.CreateScope())
             CREATE INDEX [IX_IPOAllotmentHistories_IPOId] ON [IPOAllotmentHistories] ([IPOId]);
             CREATE INDEX [IX_IPOAllotmentHistories_FinalizedAt] ON [IPOAllotmentHistories] ([FinalizedAt]);
         END
+        IF OBJECT_ID(N'[WalletWithdrawals]', N'U') IS NULL
+        BEGIN
+            CREATE TABLE [WalletWithdrawals] (
+                [WithdrawalId] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_WalletWithdrawals] PRIMARY KEY,
+                [UserId] int NOT NULL,
+                [ReferenceNumber] nvarchar(40) NOT NULL,
+                [Amount] decimal(18,2) NOT NULL,
+                [BalanceBefore] decimal(18,2) NOT NULL,
+                [BalanceAfter] decimal(18,2) NOT NULL,
+                [PayoutMethod] nvarchar(30) NOT NULL,
+                [DestinationAccount] nvarchar(120) NOT NULL,
+                [Status] nvarchar(20) NOT NULL CONSTRAINT [DF_WalletWithdrawals_Status] DEFAULT ('Completed'),
+                [Remarks] nvarchar(300) NULL,
+                [CreatedAt] datetime2 NOT NULL,
+                CONSTRAINT [FK_WalletWithdrawals_Users] FOREIGN KEY ([UserId]) REFERENCES [Users] ([User_id]) ON DELETE CASCADE,
+                CONSTRAINT [UQ_WalletWithdrawals_ReferenceNumber] UNIQUE ([ReferenceNumber])
+            );
+            CREATE INDEX [IX_WalletWithdrawals_UserId_CreatedAt] ON [WalletWithdrawals] ([UserId], [CreatedAt]);
+        END
         """);
 }
 
@@ -393,6 +452,7 @@ if (args.Contains("--run-ipo-status-tests"))
     using var testScope = app.Services.CreateScope();
     var statusService = testScope.ServiceProvider.GetRequiredService<IIpoStatusService>();
     var clock = testScope.ServiceProvider.GetRequiredService<IIpoClock>();
+    var calendar = testScope.ServiceProvider.GetRequiredService<IMarketTradingCalendar>();
     var db = testScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
     Console.WriteLine("================================================================================");
@@ -520,6 +580,32 @@ if (args.Contains("--run-ipo-status-tests"))
         await statusService.SynchronizeIpoStatusesAsync();
         clock.ResetSimulatedTime();
     }
+
+    // 12. Weekend and Live Market Trading Calendar Tests
+    Console.WriteLine("\n--- Weekend & Live Market Trading Calendar Tests ---");
+
+    // A. Saturday Market Closed Test (21 Nov 2026 is Saturday)
+    DateTime satDate = new(2026, 11, 21, 11, 30, 0);
+    bool isSatTradingDay = await calendar.IsTradingDayAsync(satDate);
+    bool isSatMarketOpen = await calendar.IsMarketOpenAsync(satDate);
+    AssertTest("12A. Saturday Live Market Closed (21 Nov 2026 11:30 AM)", !isSatTradingDay && !isSatMarketOpen, $"TradingDay={isSatTradingDay}, MarketOpen={isSatMarketOpen}");
+
+    // B. Sunday Market Closed Test (22 Nov 2026 is Sunday)
+    DateTime sunDate = new(2026, 11, 22, 14, 0, 0);
+    bool isSunTradingDay = await calendar.IsTradingDayAsync(sunDate);
+    bool isSunMarketOpen = await calendar.IsMarketOpenAsync(sunDate);
+    AssertTest("12B. Sunday Live Market Closed (22 Nov 2026 02:00 PM)", !isSunTradingDay && !isSunMarketOpen, $"TradingDay={isSunTradingDay}, MarketOpen={isSunMarketOpen}");
+
+    // C. Weekday Trading Hours Open Test (23 Nov 2026 is Monday at 10:30 AM)
+    DateTime monOpenDate = new(2026, 11, 23, 10, 30, 0);
+    bool isMonTradingDay = await calendar.IsTradingDayAsync(monOpenDate);
+    bool isMonMarketOpen = await calendar.IsMarketOpenAsync(monOpenDate);
+    AssertTest("12C. Monday In-Hours Market Open (23 Nov 2026 10:30 AM)", isMonTradingDay && isMonMarketOpen, $"TradingDay={isMonTradingDay}, MarketOpen={isMonMarketOpen}");
+
+    // D. Weekday After-Hours Closed Test (23 Nov 2026 is Monday at 04:30 PM)
+    DateTime monClosedDate = new(2026, 11, 23, 16, 30, 0);
+    bool isMonAfterHoursMarketOpen = await calendar.IsMarketOpenAsync(monClosedDate);
+    AssertTest("12D. Monday After-Hours Market Closed (23 Nov 2026 04:30 PM)", !isMonAfterHoursMarketOpen, $"MarketOpen={isMonAfterHoursMarketOpen}");
 
     Console.WriteLine("================================================================================");
     Console.WriteLine($"TEST RESULTS: {passedCount} / {totalTests} PASSED ({(passedCount == totalTests ? "ALL TESTS PASSED" : "FAILURES DETECTED")})");

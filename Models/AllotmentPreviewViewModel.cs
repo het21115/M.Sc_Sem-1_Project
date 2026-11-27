@@ -70,4 +70,18 @@ namespace IPOInvestmentManagement.Models
                 ? "Full allotment"
                 : "Partial allotment";
     }
+
+    public class AllotmentCorrectionRequestViewModel
+    {
+        public int ApplicationId { get; set; }
+        public int CorrectedLots { get; set; }
+        public decimal? CorrectedPrice { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "An auditable justification is mandatory.")]
+        [System.ComponentModel.DataAnnotations.MinLength(10, ErrorMessage = "A detailed auditable justification of at least 10 characters is mandatory for authorized corrections.")]
+        public string CorrectionReason { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Authorization confirmation is required.")]
+        public string AuthorizationPasscode { get; set; } = string.Empty;
+    }
 }

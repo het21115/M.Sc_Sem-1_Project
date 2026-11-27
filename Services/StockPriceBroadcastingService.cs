@@ -17,6 +17,7 @@ namespace IPOInvestmentManagement.Services
         private readonly ILogger<StockPriceBroadcastingService> _logger;
         private readonly TimeSpan _tickInterval = TimeSpan.FromSeconds(3.5);
         private readonly ConcurrentDictionary<string, DateTime> _lastHistorySaved = new();
+        private DateTime _lastSipCheck = DateTime.MinValue;
 
         public StockPriceBroadcastingService(
             IServiceScopeFactory scopeFactory,
@@ -65,6 +66,22 @@ namespace IPOInvestmentManagement.Services
             var calendar = scope.ServiceProvider.GetRequiredService<IMarketTradingCalendar>();
 
             DateTime now = GetIndiaStandardTime();
+
+            // Process due SIP installments periodically
+            if ((now - _lastSipCheck).TotalMinutes >= 1)
+            {
+                _lastSipCheck = now;
+                try
+                {
+                    var sipService = scope.ServiceProvider.GetRequiredService<IStockSipService>();
+                    await sipService.ProcessDueSipInstallmentsAsync(cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to process due SIP installments.");
+                }
+            }
+
             bool isMarketOpen = await calendar.IsMarketOpenAsync(now, cancellationToken);
 
             if (!isMarketOpen)
@@ -121,15 +138,17 @@ namespace IPOInvestmentManagement.Services
             {
                 listings.TryGetValue(ipo.IPO_id, out IPOListing? listing);
                 string symbol = listing?.StockSymbol ?? GenerateStockSymbol(ipo.IPO_name);
-                decimal basePrice = listing?.NSE_closing_price
+                decimal? basePrice = listing?.NSE_closing_price
                     ?? listing?.NSE_listing_price
                     ?? listing?.BSE_listing_price
                     ?? listing?.Issue_price
                     ?? ipo.Price_max
-                    ?? ipo.Price_min
-                    ?? 100m;
+                    ?? ipo.Price_min;
 
-                tickItems.Add((ipo.IPO_id, symbol, basePrice));
+                if (basePrice.HasValue && basePrice.Value > 0m)
+                {
+                    tickItems.Add((ipo.IPO_id, symbol, basePrice.Value));
+                }
             }
 
             // Update in-memory quotes in market data provider
@@ -148,16 +167,21 @@ namespace IPOInvestmentManagement.Services
                 string symbol = listing?.StockSymbol ?? GenerateStockSymbol(ipo.IPO_name);
                 string companyName = companies.GetValueOrDefault(ipo.Company_id, "Company");
 
-                decimal defaultPrice = listing?.NSE_closing_price
+                decimal? defaultPrice = listing?.NSE_closing_price
                     ?? listing?.NSE_listing_price
                     ?? listing?.BSE_listing_price
                     ?? listing?.Issue_price
                     ?? ipo.Price_max
-                    ?? ipo.Price_min
-                    ?? 100m;
+                    ?? ipo.Price_min;
 
-                MarketQuote? nseQuote = await _marketDataProvider.GetIpoQuoteAsync(ipo.IPO_id, "NSE", defaultPrice, symbol, cancellationToken);
-                MarketQuote? bseQuote = await _marketDataProvider.GetIpoQuoteAsync(ipo.IPO_id, "BSE", defaultPrice, symbol, cancellationToken);
+                if (!defaultPrice.HasValue || defaultPrice.Value <= 0m)
+                {
+                    continue;
+                }
+
+                decimal priceVal = defaultPrice.Value;
+                MarketQuote? nseQuote = await _marketDataProvider.GetIpoQuoteAsync(ipo.IPO_id, "NSE", priceVal, symbol, cancellationToken);
+                MarketQuote? bseQuote = await _marketDataProvider.GetIpoQuoteAsync(ipo.IPO_id, "BSE", priceVal, symbol, cancellationToken);
 
                 if (nseQuote == null || bseQuote == null)
                 {
@@ -165,10 +189,10 @@ namespace IPOInvestmentManagement.Services
                 }
 
                 // Upsert NSE database record
-                SyncStockMarketDataRow(context, existingRows, ipo, "NSE", symbol, listing?.Issue_price ?? defaultPrice, nseQuote);
+                SyncStockMarketDataRow(context, existingRows, ipo, "NSE", symbol, listing?.Issue_price ?? priceVal, nseQuote);
 
                 // Upsert BSE database record
-                SyncStockMarketDataRow(context, existingRows, ipo, "BSE", symbol, listing?.Issue_price ?? defaultPrice, bseQuote);
+                SyncStockMarketDataRow(context, existingRows, ipo, "BSE", symbol, listing?.Issue_price ?? priceVal, bseQuote);
 
                 // Persist historical price points for charting and analysis
                 RecordPriceHistory(context, ipo.IPO_id, symbol, "NSE", nseQuote, now);
@@ -330,21 +354,7 @@ namespace IPOInvestmentManagement.Services
 
         private static DateTime GetIndiaStandardTime()
         {
-            try
-            {
-                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
-            }
-            catch
-            {
-                try
-                {
-                    return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata"));
-                }
-                catch
-                {
-                    return DateTime.UtcNow.AddHours(5).AddMinutes(30);
-                }
-            }
+            return IpoClock.Shared.NowIst;
         }
     }
 }

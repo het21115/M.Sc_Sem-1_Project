@@ -2,6 +2,34 @@
 @{
     ViewData["Title"] = $"Payment Receipt - {Model.ReceiptNumber}";
     Layout = null; // Standalone printable receipt
+
+    string role = Context.Session.GetString("UserRole") ?? "Investor";
+    bool isAdmin = string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase);
+
+    string? queryReturnUrl = Context.Request.Query["returnUrl"].ToString();
+    string fallbackUrl;
+    string backButtonText;
+
+    if (!string.IsNullOrWhiteSpace(queryReturnUrl) && Url.IsLocalUrl(queryReturnUrl))
+    {
+        fallbackUrl = queryReturnUrl;
+        backButtonText = "Back";
+    }
+    else if (isAdmin)
+    {
+        fallbackUrl = Url.Action("Index", "Dashboard") + "#payment-management";
+        backButtonText = "Back to Payment Management";
+    }
+    else if (Model.ApplicationId.HasValue)
+    {
+        fallbackUrl = Url.Action("InvestorApplicationDetails", "Dashboard", new { applicationId = Model.ApplicationId.Value });
+        backButtonText = "Back to Application";
+    }
+    else
+    {
+        fallbackUrl = Url.Action("Index", "Dashboard") + "#payment-history";
+        backButtonText = "Back to Dashboard";
+    }
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -193,9 +221,14 @@
 </head>
 <body>
     <div class="receipt-actions no-print">
-        <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm">&larr; Back</a>
-        <div>
-            <button onclick="window.print()" class="btn btn-primary btn-sm px-3">
+        <a href="@fallbackUrl" onclick="handleReceiptBack(event)" class="btn btn-outline-secondary btn-sm" id="btn-back">
+            &larr; @backButtonText
+        </a>
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" onclick="closeReceiptTab()" class="btn btn-outline-secondary btn-sm" id="btn-close" title="Close this receipt tab">
+                &#10005; Close Tab
+            </button>
+            <button type="button" onclick="window.print()" class="btn btn-primary btn-sm px-3">
                 🖨️ Print / Save as PDF
             </button>
         </div>
@@ -373,5 +406,79 @@
             </div>
         </div>
     </div>
+
+    <script>
+        function closeReceiptTab() {
+            window.close();
+            setTimeout(function () {
+                navigateFallback();
+            }, 250);
+        }
+
+        function handleReceiptBack(event) {
+            if (event) {
+                event.preventDefault();
+            }
+
+            // 1. If genuine same-origin history exists in this tab (navigated in-tab)
+            var referrer = document.referrer;
+            var isSameOriginReferrer = false;
+            if (referrer) {
+                try {
+                    var refUrl = new URL(referrer, window.location.href);
+                    isSameOriginReferrer = (refUrl.origin === window.location.origin);
+                } catch (e) { }
+            }
+
+            if (isSameOriginReferrer && window.history.length > 1) {
+                window.history.back();
+                setTimeout(function () {
+                    navigateFallback();
+                }, 300);
+                return;
+            }
+
+            // 2. If opened in a new tab/window with an active opener
+            if (window.opener && !window.opener.closed) {
+                window.close();
+                setTimeout(function () {
+                    navigateFallback();
+                }, 250);
+                return;
+            }
+
+            // 3. If opened via target="_blank" (history.length <= 1), try closing first
+            if (window.history.length <= 1) {
+                try {
+                    window.close();
+                } catch (e) { }
+                setTimeout(function () {
+                    navigateFallback();
+                }, 250);
+                return;
+            }
+
+            navigateFallback();
+        }
+
+        function navigateFallback() {
+            var fallback = '@Html.Raw(fallbackUrl)';
+            var referrer = document.referrer;
+            if (referrer) {
+                try {
+                    var refUrl = new URL(referrer, window.location.href);
+                    if (refUrl.origin === window.location.origin) {
+                        if (refUrl.pathname.toLowerCase().endsWith("/dashboard") && !refUrl.hash) {
+                            window.location.href = fallback;
+                            return;
+                        }
+                        window.location.href = referrer;
+                        return;
+                    }
+                } catch (e) { }
+            }
+            window.location.href = fallback;
+        }
+    </script>
 </body>
 </html>

@@ -9,6 +9,9 @@ namespace IPOInvestmentManagement.Models
         public decimal TotalReturn { get; set; }
         public decimal ReturnPercentage { get; set; }
         public decimal SimulatedCashBalance { get; set; } = 100000m;
+        public string InvestorUpiId { get; set; } = string.Empty;
+        public decimal TotalWithdrawnAmount { get; set; }
+        public List<WalletWithdrawal> WithdrawalHistory { get; set; } = new();
         public List<PortfolioHoldingViewModel> Holdings { get; set; } = new();
         public List<PortfolioTransactionViewModel> Transactions { get; set; } = new();
         public List<PortfolioAllocationViewModel> Allocation { get; set; } = new();

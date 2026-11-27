@@ -100,7 +100,7 @@ namespace IPOInvestmentManagement.Services
 
         public async Task<MarketQuote?> GetQuoteAsync(string symbol, string exchange, CancellationToken cancellationToken = default)
         {
-            return await GetIpoQuoteAsync(0, exchange, 100m, symbol, cancellationToken);
+            return await GetIpoQuoteAsync(0, exchange, 0m, symbol, cancellationToken);
         }
 
         public async Task<MarketQuote?> GetIpoQuoteAsync(
@@ -160,7 +160,7 @@ namespace IPOInvestmentManagement.Services
             }
 
             // Otherwise, return cached or static verified quote marked as STALE with clear notice.
-            decimal fallbackPrice = cached?.Quote.CurrentPrice ?? (defaultPrice > 0 ? defaultPrice : 100m);
+            decimal fallbackPrice = cached?.Quote.CurrentPrice ?? (defaultPrice > 0 ? defaultPrice : 0m);
             decimal fallbackPrev = cached?.Quote.PreviousClose ?? fallbackPrice;
             decimal change = fallbackPrice - fallbackPrev;
             decimal changePct = fallbackPrev > 0 ? Math.Round(change / fallbackPrev * 100m, 2) : 0m;
@@ -588,21 +588,7 @@ namespace IPOInvestmentManagement.Services
 
         private static DateTime GetIndiaStandardTime()
         {
-            try
-            {
-                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
-            }
-            catch
-            {
-                try
-                {
-                    return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata"));
-                }
-                catch
-                {
-                    return DateTime.UtcNow.AddHours(5).AddMinutes(30);
-                }
-            }
+            return IpoClock.Shared.NowIst;
         }
     }
 }

@@ -144,7 +144,7 @@
             <div class="d-flex flex-wrap align-items-center gap-2 mt-4 pt-3 border-top">
                 @if (Model.Payment is not null)
                 {
-                    <a class="btn btn-sm btn-primary" asp-controller="Dashboard" asp-action="PaymentReceipt" asp-route-paymentRecordId="@Model.Payment.PaymentRecordId" target="_blank">
+                    <a class="btn btn-sm btn-primary" asp-controller="Dashboard" asp-action="PaymentReceipt" asp-route-paymentRecordId="@Model.Payment.PaymentRecordId">
                         📄 View / Print Official Receipt
                     </a>
                 }

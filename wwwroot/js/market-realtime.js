@@ -18,6 +18,14 @@
         cashBalance: 100000.00
     };
 
+    window.marketState = state;
+    window.setCurrentChartStock = function (stock) {
+        state.currentChartStock = stock;
+    };
+    window.getCurrentChartStock = function () {
+        return state.currentChartStock;
+    };
+
     // Format currency in Indian Rupees
     function formatINR(val, decimals = 2) {
         if (val === null || val === undefined || isNaN(val)) return "₹0.00";
@@ -182,6 +190,76 @@
                 b.innerHTML = '<i style="background:#ef4444;"></i> Closed';
             }
         });
+
+        // Update header status pills across Investor, Company, Admin dashboards
+        document.querySelectorAll(".investor-live-status-pill, .company-live-status-pill, .admin-live-status-pill").forEach(pill => {
+            if (state.isMarketOpen) {
+                pill.classList.remove("is-closed");
+                pill.classList.add("is-open");
+                pill.textContent = "LIVE";
+            } else {
+                pill.classList.remove("is-open");
+                pill.classList.add("is-closed");
+                pill.textContent = "CLOSED";
+            }
+        });
+
+        // Update header indicator dot and ring
+        document.querySelectorAll(".investor-live-dot, .company-live-dot, .admin-live-dot").forEach(dot => {
+            if (state.isMarketOpen) {
+                dot.style.backgroundColor = "#10b981";
+                dot.style.boxShadow = "0 0 8px #10b981";
+            } else {
+                dot.style.backgroundColor = "#ef4444";
+                dot.style.boxShadow = "0 0 8px #ef4444";
+            }
+        });
+        document.querySelectorAll(".investor-live-ring, .company-live-ring, .admin-live-ring").forEach(ring => {
+            if (state.isMarketOpen) {
+                ring.style.borderColor = "#10b981";
+                ring.style.animation = "admin-live-pulse-ring 1.8s infinite ease-out";
+            } else {
+                ring.style.borderColor = "#ef4444";
+                ring.style.animation = "none";
+            }
+        });
+
+        // Update dashboard card overline pulse and text
+        document.querySelectorAll(".investor-live-market-card .terminal-overline, .company-live-market-card .terminal-overline").forEach(el => {
+            const pulse = el.querySelector(".ticker-pulse");
+            const text = el.querySelector("span");
+            if (pulse && text) {
+                if (state.isMarketOpen) {
+                    pulse.style.background = "";
+                    pulse.style.boxShadow = "";
+                    text.textContent = "REAL-TIME NSE · BSE MARKET (LIVE SESSION)";
+                } else {
+                    pulse.style.background = "#ef4444";
+                    pulse.style.boxShadow = "0 0 8px rgba(239, 68, 68, 0.4)";
+                    text.textContent = "REAL-TIME NSE · BSE MARKET (CLOSED)";
+                }
+            }
+        });
+
+        // Update modal title pulse & subtitle
+        const modalSubtitle = document.getElementById("live-market-modal-subtitle");
+        if (modalSubtitle) {
+            modalSubtitle.textContent = state.isMarketOpen
+                ? "Active Market Session (09:30 AM – 03:30 PM IST) • Streaming real-time quotes"
+                : "Market Session Closed • Official Trading Hours: Monday – Friday, 09:30 AM to 03:30 PM IST";
+        }
+        const modalTitlePulse = document.querySelector("#live-market-modal-title .ticker-pulse");
+        if (modalTitlePulse) {
+            modalTitlePulse.style.background = state.isMarketOpen ? "" : "#ef4444";
+            modalTitlePulse.style.boxShadow = state.isMarketOpen ? "" : "0 0 6px #ef4444";
+        }
+
+        // Update Market Details page status badge if present
+        const chartStatusBadge = document.getElementById("chart-market-status-badge");
+        if (chartStatusBadge) {
+            chartStatusBadge.className = "badge " + (state.isMarketOpen ? "bg-success" : "bg-danger") + " px-2 py-1";
+            chartStatusBadge.textContent = state.isMarketOpen ? "● MARKET OPEN" : "○ MARKET CLOSED";
+        }
 
         const modalSource = document.getElementById("modal-data-source-badge");
         if (modalSource && data.dataSource) {
@@ -752,7 +830,11 @@
         window.calcTradeTotal();
     }
 
+    let isFastTradeSubmitting = false;
+
     window.submitFastTrade = function () {
+        if (isFastTradeSubmitting) return;
+
         const ipoId = parseInt(document.getElementById("fast-trade-ipo-id").value, 10);
         const investmentId = parseInt(document.getElementById("fast-trade-investment-id").value, 10) || null;
         const exchange = document.getElementById("fast-trade-selected-exchange").value;
@@ -762,14 +844,35 @@
         const alertBox = document.getElementById("fast-trade-alert");
         const execBtn = document.getElementById("btn-trade-execute");
 
-        if (!ipoId || quantity <= 0) {
+        if (!ipoId || isNaN(quantity) || quantity <= 0) {
             alertBox.className = "fast-trade-msg error";
-            alertBox.textContent = "Please enter a valid quantity.";
+            alertBox.textContent = "Please enter a valid trade quantity (minimum 1 share).";
             return;
         }
 
+        // Validate available shares on client prior to submit if selling
+        if (tradeType === "SELL") {
+            const availShares = parseInt(document.getElementById("fast-trade-available-shares")?.value || "0", 10);
+            if (availShares > 0 && quantity > availShares) {
+                alertBox.className = "fast-trade-msg error";
+                alertBox.textContent = `You only have ${availShares.toLocaleString()} available shares to sell.`;
+                return;
+            }
+        }
+
+        // Expected price from modal
+        const priceEl = document.getElementById(exchange === "BSE" ? "fast-trade-bse-price" : "fast-trade-nse-price");
+        const rawPriceText = priceEl?.textContent.replace(/[^0-9.]/g, "") || "0";
+        const expectedPrice = parseFloat(rawPriceText) || 0;
+
+        // Generate client request ID for idempotency & duplicate prevention
+        const clientRequestId = (typeof crypto !== "undefined" && crypto.randomUUID) 
+            ? crypto.randomUUID() 
+            : ("trade_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9));
+
+        isFastTradeSubmitting = true;
         execBtn.disabled = true;
-        execBtn.textContent = "Executing...";
+        execBtn.textContent = "Executing Order...";
 
         fetch("/api/market/trade", {
             method: "POST",
@@ -781,7 +884,9 @@
                 exchange: exchange,
                 tradeType: tradeType,
                 quantity: quantity,
-                investmentId: investmentId
+                investmentId: investmentId,
+                expectedPrice: expectedPrice,
+                clientRequestId: clientRequestId
             })
         })
             .then(res => res.json())
@@ -814,6 +919,9 @@
                 alertBox.textContent = "Network error communicating with the trading engine.";
                 execBtn.disabled = false;
                 execBtn.textContent = "Retry Trade";
+            })
+            .finally(() => {
+                isFastTradeSubmitting = false;
             });
     };
 
@@ -1031,50 +1139,71 @@
 
         // Big Main Price
         const priceEl = document.getElementById("chart-main-price");
-        if (priceEl) priceEl.textContent = formatINR(data.currentPrice);
+        const hasValidPrice = data.currentPrice != null && Number(data.currentPrice) > 0 && data.isPriceAvailable !== false;
+        if (priceEl) {
+            priceEl.textContent = hasValidPrice ? formatINR(data.currentPrice) : "Price Unavailable";
+            if (!hasValidPrice) {
+                priceEl.classList.add("text-muted");
+            } else {
+                priceEl.classList.remove("text-muted");
+            }
+        }
 
         // Price Change & Percentage
         const deltaValEl = document.getElementById("chart-delta-val");
         const deltaPctEl = document.getElementById("chart-delta-pct");
         const deltaContainer = document.getElementById("chart-price-delta");
-        const isUp = data.priceChange >= 0;
-        const sign = isUp ? "+" : "";
-
-        if (deltaValEl) deltaValEl.textContent = `${sign}${formatINR(data.priceChange)}`;
-        if (deltaPctEl) deltaPctEl.textContent = `(${sign}${data.priceChangePercentage.toFixed(2)}%)`;
-        if (deltaContainer) {
-            deltaContainer.className = "stock-price-change " + (isUp ? "profit" : "loss");
+        if (hasValidPrice && data.priceChange != null) {
+            const isUp = data.priceChange >= 0;
+            const sign = isUp ? "+" : "";
+            if (deltaValEl) deltaValEl.textContent = `${sign}${formatINR(data.priceChange)}`;
+            if (deltaPctEl) deltaPctEl.textContent = `(${sign}${(data.priceChangePercentage || 0).toFixed(2)}%)`;
+            if (deltaContainer) {
+                deltaContainer.className = "stock-price-change " + (isUp ? "profit" : "loss");
+            }
+        } else {
+            if (deltaValEl) deltaValEl.textContent = "--";
+            if (deltaPctEl) deltaPctEl.textContent = "(--)";
+            if (deltaContainer) {
+                deltaContainer.className = "stock-price-change text-muted";
+            }
         }
 
         // Previous close pill
         const prevPill = document.getElementById("chart-prev-close-val");
-        if (prevPill) prevPill.textContent = formatINR(data.previousClose);
+        if (prevPill) {
+            prevPill.textContent = (data.previousClose != null && Number(data.previousClose) > 0) ? formatINR(data.previousClose) : "Unavailable";
+        }
 
         // Today's Low / High Range
         const todayLowEl = document.getElementById("perf-today-low");
         const todayHighEl = document.getElementById("perf-today-high");
-        if (todayLowEl) todayLowEl.textContent = formatINR(data.dayLow);
-        if (todayHighEl) todayHighEl.textContent = formatINR(data.dayHigh);
+        if (todayLowEl) todayLowEl.textContent = (data.dayLow != null && Number(data.dayLow) > 0) ? formatINR(data.dayLow) : "Unavailable";
+        if (todayHighEl) todayHighEl.textContent = (data.dayHigh != null && Number(data.dayHigh) > 0) ? formatINR(data.dayHigh) : "Unavailable";
 
-        const todaySpan = Math.max(0.1, data.dayHigh - data.dayLow);
-        const todayPct = Math.min(100, Math.max(0, (data.currentPrice - data.dayLow) / todaySpan * 100));
-        const todayPointer = document.getElementById("perf-today-pointer");
-        const todayBar = document.getElementById("perf-today-bar");
-        if (todayPointer) todayPointer.style.left = `${todayPct}%`;
-        if (todayBar) todayBar.style.width = `${todayPct}%`;
+        if (data.dayHigh && data.dayLow && data.dayHigh > data.dayLow && hasValidPrice) {
+            const todaySpan = Math.max(0.1, data.dayHigh - data.dayLow);
+            const todayPct = Math.min(100, Math.max(0, (data.currentPrice - data.dayLow) / todaySpan * 100));
+            const todayPointer = document.getElementById("perf-today-pointer");
+            const todayBar = document.getElementById("perf-today-bar");
+            if (todayPointer) todayPointer.style.left = `${todayPct}%`;
+            if (todayBar) todayBar.style.width = `${todayPct}%`;
+        }
 
         // 52-Week Low / High Range
         const w52LowEl = document.getElementById("perf-52w-low");
         const w52HighEl = document.getElementById("perf-52w-high");
-        if (w52LowEl) w52LowEl.textContent = formatINR(data.low52w);
-        if (w52HighEl) w52HighEl.textContent = formatINR(data.high52w);
+        if (w52LowEl) w52LowEl.textContent = (data.low52w != null && Number(data.low52w) > 0) ? formatINR(data.low52w) : "Unavailable";
+        if (w52HighEl) w52HighEl.textContent = (data.high52w != null && Number(data.high52w) > 0) ? formatINR(data.high52w) : "Unavailable";
 
-        const w52Span = Math.max(0.1, data.high52w - data.low52w);
-        const w52Pct = Math.min(100, Math.max(0, (data.currentPrice - data.low52w) / w52Span * 100));
-        const w52Pointer = document.getElementById("perf-52w-pointer");
-        const w52Bar = document.getElementById("perf-52w-bar");
-        if (w52Pointer) w52Pointer.style.left = `${w52Pct}%`;
-        if (w52Bar) w52Bar.style.width = `${w52Pct}%`;
+        if (data.high52w && data.low52w && data.high52w > data.low52w && hasValidPrice) {
+            const w52Span = Math.max(0.1, data.high52w - data.low52w);
+            const w52Pct = Math.min(100, Math.max(0, (data.currentPrice - data.low52w) / w52Span * 100));
+            const w52Pointer = document.getElementById("perf-52w-pointer");
+            const w52Bar = document.getElementById("perf-52w-bar");
+            if (w52Pointer) w52Pointer.style.left = `${w52Pct}%`;
+            if (w52Bar) w52Bar.style.width = `${w52Pct}%`;
+        }
 
         // Fundamentals Grid
         const openEl = document.getElementById("perf-open");
@@ -1084,18 +1213,22 @@
         const upCircEl = document.getElementById("perf-upper-circuit");
         const bidAskEl = document.getElementById("perf-bid-ask");
 
-        if (openEl) openEl.textContent = formatINR(data.openPrice);
-        if (prevEl) prevEl.textContent = formatINR(data.previousClose);
-        if (volEl) volEl.textContent = formatNumber(data.volume);
-        if (lowCircEl) lowCircEl.textContent = formatINR(data.lowerCircuit);
-        if (upCircEl) upCircEl.textContent = formatINR(data.upperCircuit);
-        if (bidAskEl) bidAskEl.textContent = `${formatINR(data.bestBid)} / ${formatINR(data.bestAsk)}`;
+        if (openEl) openEl.textContent = (data.openPrice != null && Number(data.openPrice) > 0) ? formatINR(data.openPrice) : "Unavailable";
+        if (prevEl) prevEl.textContent = (data.previousClose != null && Number(data.previousClose) > 0) ? formatINR(data.previousClose) : "Unavailable";
+        if (volEl) volEl.textContent = (data.volume != null && Number(data.volume) > 0) ? formatNumber(data.volume) : "Unavailable";
+        if (lowCircEl) lowCircEl.textContent = (data.lowerCircuit != null && Number(data.lowerCircuit) > 0) ? formatINR(data.lowerCircuit) : "Unavailable";
+        if (upCircEl) upCircEl.textContent = (data.upperCircuit != null && Number(data.upperCircuit) > 0) ? formatINR(data.upperCircuit) : "Unavailable";
+        if (bidAskEl) {
+            const bBid = data.bestBid != null ? formatINR(data.bestBid) : "Unavailable";
+            const bAsk = data.bestAsk != null ? formatINR(data.bestAsk) : "Unavailable";
+            bidAskEl.textContent = `${bBid} / ${bAsk}`;
+        }
 
         // Technicals
         const sma20El = document.getElementById("tech-sma20");
         const sma50El = document.getElementById("tech-sma50");
-        if (sma20El) sma20El.textContent = formatINR(data.currentPrice * 0.985);
-        if (sma50El) sma50El.textContent = formatINR(data.currentPrice * 0.962);
+        if (sma20El) sma20El.textContent = hasValidPrice ? formatINR(data.currentPrice * 0.985) : "Unavailable";
+        if (sma50El) sma50El.textContent = hasValidPrice ? formatINR(data.currentPrice * 0.962) : "Unavailable";
 
         // Data Notice & Source pill
         const noticeEl = document.getElementById("chart-data-notice-text");
@@ -1103,9 +1236,16 @@
 
         const pillEl = document.getElementById("chart-data-source-pill");
         if (pillEl) {
-            pillEl.textContent = data.isSimulation ? "SIMULATED" : (data.isStale ? "STALE / OFFLINE" : "EXCHANGE FEED");
+            pillEl.textContent = data.isSimulation ? "SIMULATED" : (data.isStale ? "STALE DATA" : "LIVE DATA");
             pillEl.className = "badge " + (data.isSimulation ? "bg-dark text-warning border border-warning" : (data.isStale ? "bg-dark text-warning border border-warning" : "bg-dark text-success border border-success"));
         }
+
+        const simBadge = document.getElementById("chart-sim-badge");
+        const staleBadge = document.getElementById("chart-stale-badge");
+        const liveBadge = document.getElementById("chart-live-badge");
+        if (simBadge) simBadge.textContent = "⚠️ SIMULATED DATA (DEV)";
+        if (staleBadge) staleBadge.textContent = "⚠️ STALE DATA";
+        if (liveBadge) liveBadge.textContent = "● LIVE DATA";
 
         const sourceBadge = document.getElementById("chart-source-badge");
         if (sourceBadge && data.dataSource) {
@@ -1469,13 +1609,553 @@
     window.triggerChartTrade = function (action) {
         if (!state.currentChartStock) return;
         const stock = state.currentChartStock;
-        const price = chartCachedData?.currentPrice || 100;
+        const price = Number(chartCachedData?.currentPrice) || 0;
+        if (price <= 0) {
+            alert("Market price is currently unavailable for this stock.");
+            return;
+        }
         window.openFastTrade(stock.ipoId, stock.companyName, stock.symbol, price, price, 0, null, action);
     };
 
+    let selectedSipStock = null;
+    let selectedSipExchange = "NSE";
+
+    function initStockSipModal() {
+        if (document.getElementById("stock-sip-modal")) return;
+
+        const modalDiv = document.createElement("div");
+        modalDiv.id = "stock-sip-modal";
+        modalDiv.className = "stock-sip-modal-overlay hidden";
+        modalDiv.innerHTML = `
+            <div class="stock-sip-dialog">
+                <div class="fast-trade-header" style="background:#0f172a; padding:18px 24px; border-bottom:1px solid #1e293b; display:flex; align-items:center; justify-content:space-between;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="width:40px; height:40px; border-radius:10px; background:linear-gradient(135deg, #059669, #10b981); display:flex; align-items:center; justify-content:center; font-size:1.3rem;">
+                            📈
+                        </div>
+                        <div>
+                            <h3 style="margin:0; font-size:1.15rem; font-weight:700; color:#fff;" id="stock-sip-modal-title">Start Stock SIP</h3>
+                            <small style="color:#94a3b8; font-size:0.75rem;">Automate rupee-cost averaging in listed stocks</small>
+                        </div>
+                    </div>
+                    <button type="button" class="fast-trade-close-btn" onclick="window.closeStockSipModal()">&times;</button>
+                </div>
+
+                <form id="stock-sip-form" onsubmit="window.handleStockSipSubmit(event)">
+                    <input type="hidden" id="sip-ipo-id" value="" />
+                    <div style="padding:20px 24px;">
+                        <!-- Stock selection -->
+                        <div class="mb-3" id="sip-stock-select-container">
+                            <label class="form-label text-white fw-semibold small" for="sip-stock-select" style="font-size:0.85rem; font-weight:600; color:#cbd5e1; margin-bottom:6px; display:block;">Select Listed Stock</label>
+                            <select class="form-select form-select-lg" id="sip-stock-select"
+                                    style="background:#1e293b; color:#ffffff; border:1px solid #334155; font-size:0.95rem; border-radius:8px; width:100%; padding:10px;"
+                                    onchange="window.updateSipStockSelection(this)">
+                                <option value="">-- Choose a Listed Company / Stock --</option>
+                            </select>
+                        </div>
+
+                        <!-- Selected Stock Snapshot -->
+                        <div class="p-3 mb-3 rounded border" id="sip-stock-snapshot" style="background:#162032; border:1px solid #2a3d58 !important; border-radius:8px; padding:14px; margin-bottom:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span class="badge bg-primary text-white" id="sip-badge-symbol" style="padding:4px 8px; border-radius:4px; font-weight:700; font-size:0.8rem; background:#2563eb;">STOCK</span>
+                                    <strong class="text-white" id="sip-display-company" style="font-size:1rem; color:#fff;">Company Name</strong>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                    <span style="font-size:0.8rem; color:#94a3b8;">Current Price:</span>
+                                    <strong class="text-success" id="sip-display-price" style="font-size:1.2rem; color:#10b981; font-weight:700;">₹0.00</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-3" style="display:flex; gap:12px; margin-bottom:14px;">
+                            <!-- Exchange Selection -->
+                            <div style="flex:1;">
+                                <label style="font-size:0.82rem; font-weight:600; color:#cbd5e1; margin-bottom:6px; display:block;">Execution Exchange</label>
+                                <div style="display:flex; gap:8px;">
+                                    <label style="flex:1; padding:8px 10px; border-radius:6px; border:1px solid #334155; background:#1e293b; color:#fff; text-align:center; cursor:pointer; font-size:0.85rem;" id="sip-exchange-label-nse">
+                                        <input type="radio" name="sip-exchange-radio" value="NSE" checked style="margin-right:4px;" onchange="window.updateSipExchange('NSE')">
+                                        <strong>NSE</strong>
+                                    </label>
+                                    <label style="flex:1; padding:8px 10px; border-radius:6px; border:1px solid #334155; background:#1e293b; color:#fff; text-align:center; cursor:pointer; font-size:0.85rem;" id="sip-exchange-label-bse">
+                                        <input type="radio" name="sip-exchange-radio" value="BSE" style="margin-right:4px;" onchange="window.updateSipExchange('BSE')">
+                                        <strong>BSE</strong>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Frequency Selection -->
+                            <div style="flex:1;">
+                                <label for="sip-frequency-select" style="font-size:0.82rem; font-weight:600; color:#cbd5e1; margin-bottom:6px; display:block;">Investment Frequency</label>
+                                <select id="sip-frequency-select" style="background:#1e293b; color:#ffffff; border:1px solid #334155; border-radius:6px; width:100%; padding:9px; font-size:0.9rem;" onchange="window.handleSipFrequencyChange()">
+                                    <option value="Monthly" selected>Monthly (Recommended)</option>
+                                    <option value="Weekly">Weekly (Every 7 Days)</option>
+                                    <option value="Daily">Daily (Every Trading Day)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Installment Amount -->
+                        <div style="margin-bottom:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <label for="sip-amount-input" style="font-size:0.82rem; font-weight:600; color:#cbd5e1; margin:0;">
+                                    Installment Amount (₹)
+                                </label>
+                                <small style="color:#94a3b8; font-size:0.75rem;">Min: ₹100 per installment</small>
+                            </div>
+                            <div style="display:flex; margin-bottom:8px;">
+                                <span style="background:#334155; color:#cbd5e1; border:1px solid #475569; padding:8px 14px; border-radius:6px 0 0 6px; font-weight:700;">₹</span>
+                                <input type="number" id="sip-amount-input" min="100" max="500000" step="50" value="1000" required
+                                       style="background:#1e293b; color:#ffffff; border:1px solid #475569; border-left:none; border-radius:0 6px 6px 0; font-size:1.15rem; font-weight:700; width:100%; padding:8px 12px;"
+                                       oninput="window.calculateSipProjections()">
+                            </div>
+
+                            <!-- Quick Amount Presets -->
+                            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                                <button type="button" class="btn btn-sm" style="border:1px solid #475569; background:#1e293b; color:#cbd5e1; padding:3px 10px; border-radius:4px; font-size:0.78rem; cursor:pointer;" onclick="window.setSipAmount(500)">₹500</button>
+                                <button type="button" class="btn btn-sm" style="border:1px solid #475569; background:#1e293b; color:#cbd5e1; padding:3px 10px; border-radius:4px; font-size:0.78rem; cursor:pointer;" onclick="window.setSipAmount(1000)">₹1,000</button>
+                                <button type="button" class="btn btn-sm" style="border:1px solid #475569; background:#1e293b; color:#cbd5e1; padding:3px 10px; border-radius:4px; font-size:0.78rem; cursor:pointer;" onclick="window.setSipAmount(2500)">₹2,500</button>
+                                <button type="button" class="btn btn-sm" style="border:1px solid #475569; background:#1e293b; color:#cbd5e1; padding:3px 10px; border-radius:4px; font-size:0.78rem; cursor:pointer;" onclick="window.setSipAmount(5000)">₹5,000</button>
+                                <button type="button" class="btn btn-sm" style="border:1px solid #475569; background:#1e293b; color:#cbd5e1; padding:3px 10px; border-radius:4px; font-size:0.78rem; cursor:pointer;" onclick="window.setSipAmount(10000)">₹10,000</button>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:12px; margin-bottom:14px;">
+                            <!-- Preferred Day -->
+                            <div style="flex:1;" id="sip-day-group">
+                                <label for="sip-day-select" id="sip-day-label" style="font-size:0.82rem; font-weight:600; color:#cbd5e1; margin-bottom:6px; display:block;">Execution Date of Month</label>
+                                <select id="sip-day-select" style="background:#1e293b; color:#ffffff; border:1px solid #334155; border-radius:6px; width:100%; padding:9px; font-size:0.9rem;">
+                                    <option value="1">1st of the month</option>
+                                    <option value="5" selected>5th of the month (Standard)</option>
+                                    <option value="10">10th of the month</option>
+                                    <option value="15">15th of the month</option>
+                                    <option value="20">20th of the month</option>
+                                    <option value="25">25th of the month</option>
+                                </select>
+                                <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:4px;">Weekend installments execute Monday.</small>
+                            </div>
+
+                            <!-- Duration -->
+                            <div style="flex:1;">
+                                <label for="sip-tenure-select" style="font-size:0.82rem; font-weight:600; color:#cbd5e1; margin-bottom:6px; display:block;">SIP Duration</label>
+                                <select id="sip-tenure-select" style="background:#1e293b; color:#ffffff; border:1px solid #334155; border-radius:6px; width:100%; padding:9px; font-size:0.9rem;" onchange="window.calculateSipProjections()">
+                                    <option value="" selected>Ongoing (Until cancelled)</option>
+                                    <option value="6">6 Months</option>
+                                    <option value="12">12 Months (1 Year)</option>
+                                    <option value="24">24 Months (2 Years)</option>
+                                    <option value="36">36 Months (3 Years)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Projections Card -->
+                        <div style="background:#131d2e; border:1px solid #1e3a5f; border-radius:8px; padding:12px; margin-bottom:10px;">
+                            <h4 style="font-size:0.75rem; text-transform:uppercase; font-weight:700; color:#38bdf8; margin:0 0 8px;">📊 SIP Projection & Estimates</h4>
+                            <div style="display:flex; text-align:center; gap:8px;">
+                                <div style="flex:1;">
+                                    <small style="color:#94a3b8; font-size:0.72rem; display:block;">Est. Shares / Order</small>
+                                    <strong style="font-size:0.95rem; color:#fff;" id="sip-est-shares">~0 shares</strong>
+                                </div>
+                                <div style="flex:1;">
+                                    <small style="color:#94a3b8; font-size:0.72rem; display:block;">1-Year Investment</small>
+                                    <strong style="font-size:0.95rem; color:#fbbf24;" id="sip-est-annual-cost">₹12,000</strong>
+                                </div>
+                                <div style="flex:1;">
+                                    <small style="color:#94a3b8; font-size:0.72rem; display:block;">Projected Value (12% CAGR)</small>
+                                    <strong style="font-size:0.95rem; color:#34d399;" id="sip-est-projected-val">₹12,800</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="sip-modal-alert" class="hidden" style="padding:10px 14px; border-radius:6px; font-size:0.85rem; margin-top:10px;"></div>
+                    </div>
+
+                    <div style="background:#0b121e; padding:14px 24px; border-top:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 14px 14px;">
+                        <div>
+                            <small style="color:#94a3b8; font-size:0.75rem; display:block;">Virtual Cash Balance</small>
+                            <strong style="color:#10b981; font-size:0.9rem;" data-cash-balance>₹100,000.00</strong>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" class="btn" onclick="window.closeStockSipModal()" style="border:1px solid #475569; background:transparent; color:#cbd5e1; padding:8px 16px; border-radius:6px; cursor:pointer;">Cancel</button>
+                            <button type="submit" class="btn" id="sip-submit-btn" style="background:#10b981; border:none; color:#fff; font-weight:700; padding:8px 20px; border-radius:6px; cursor:pointer;">
+                                ✓ Activate Stock SIP
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        `;
+
+        modalDiv.addEventListener("click", function (e) {
+            if (e.target === modalDiv) {
+                window.closeStockSipModal();
+            }
+        });
+
+        document.body.appendChild(modalDiv);
+    }
+
+    function populateSipStockDropdown() {
+        const select = document.getElementById("sip-stock-select");
+        if (!select || select.options.length > 1) return;
+
+        if (state.stocks && state.stocks.length > 0) {
+            state.stocks.forEach(q => {
+                const opt = document.createElement("option");
+                opt.value = q.ipoId;
+                opt.setAttribute("data-symbol", q.stockSymbol || q.symbol);
+                opt.setAttribute("data-company", q.companyName);
+                const nP = Number(q.nsePrice || q.currentPrice) || 0;
+                const bP = Number(q.bsePrice || q.currentPrice) || 0;
+                opt.setAttribute("data-nse-price", nP);
+                opt.setAttribute("data-bse-price", bP);
+                const pText = nP > 0 ? ` · ₹${nP.toFixed(2)}` : " · Price Unavailable";
+                opt.textContent = `${q.companyName} (${q.stockSymbol || q.symbol})${pText}`;
+                select.appendChild(opt);
+            });
+        } else {
+            fetch("/api/market/quotes")
+                .then(res => res.json())
+                .then(data => {
+                    if (Array.isArray(data)) {
+                        data.forEach(q => {
+                            const opt = document.createElement("option");
+                            opt.value = q.ipoId;
+                            opt.setAttribute("data-symbol", q.stockSymbol || q.symbol);
+                            opt.setAttribute("data-company", q.companyName);
+                            const nP = Number(q.nsePrice || q.currentPrice) || 0;
+                            const bP = Number(q.bsePrice || q.currentPrice) || 0;
+                            opt.setAttribute("data-nse-price", nP);
+                            opt.setAttribute("data-bse-price", bP);
+                            const pText = nP > 0 ? ` · ₹${nP.toFixed(2)}` : " · Price Unavailable";
+                            opt.textContent = `${q.companyName} (${q.stockSymbol || q.symbol})${pText}`;
+                            select.appendChild(opt);
+                        });
+                    }
+                })
+                .catch(() => {});
+        }
+    }
+
+    window.openStockSipModal = function (ipoId, symbol, company, price, exchange) {
+        initStockSipModal();
+        const modal = document.getElementById("stock-sip-modal");
+        if (!modal) return;
+
+        const alertBox = document.getElementById("sip-modal-alert");
+        if (alertBox) {
+            alertBox.className = "hidden";
+            alertBox.textContent = "";
+        }
+
+        const submitBtn = document.getElementById("sip-submit-btn");
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "✓ Activate Stock SIP";
+        }
+
+        if (!ipoId && state.currentChartStock) {
+            ipoId = state.currentChartStock.ipoId;
+            symbol = state.currentChartStock.symbol;
+            company = state.currentChartStock.companyName;
+            price = Number(chartCachedData?.currentPrice) || 0;
+            exchange = state.currentChartStock.exchange || "NSE";
+        }
+
+        selectedSipExchange = exchange || "NSE";
+        const nseRadio = document.querySelector('input[name="sip-exchange-radio"][value="NSE"]');
+        const bseRadio = document.querySelector('input[name="sip-exchange-radio"][value="BSE"]');
+        if (selectedSipExchange === "BSE" && bseRadio) bseRadio.checked = true;
+        else if (nseRadio) nseRadio.checked = true;
+
+        const ipoIdInput = document.getElementById("sip-ipo-id");
+        if (ipoIdInput) ipoIdInput.value = ipoId || "";
+
+        const selectContainer = document.getElementById("sip-stock-select-container");
+        const snapshot = document.getElementById("sip-stock-snapshot");
+
+        if (ipoId && symbol) {
+            selectedSipStock = {
+                ipoId: Number(ipoId),
+                symbol: symbol,
+                company: company || symbol,
+                nsePrice: Number(price) || 0,
+                bsePrice: Number(price) || 0
+            };
+
+            if (selectContainer) selectContainer.style.display = "none";
+            if (snapshot) snapshot.style.display = "block";
+
+            const badge = document.getElementById("sip-badge-symbol");
+            const comp = document.getElementById("sip-display-company");
+            const pr = document.getElementById("sip-display-price");
+
+            if (badge) badge.textContent = selectedSipStock.symbol;
+            if (comp) comp.textContent = selectedSipStock.company;
+            if (pr) pr.textContent = price > 0 ? formatINR(price) : "Price Unavailable";
+        } else {
+            if (selectContainer) selectContainer.style.display = "block";
+            if (snapshot) snapshot.style.display = "none";
+            populateSipStockDropdown();
+        }
+
+        window.calculateSipProjections();
+
+        modal.classList.remove("hidden");
+    };
+
+    window.closeStockSipModal = function () {
+        const modal = document.getElementById("stock-sip-modal");
+        if (modal) modal.classList.add("hidden");
+    };
+
+    window.updateSipStockSelection = function (select) {
+        const opt = select.options[select.selectedIndex];
+        const snapshot = document.getElementById("sip-stock-snapshot");
+        if (!opt || !opt.value) {
+            if (snapshot) snapshot.style.display = "none";
+            selectedSipStock = null;
+            window.calculateSipProjections();
+            return;
+        }
+
+        selectedSipStock = {
+            ipoId: Number(opt.value),
+            symbol: opt.getAttribute("data-symbol"),
+            company: opt.getAttribute("data-company"),
+            nsePrice: Number(opt.getAttribute("data-nse-price")) || 0,
+            bsePrice: Number(opt.getAttribute("data-bse-price")) || 0
+        };
+
+        const ipoIdInput = document.getElementById("sip-ipo-id");
+        if (ipoIdInput) ipoIdInput.value = selectedSipStock.ipoId;
+
+        if (snapshot) {
+            snapshot.style.display = "block";
+            const badge = document.getElementById("sip-badge-symbol");
+            const comp = document.getElementById("sip-display-company");
+            const pr = document.getElementById("sip-display-price");
+            if (badge) badge.textContent = selectedSipStock.symbol;
+            if (comp) comp.textContent = selectedSipStock.company;
+            const p = selectedSipExchange === "BSE" ? selectedSipStock.bsePrice : selectedSipStock.nsePrice;
+            if (pr) pr.textContent = p > 0 ? formatINR(p) : "Price Unavailable";
+        }
+
+        window.calculateSipProjections();
+    };
+
+    window.updateSipExchange = function (exchange) {
+        selectedSipExchange = exchange;
+        if (selectedSipStock) {
+            const pr = document.getElementById("sip-display-price");
+            const p = exchange === "BSE" ? selectedSipStock.bsePrice : selectedSipStock.nsePrice;
+            if (pr) pr.textContent = p > 0 ? formatINR(p) : "Price Unavailable";
+        }
+        window.calculateSipProjections();
+    };
+
+    window.setSipAmount = function (amount) {
+        const input = document.getElementById("sip-amount-input");
+        if (input) {
+            input.value = amount;
+            window.calculateSipProjections();
+        }
+    };
+
+    window.handleSipFrequencyChange = function () {
+        const freq = document.getElementById("sip-frequency-select")?.value || "Monthly";
+        const dayLabel = document.getElementById("sip-day-label");
+        const daySelect = document.getElementById("sip-day-select");
+        const dayGroup = document.getElementById("sip-day-group");
+
+        if (daySelect && dayLabel) {
+            if (freq === "Daily") {
+                if (dayGroup) dayGroup.style.display = "none";
+            } else if (freq === "Weekly") {
+                if (dayGroup) dayGroup.style.display = "block";
+                dayLabel.textContent = "Execution Day of Week";
+                daySelect.innerHTML = `
+                    <option value="1" selected>Every Monday</option>
+                    <option value="2">Every Tuesday</option>
+                    <option value="3">Every Wednesday</option>
+                    <option value="4">Every Thursday</option>
+                    <option value="5">Every Friday</option>
+                `;
+            } else {
+                if (dayGroup) dayGroup.style.display = "block";
+                dayLabel.textContent = "Execution Date of Month";
+                daySelect.innerHTML = `
+                    <option value="1">1st of the month</option>
+                    <option value="5" selected>5th of the month (Standard)</option>
+                    <option value="10">10th of the month</option>
+                    <option value="15">15th of the month</option>
+                    <option value="20">20th of the month</option>
+                    <option value="25">25th of the month</option>
+                `;
+            }
+        }
+        window.calculateSipProjections();
+    };
+
+    window.calculateSipProjections = function () {
+        const amountInput = document.getElementById("sip-amount-input");
+        const freqSelect = document.getElementById("sip-frequency-select");
+        const tenureSelect = document.getElementById("sip-tenure-select");
+        const sharesDisplay = document.getElementById("sip-est-shares");
+        const annualCostDisplay = document.getElementById("sip-est-annual-cost");
+        const projectedDisplay = document.getElementById("sip-est-projected-val");
+
+        const amount = Number(amountInput ? amountInput.value : 1000) || 1000;
+        const freq = freqSelect ? freqSelect.value : "Monthly";
+        const price = selectedSipStock
+            ? (selectedSipExchange === "BSE" ? selectedSipStock.bsePrice : selectedSipStock.nsePrice)
+            : 0;
+
+        if (sharesDisplay) {
+            if (price > 0) {
+                const estShares = Math.max(1, Math.floor(amount / price));
+                sharesDisplay.textContent = `~${estShares} share${estShares > 1 ? "s" : ""}`;
+            } else {
+                sharesDisplay.textContent = "Unavailable";
+            }
+        }
+
+        let installmentsPerYear = (freq === "Daily" ? 250 : (freq === "Weekly" ? 52 : 12));
+        let totalMonths = Number(tenureSelect ? tenureSelect.value : 0) || 12;
+        let totalInstallments = (freq === "Monthly" ? totalMonths : Math.round((installmentsPerYear / 12) * totalMonths));
+
+        let totalInvested = amount * totalInstallments;
+        if (annualCostDisplay) {
+            annualCostDisplay.textContent = formatINR(totalInvested, 0);
+        }
+
+        // 12% CAGR future value calculation
+        let monthlyRate = 0.12 / 12;
+        let futureValue = 0;
+        for (let i = 1; i <= totalMonths; i++) {
+            futureValue += (amount * Math.pow(1 + monthlyRate, totalMonths - i + 1));
+        }
+
+        if (projectedDisplay) {
+            projectedDisplay.textContent = formatINR(Math.round(futureValue), 0);
+        }
+    };
+
+    window.handleStockSipSubmit = function (e) {
+        if (e) e.preventDefault();
+
+        const ipoId = parseInt(document.getElementById("sip-ipo-id")?.value || document.getElementById("sip-stock-select")?.value, 10);
+        const exchangeRadio = document.querySelector('input[name="sip-exchange-radio"]:checked');
+        const exchange = exchangeRadio?.value || selectedSipExchange || "NSE";
+        const frequency = document.getElementById("sip-frequency-select")?.value || "Monthly";
+        const amount = parseFloat(document.getElementById("sip-amount-input")?.value || "0");
+        const day = parseInt(document.getElementById("sip-day-select")?.value || "5", 10);
+        const tenureVal = document.getElementById("sip-tenure-select")?.value;
+        const totalMonths = tenureVal ? parseInt(tenureVal, 10) : null;
+
+        const alertBox = document.getElementById("sip-modal-alert");
+        const submitBtn = document.getElementById("sip-submit-btn");
+
+        if (!ipoId) {
+            if (alertBox) {
+                alertBox.className = "";
+                alertBox.style.background = "rgba(239, 68, 68, 0.2)";
+                alertBox.style.color = "#fca5a5";
+                alertBox.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+                alertBox.textContent = "Please select a listed stock for the SIP.";
+            }
+            return;
+        }
+
+        if (isNaN(amount) || amount < 100) {
+            if (alertBox) {
+                alertBox.className = "";
+                alertBox.style.background = "rgba(239, 68, 68, 0.2)";
+                alertBox.style.color = "#fca5a5";
+                alertBox.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+                alertBox.textContent = "Minimum SIP installment amount is ₹100.";
+            }
+            return;
+        }
+
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Activating SIP...";
+        }
+
+        fetch("/api/market/sip/create", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                ipoId: ipoId,
+                exchange: exchange,
+                installmentAmount: amount,
+                frequency: frequency,
+                installmentDay: day,
+                totalMonths: totalMonths
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                if (typeof data.newCashBalance === "number") {
+                    document.querySelectorAll("[data-cash-balance]").forEach(el => {
+                        el.textContent = formatINR(data.newCashBalance);
+                    });
+                }
+                if (alertBox) {
+                    alertBox.className = "";
+                    alertBox.style.background = "rgba(16, 185, 129, 0.2)";
+                    alertBox.style.color = "#6ee7b7";
+                    alertBox.style.border = "1px solid rgba(16, 185, 129, 0.4)";
+                    alertBox.innerHTML = `<strong>✓ Stock SIP Activated Successfully!</strong><br>${data.message}<br><small style="color:#a7f3d0;">Next installment: ${data.nextExecutionDate || "Next regular market session at 10:00 AM IST"}</small>`;
+                }
+                setTimeout(() => {
+                    window.closeStockSipModal();
+                    if (window.location.pathname.toLowerCase().includes("/dashboard") && !window.location.pathname.toLowerCase().includes("marketdetails")) {
+                        window.location.hash = "investor-sips";
+                        window.location.reload();
+                    }
+                }, 1600);
+            } else {
+                if (alertBox) {
+                    alertBox.className = "";
+                    alertBox.style.background = "rgba(239, 68, 68, 0.2)";
+                    alertBox.style.color = "#fca5a5";
+                    alertBox.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+                    alertBox.textContent = data.message || "Failed to activate SIP plan.";
+                }
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = "✓ Activate Stock SIP";
+                }
+            }
+        })
+        .catch(err => {
+            if (alertBox) {
+                alertBox.className = "";
+                alertBox.style.background = "rgba(239, 68, 68, 0.2)";
+                alertBox.style.color = "#fca5a5";
+                alertBox.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+                alertBox.textContent = "Network error: Unable to create Stock SIP. Please verify your connection.";
+            }
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "✓ Activate Stock SIP";
+            }
+        });
+    };
+
     window.triggerSimulatedSip = function () {
-        if (!state.currentChartStock) return;
-        alert(`Simulated SIP (Systematic Investment Plan)\n\nStock: ${state.currentChartStock.symbol} (${state.currentChartStock.companyName})\n\nAutomate simulated dollar-cost averaging every month from your virtual trading wallet.`);
+        const stock = state.currentChartStock;
+        if (stock) {
+            const price = Number(chartCachedData?.currentPrice) || 0;
+            window.openStockSipModal(stock.ipoId, stock.symbol, stock.companyName, price, stock.exchange || "NSE");
+        } else {
+            window.openStockSipModal();
+        }
     };
 
     window.toggleCurrentChartWatchlist = function () {

@@ -33,6 +33,8 @@ namespace IPOInvestmentManagement.Data
         public DbSet<VirtualBalanceLedger> VirtualBalanceLedgers { get; set; }
         public DbSet<IPOGMPHistory> IPOGMPHistories { get; set; }
         public DbSet<StockPriceHistory> StockPriceHistories { get; set; }
+        public DbSet<StockSipPlan> StockSipPlans { get; set; }
+        public DbSet<WalletWithdrawal> WalletWithdrawals { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -215,6 +217,16 @@ namespace IPOInvestmentManagement.Data
                 .OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<StockPriceHistory>()
                 .HasIndex(h => new { h.IPOId, h.Exchange, h.Timestamp });
+            modelBuilder.Entity<WalletWithdrawal>()
+                .HasOne<User>()
+                .WithMany()
+                .HasForeignKey(w => w.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<WalletWithdrawal>()
+                .HasIndex(w => w.ReferenceNumber)
+                .IsUnique();
+            modelBuilder.Entity<WalletWithdrawal>()
+                .HasIndex(w => new { w.UserId, w.CreatedAt });
         }
     }
 }

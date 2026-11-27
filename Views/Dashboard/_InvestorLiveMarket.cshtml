@@ -25,7 +25,7 @@
                             <span class="ticker-pulse" style="width:10px; height:10px; background:#ef4444; box-shadow:0 0 8px rgba(239, 68, 68, 0.5);"></span>
                             <div>
                                 <strong class="text-danger" style="font-size:0.9rem;">MARKET SESSION CLOSED (09:30 AM – 03:30 PM IST)</strong>
-                                <div style="font-size:0.75rem; color:#cbd5e1 !important;">Showing official closing prices. Interactive live charts, technicals, and details remain active. Orders execute during active market hours.</div>
+                                <div style="font-size:0.75rem; color:#cbd5e1 !important;">Stock exchanges (NSE &amp; BSE) are closed on weekends (Saturday &amp; Sunday) and public market holidays. Showing verified closing prices. Real-time trading resumes Monday at 09:30 AM IST.</div>
                             </div>
                         </div>
                         <span class="badge bg-secondary px-2 py-1" style="font-size:0.75rem;">Session: Closed</span>
@@ -44,7 +44,7 @@
                         <div class="d-flex align-items-center gap-2">
                             <span class="badge bg-dark border border-secondary text-light px-2 py-1" style="font-size:0.75rem;" id="modal-data-source-badge">@Model.Market.DataSource</span>
                             <span class="badge @(Model.Market.IsSimulationActive ? "bg-warning text-dark" : (Model.Market.IsStale ? "bg-warning text-dark" : "bg-success text-white")) px-2 py-1" style="font-size:0.75rem;" id="modal-feed-status-badge">
-                                @(Model.Market.IsSimulationActive ? "SIMULATED (DEV)" : (Model.Market.IsStale ? "STALE / OFFLINE" : "LIVE FEED"))
+                                @(Model.Market.IsSimulationActive ? "⚠️ SIMULATED DATA (DEV)" : (Model.Market.IsStale ? "⚠️ STALE DATA" : "● LIVE DATA"))
                             </span>
                         </div>
                     </div>
@@ -112,27 +112,27 @@
                                             </td>
                                             <td>
                                                 <span class="exchange-badge-nse">NSE</span>
-                                                <strong class="text-white" data-nse-price="@row.IpoId">₹@nseP.ToString("N2")</strong>
+                                                <strong class="text-white" data-nse-price="@row.IpoId">@(nseP > 0 ? $"₹{nseP:N2}" : "Unavailable")</strong>
                                             </td>
                                             <td>
                                                 <span class="@(nseChg >= 0 ? "profit" : "loss") fw-bold" data-nse-change="@row.IpoId">
-                                                    @(nseChg >= 0 ? "+" : "")₹@nseChg.ToString("N2") (@(nsePct >= 0 ? "+" : "")@nsePct.ToString("F2")%)
+                                                    @(nseP > 0 ? $"{(nseChg >= 0 ? "+" : "")}₹{nseChg:N2} ({(nsePct >= 0 ? "+" : "")}{nsePct:F2}%)" : "--")
                                                 </span>
                                             </td>
                                             <td>
                                                 <span class="exchange-badge-bse">BSE</span>
-                                                <strong class="text-white" data-bse-price="@row.IpoId">₹@bseP.ToString("N2")</strong>
+                                                <strong class="text-white" data-bse-price="@row.IpoId">@(bseP > 0 ? $"₹{bseP:N2}" : "Unavailable")</strong>
                                             </td>
                                             <td>
                                                 <span class="@(bseChg >= 0 ? "profit" : "loss") fw-bold" data-bse-change="@row.IpoId">
-                                                    @(bseChg >= 0 ? "+" : "")₹@bseChg.ToString("N2") (@(bsePct >= 0 ? "+" : "")@bsePct.ToString("F2")%)
+                                                    @(bseP > 0 ? $"{(bseChg >= 0 ? "+" : "")}₹{bseChg:N2} ({(bsePct >= 0 ? "+" : "")}{bsePct:F2}%)" : "--")
                                                 </span>
                                             </td>
                                             <td class="small" data-live-highlow="@row.IpoId" style="color:#e2e8f0 !important; font-weight:500;">
-                                                ₹@(row.DayHigh?.ToString("N2") ?? "-") / ₹@(row.DayLow?.ToString("N2") ?? "-")
+                                                @(row.DayHigh.HasValue && row.DayHigh.Value > 0 ? $"₹{row.DayHigh.Value:N2}" : "-") / @(row.DayLow.HasValue && row.DayLow.Value > 0 ? $"₹{row.DayLow.Value:N2}" : "-")
                                             </td>
                                             <td class="small" data-live-volume="@row.IpoId" style="color:#e2e8f0 !important; font-weight:500;">
-                                                @((row.Volume ?? 0).ToString("N0"))
+                                                @(row.Volume.HasValue && row.Volume.Value > 0 ? row.Volume.Value.ToString("N0") : "Unavailable")
                                             </td>
                                             <td>
                                                 <div class="btn-group btn-group-sm" onclick="event.stopPropagation()">
@@ -141,11 +141,23 @@
                                                             title="View Live Chart">
                                                         📈 Chart
                                                     </button>
-                                                    <button type="button" class="btn btn-sm btn-success" 
-                                                            onclick="window.openFastTrade(@row.IpoId, '@row.IpoName.Replace("'", "\\'")', '@row.StockSymbol', @nseP, @bseP, 0, null, 'BUY')"
-                                                            title="Instant Simulated Buy">
-                                                        Buy
-                                                    </button>
+                                                    @if (Model.Market.IsMarketOpen)
+                                                    {
+                                                        <button type="button" class="btn btn-sm btn-success" 
+                                                                onclick="window.openFastTrade(@row.IpoId, '@row.IpoName.Replace("'", "\\'")', '@row.StockSymbol', @nseP, @bseP, 0, null, 'BUY')"
+                                                                title="Instant Simulated Buy">
+                                                            Buy
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" class="btn btn-sm btn-secondary" 
+                                                                disabled
+                                                                style="opacity:0.6; cursor:not-allowed;"
+                                                                title="Market Closed (Trading active Mon-Fri, 09:30 AM to 03:30 PM IST)">
+                                                            Closed
+                                                        </button>
+                                                    }
                                                     <a class="btn btn-sm btn-outline-light" style="border-color:#475569; color:#e2e8f0;" asp-controller="Dashboard" asp-action="MarketDetails" asp-route-ipoId="@row.IpoId">
                                                         Details
                                                     </a>

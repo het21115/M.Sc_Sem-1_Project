@@ -3,6 +3,8 @@ namespace IPOInvestmentManagement.Services
     public class IpoClock : IIpoClock
     {
         private static readonly TimeZoneInfo _indiaTimeZone = ResolveIndiaTimeZone();
+        private static readonly IpoClock _shared = new();
+        public static IpoClock Shared => _shared;
         private DateTime? _simulatedIstTime;
         private readonly object _lock = new();
 

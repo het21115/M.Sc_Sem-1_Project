@@ -5,7 +5,11 @@ namespace IPOInvestmentManagement.Models
         public string UserName { get; set; } = string.Empty;
         public string InvestorDematAccountNumber { get; set; } = string.Empty;
         public string InvestorUpiId { get; set; } = string.Empty;
+        public decimal SimulatedCashBalance { get; set; }
+        public decimal TotalWithdrawnAmount { get; set; }
+        public List<WalletWithdrawal> WithdrawalHistory { get; set; } = new();
         public MarketDashboardViewModel Market { get; set; } = new();
+        public StockSipDashboardViewModel SipDashboard { get; set; } = new();
         public string Role { get; set; } = string.Empty;
         public int OpenIpoCount { get; set; }
         public int ApplicationCount { get; set; }
@@ -104,24 +108,7 @@ namespace IPOInvestmentManagement.Models
 
         public static string GetTimeBasedGreeting()
         {
-            DateTime now;
-            try
-            {
-                TimeZoneInfo indiaTimeZone;
-                try
-                {
-                    indiaTimeZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
-                }
-                catch
-                {
-                    indiaTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata");
-                }
-                now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, indiaTimeZone);
-            }
-            catch
-            {
-                now = DateTime.Now;
-            }
+            DateTime now = IPOInvestmentManagement.Services.IpoClock.Shared.NowIst;
 
             int hour = now.Hour;
             if (hour >= 5 && hour < 12)

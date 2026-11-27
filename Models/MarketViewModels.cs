@@ -49,6 +49,10 @@ namespace IPOInvestmentManagement.Models
         // Bid / Ask Simulation
         public decimal? BestBidPrice { get; set; }
         public decimal? BestAskPrice { get; set; }
+
+        // Actual 52-Week Statistics (from historical trade data)
+        public decimal? High52w { get; set; }
+        public decimal? Low52w { get; set; }
     }
 
     public sealed class MarketDashboardViewModel
@@ -136,6 +140,8 @@ namespace IPOInvestmentManagement.Models
         public decimal TotalAmount { get; set; }
         public decimal NewCashBalance { get; set; }
         public int RemainingHoldingQuantity { get; set; }
+        public string Timestamp { get; set; } = string.Empty;
+        public string ClientRequestId { get; set; } = string.Empty;
     }
 
     public sealed class AdminBroadcastRequestDto

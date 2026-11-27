@@ -282,6 +282,37 @@
     display: none !important;
 }
 
+.stock-sip-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(10, 18, 30, 0.75);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1055;
+    animation: modal-fade-in 0.2s ease-out;
+}
+
+.stock-sip-modal-overlay.hidden {
+    display: none !important;
+}
+
+.stock-sip-dialog {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    width: 94%;
+    max-width: 580px;
+    max-height: 92vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);
+    color: #f8fafc;
+}
+
 @keyframes modal-fade-in {
     from { opacity: 0; }
     to { opacity: 1; }

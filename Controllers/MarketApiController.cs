@@ -2,9 +2,11 @@ using IPOInvestmentManagement.Data;
 using IPOInvestmentManagement.Hubs;
 using IPOInvestmentManagement.Models;
 using IPOInvestmentManagement.Services;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Concurrent;
 
 namespace IPOInvestmentManagement.Controllers
 {
@@ -12,30 +14,42 @@ namespace IPOInvestmentManagement.Controllers
     [Route("api/market")]
     public class MarketApiController : ControllerBase
     {
+        private static readonly ConcurrentDictionary<int, SemaphoreSlim> _userTradeLocks = new();
+        private static readonly ConcurrentDictionary<string, (DateTime ProcessedAt, TradeExecutionResultDto Result)> _recentTrades = new();
         private readonly ApplicationDbContext _context;
         private readonly IStockMarketService _stockMarketService;
         private readonly IMarketDataProvider _marketDataProvider;
+        private readonly IStockSipService _stockSipService;
+        private readonly IWalletWithdrawalService _walletWithdrawalService;
         private readonly IHubContext<MarketHub> _hubContext;
         private readonly ILogger<MarketApiController> _logger;
+        private readonly IIpoClock _clock;
 
         public MarketApiController(
             ApplicationDbContext context,
             IStockMarketService stockMarketService,
             IMarketDataProvider marketDataProvider,
+            IStockSipService stockSipService,
+            IWalletWithdrawalService walletWithdrawalService,
             IHubContext<MarketHub> hubContext,
-            ILogger<MarketApiController> logger)
+            ILogger<MarketApiController> logger,
+            IIpoClock clock)
         {
             _context = context;
             _stockMarketService = stockMarketService;
             _marketDataProvider = marketDataProvider;
+            _stockSipService = stockSipService;
+            _walletWithdrawalService = walletWithdrawalService;
             _hubContext = hubContext;
             _logger = logger;
+            _clock = clock;
         }
 
         [HttpGet("live")]
         public async Task<IActionResult> GetLiveMarket()
         {
             var dashboard = await _stockMarketService.GetDashboardAsync();
+            var nowIst = _clock.NowIst;
             return Ok(new
             {
                 isMarketOpen = dashboard.IsMarketOpen,
@@ -44,10 +58,12 @@ namespace IPOInvestmentManagement.Controllers
                 dataSource = dashboard.DataSource,
                 isStale = dashboard.IsStale,
                 warningMessage = dashboard.WarningMessage,
-                serverTime = DateTime.Now.ToString("dd MMM yyyy, hh:mm:ss tt"),
+                serverTime = nowIst.ToString("dd MMM yyyy, hh:mm:ss tt"),
                 message = dashboard.IsMarketOpen 
                     ? "Live trading session active (NSE & BSE)." 
-                    : "Market is closed. Live share prices and trading are accessible exclusively during official market hours (Monday – Friday, 09:30 AM to 03:30 PM IST).",
+                    : (nowIst.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday
+                        ? "Market is closed today for the weekend. Live share prices and trading resume on Monday at 09:30 AM IST."
+                        : "Market is closed. Live share prices and trading are accessible exclusively during official market hours (Monday – Friday, 09:30 AM to 03:30 PM IST)."),
                 stocks = dashboard.IsMarketOpen 
                     ? dashboard.Listings.Select(row => new
                     {
@@ -77,7 +93,7 @@ namespace IPOInvestmentManagement.Controllers
 
                         bestBid = row.BestBidPrice ?? 0m,
                         bestAsk = row.BestAskPrice ?? 0m,
-                        lastUpdated = row.LastUpdated?.ToString("hh:mm:ss tt") ?? DateTime.Now.ToString("hh:mm:ss tt")
+                        lastUpdated = row.LastUpdated?.ToString("hh:mm:ss tt") ?? nowIst.ToString("hh:mm:ss tt")
                     })
                     : Enumerable.Empty<object>()
             });
@@ -104,18 +120,24 @@ namespace IPOInvestmentManagement.Controllers
                 return NotFound(new { message = "Stock not found" });
             }
 
-            bool isBse = string.Equals(exchange, "BSE", StringComparison.OrdinalIgnoreCase);
-            string exch = isBse ? "BSE" : "NSE";
-            decimal currentPrice = isBse ? (data.BsePrice ?? data.CurrentPrice ?? 100m) : (data.NsePrice ?? data.CurrentPrice ?? 100m);
-            decimal previousClose = isBse ? (data.BsePreviousClose ?? data.PreviousClose ?? currentPrice) : (data.NsePreviousClose ?? data.PreviousClose ?? currentPrice);
-            decimal dayHigh = Math.Max(currentPrice, isBse ? (data.BseDayHigh ?? data.DayHigh ?? currentPrice) : (data.NseDayHigh ?? data.DayHigh ?? currentPrice));
-            decimal dayLow = Math.Min(currentPrice, isBse ? (data.BseDayLow ?? data.DayLow ?? currentPrice) : (data.NseDayLow ?? data.DayLow ?? currentPrice));
-            decimal priceChange = currentPrice - previousClose;
-            decimal priceChangePct = previousClose > 0 ? Math.Round(priceChange / previousClose * 100m, 2) : 0m;
-            decimal openPrice = previousClose;
-
             var ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == ipoId);
             DateTime? listingDate = ipo?.Listing_date;
+
+            bool isBse = string.Equals(exchange, "BSE", StringComparison.OrdinalIgnoreCase);
+            string exch = isBse ? "BSE" : "NSE";
+
+            decimal? rawPrice = isBse ? (data.BsePrice ?? data.CurrentPrice) : (data.NsePrice ?? data.CurrentPrice);
+            bool isPriceAvailable = rawPrice.HasValue && rawPrice.Value > 0m;
+            decimal currentPrice = isPriceAvailable ? rawPrice.Value : (ipo?.Price_max ?? ipo?.Price_min ?? 0m);
+
+            decimal? rawPrevClose = isBse ? (data.BsePreviousClose ?? data.PreviousClose) : (data.NsePreviousClose ?? data.PreviousClose);
+            decimal previousClose = rawPrevClose.HasValue && rawPrevClose.Value > 0m ? rawPrevClose.Value : (currentPrice > 0m ? currentPrice : 0m);
+
+            decimal dayHigh = Math.Max(currentPrice, isBse ? (data.BseDayHigh ?? data.DayHigh ?? currentPrice) : (data.NseDayHigh ?? data.DayHigh ?? currentPrice));
+            decimal dayLow = currentPrice > 0m ? Math.Min(currentPrice, isBse ? (data.BseDayLow ?? data.DayLow ?? currentPrice) : (data.NseDayLow ?? data.DayLow ?? currentPrice)) : 0m;
+            decimal priceChange = isPriceAvailable ? (currentPrice - previousClose) : 0m;
+            decimal priceChangePct = (isPriceAvailable && previousClose > 0m) ? Math.Round(priceChange / previousClose * 100m, 2) : 0m;
+            decimal openPrice = previousClose;
 
             string tf = string.IsNullOrWhiteSpace(timeframe) ? "1D" : timeframe.ToUpperInvariant();
             var (points, candles, dataSource, dataNotice, isStale) = await BuildChartHistoryAsync(
@@ -132,8 +154,29 @@ namespace IPOInvestmentManagement.Controllers
 
             decimal lowerCircuit = Math.Round(previousClose * 0.80m, 2);
             decimal upperCircuit = Math.Round(previousClose * 1.20m, 2);
-            decimal high52w = Math.Round(Math.Max(dayHigh, previousClose) * 1.35m, 2);
-            decimal low52w = Math.Round(Math.Min(dayLow, previousClose) * 0.70m, 2);
+
+            // Genuine 52-week High/Low calculated from actual historical data
+            decimal? high52w = data.High52w;
+            decimal? low52w = data.Low52w;
+            if (!high52w.HasValue || !low52w.HasValue)
+            {
+                var oneYearAgo = _clock.NowIst.AddDays(-365);
+                var histPrices = await _context.StockPriceHistories.AsNoTracking()
+                    .Where(h => h.IPOId == ipoId && h.Timestamp >= oneYearAgo)
+                    .Select(h => h.Price)
+                    .ToListAsync();
+                if (dayHigh > 0) histPrices.Add(dayHigh);
+                if (dayLow > 0) histPrices.Add(dayLow);
+                if (ipo?.Price_max > 0) histPrices.Add(ipo.Price_max.Value);
+                if (histPrices.Any())
+                {
+                    high52w = histPrices.Max();
+                    low52w = histPrices.Min();
+                }
+            }
+
+            long? rawVolume = isBse ? data.BseVolume : data.NseVolume;
+            if (!rawVolume.HasValue) rawVolume = data.Volume;
 
             return Ok(new
             {
@@ -142,20 +185,21 @@ namespace IPOInvestmentManagement.Controllers
                 companyName = data.CompanyName,
                 stockSymbol = data.StockSymbol,
                 exchange = exch,
-                currentPrice,
-                previousClose,
+                currentPrice = isPriceAvailable ? (decimal?)currentPrice : null,
+                isPriceAvailable,
+                previousClose = previousClose > 0m ? (decimal?)previousClose : null,
                 priceChange,
                 priceChangePercentage = priceChangePct,
-                dayHigh,
-                dayLow,
-                openPrice,
-                lowerCircuit,
-                upperCircuit,
+                dayHigh = dayHigh > 0m ? (decimal?)dayHigh : null,
+                dayLow = dayLow > 0m ? (decimal?)dayLow : null,
+                openPrice = openPrice > 0m ? (decimal?)openPrice : null,
+                lowerCircuit = lowerCircuit > 0m ? (decimal?)lowerCircuit : null,
+                upperCircuit = upperCircuit > 0m ? (decimal?)upperCircuit : null,
                 high52w,
                 low52w,
-                volume = isBse ? (data.BseVolume ?? 32000) : (data.NseVolume ?? 45000),
-                bestBid = data.BestBidPrice ?? Math.Max(0.05m, currentPrice - 0.05m),
-                bestAsk = data.BestAskPrice ?? (currentPrice + 0.05m),
+                volume = rawVolume,
+                bestBid = isPriceAvailable ? (data.BestBidPrice ?? Math.Max(0.05m, currentPrice - 0.05m)) : (decimal?)null,
+                bestAsk = isPriceAvailable ? (data.BestAskPrice ?? (currentPrice + 0.05m)) : (decimal?)null,
                 isMarketOpen = data.IsMarketOpen,
                 isSimulation = _marketDataProvider.IsSimulationMode,
                 isStale,
@@ -433,23 +477,9 @@ namespace IPOInvestmentManagement.Controllers
             _ => dt.ToString("dd MMM")
         };
 
-        private static DateTime GetIndiaStandardTime()
+        private DateTime GetIndiaStandardTime()
         {
-            try
-            {
-                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
-            }
-            catch
-            {
-                try
-                {
-                    return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata"));
-                }
-                catch
-                {
-                    return DateTime.UtcNow.AddHours(5).AddMinutes(30);
-                }
-            }
+            return _clock.NowIst;
         }
 
         public class FastTradeApiRequest
@@ -459,6 +489,20 @@ namespace IPOInvestmentManagement.Controllers
             public string TradeType { get; set; } = "BUY";
             public int Quantity { get; set; }
             public int? InvestmentId { get; set; }
+            public decimal? ExpectedPrice { get; set; }
+            public string? ClientRequestId { get; set; }
+        }
+
+        private static void CleanupOldTrades()
+        {
+            DateTime cutoff = DateTime.UtcNow.AddMinutes(-2);
+            foreach (var kvp in _recentTrades)
+            {
+                if (kvp.Value.ProcessedAt < cutoff)
+                {
+                    _recentTrades.TryRemove(kvp.Key, out _);
+                }
+            }
         }
 
         [HttpPost("trade")]
@@ -486,246 +530,369 @@ namespace IPOInvestmentManagement.Controllers
             string exchange = string.Equals(request.Exchange, "BSE", StringComparison.OrdinalIgnoreCase) ? "BSE" : "NSE";
             bool isBuy = string.Equals(request.TradeType, "BUY", StringComparison.OrdinalIgnoreCase);
 
-            // Server-side trading security: Security must exist and be actively listed
-            var ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == request.IpoId);
-            if (ipo is null)
-            {
-                return NotFound(new { success = false, message = "Security or IPO not found." });
-            }
+            // 1. Prevent duplicate trade submissions via idempotency key and recent trade throttling
+            CleanupOldTrades();
+            string idempotencyKey = !string.IsNullOrWhiteSpace(request.ClientRequestId)
+                ? $"REQ_{userId.Value}_{request.ClientRequestId.Trim()}"
+                : $"FPRINT_{userId.Value}_{request.IpoId}_{exchange}_{request.TradeType.ToUpperInvariant()}_{request.Quantity}_{request.InvestmentId ?? 0}";
 
-            bool isListedSecurity = string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase) ||
-                (ipo.Listing_date.HasValue && ipo.Listing_date.Value.Date <= DateTime.UtcNow.Date);
-
-            if (!isListedSecurity)
+            if (_recentTrades.TryGetValue(idempotencyKey, out var priorTrade))
             {
-                return BadRequest(new { success = false, message = $"Trading security policy: Secondary market trading is restricted to publicly listed stocks. '{ipo.IPO_name}' is currently in '{ipo.Status}' status." });
-            }
-
-            var marketData = await _stockMarketService.GetMarketDataAsync(request.IpoId);
-            if (marketData == null || !marketData.IsMarketOpen || !marketData.CanTrade)
-            {
-                return BadRequest(new { success = false, message = "Market is currently closed. Secondary market trading is permitted strictly during official exchange hours (Monday – Friday, 09:30 AM to 03:30 PM IST) or when market simulation is activated by an Administrator." });
-            }
-
-            decimal tradePrice = exchange == "BSE" ? (marketData.BsePrice ?? marketData.CurrentPrice ?? 0m) : (marketData.NsePrice ?? marketData.CurrentPrice ?? 0m);
-            if (tradePrice <= 0m)
-            {
-                return BadRequest(new { success = false, message = "Authoritative market price is unavailable. Trade rejected for safety." });
-            }
-
-            // Circuit limit safety check
-            decimal prevClose = exchange == "BSE" ? (marketData.BsePreviousClose ?? marketData.PreviousClose ?? tradePrice) : (marketData.NsePreviousClose ?? marketData.PreviousClose ?? tradePrice);
-            if (prevClose > 0m)
-            {
-                decimal lowerCircuit = Math.Round(prevClose * 0.80m, 2);
-                decimal upperCircuit = Math.Round(prevClose * 1.20m, 2);
-                if (tradePrice < lowerCircuit || tradePrice > upperCircuit)
+                if ((DateTime.UtcNow - priorTrade.ProcessedAt).TotalSeconds < 5)
                 {
-                    return BadRequest(new { success = false, message = $"Trading price ₹{tradePrice:N2} breached daily circuit filter limits (₹{lowerCircuit:N2} - ₹{upperCircuit:N2})." });
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Duplicate trade submission detected. An identical trade order was processed moments ago to protect against double orders."
+                    });
                 }
             }
 
-            decimal totalAmount = request.Quantity * tradePrice;
-            User? investor = await _context.Users.FirstOrDefaultAsync(u => u.User_id == userId.Value && u.Is_active);
-            if (investor == null)
-            {
-                return NotFound(new { success = false, message = "Active investor account record not found." });
-            }
-
-            await using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            // 2. Synchronize execution per investor to prevent concurrent balance or share races
+            var userLock = _userTradeLocks.GetOrAdd(userId.Value, _ => new SemaphoreSlim(1, 1));
+            await userLock.WaitAsync(HttpContext.RequestAborted);
 
             try
             {
-                int remainingQty = 0;
-                string userName = $"{investor.First_name} {investor.Last_name}".Trim();
-                if (string.IsNullOrWhiteSpace(userName)) userName = "Investor #" + investor.User_id;
-
-                if (isBuy)
+                // Re-verify duplicate submission under user lock
+                if (_recentTrades.TryGetValue(idempotencyKey, out var lockedTrade))
                 {
-                    if (investor.SimulatedCashBalance < totalAmount)
+                    if ((DateTime.UtcNow - lockedTrade.ProcessedAt).TotalSeconds < 5)
                     {
-                        return BadRequest(new { success = false, message = $"Insufficient simulated balance. Needed ₹{totalAmount:N2}, available ₹{investor.SimulatedCashBalance:N2}." });
-                    }
-
-                    Investment? investment = await _context.Investments.FirstOrDefaultAsync(i =>
-                        i.User_id == userId.Value && i.IPO_id == request.IpoId && i.Status != "Closed");
-
-                    if (investment == null)
-                    {
-                        investment = new Investment
+                        return BadRequest(new
                         {
-                            User_id = userId.Value,
-                            IPO_id = request.IpoId,
-                            Quantity = request.Quantity,
-                            Buy_price = tradePrice,
-                            Buy_date = DateTime.Now,
-                            Current_price = tradePrice,
-                            Status = "Holding"
-                        };
-                        _context.Investments.Add(investment);
-                        await _context.SaveChangesAsync();
-                        remainingQty = request.Quantity;
+                            success = false,
+                            message = "Duplicate trade submission detected. An identical trade order was processed moments ago."
+                        });
                     }
-                    else
-                    {
-                        decimal existingCost = (investment.Buy_price ?? 0m) * investment.Quantity;
-                        investment.Buy_price = (existingCost + totalAmount) / (investment.Quantity + request.Quantity);
-                        investment.Quantity += request.Quantity;
-                        investment.Current_price = tradePrice;
-                        investment.Status = "Holding";
-                        remainingQty = investment.Quantity;
-                    }
-
-                    investor.SimulatedCashBalance -= totalAmount;
-
-                    _context.InvestmentTransactions.Add(new InvestmentTransaction
-                    {
-                        Investment_id = investment.Investment_id,
-                        Transaction_type = "BUY",
-                        Quantity = request.Quantity,
-                        Price = tradePrice,
-                        Total_amount = totalAmount,
-                        Transaction_date = DateTime.Now
-                    });
-
-                    _context.VirtualBalanceLedgers.Add(new VirtualBalanceLedger
-                    {
-                        UserId = userId.Value,
-                        AdminUserId = null,
-                        TransactionType = "TRADE_BUY",
-                        Amount = -totalAmount,
-                        BalanceBefore = investor.SimulatedCashBalance + totalAmount,
-                        BalanceAfter = investor.SimulatedCashBalance,
-                        Reason = $"Market purchase: {request.Quantity:N0} shares of {marketData.IpoName} ({exchange}) @ ₹{tradePrice:N2}",
-                        CreatedAt = DateTime.Now
-                    });
-
-                    await _context.SaveChangesAsync();
-                    await transaction.CommitAsync();
-
-                    // Broadcast real-time trade execution to all connected users
-                    await _hubContext.Clients.All.SendAsync("ReceiveTradeNotification", new
-                    {
-                        stockName = marketData.IpoName,
-                        exchange = exchange,
-                        tradeType = "BUY",
-                        quantity = request.Quantity,
-                        price = tradePrice,
-                        totalAmount = totalAmount,
-                        user = userName,
-                        timestamp = DateTime.Now.ToString("hh:mm:ss tt")
-                    });
-
-                    return Ok(new TradeExecutionResultDto
-                    {
-                        Success = true,
-                        Message = $"Successfully bought {request.Quantity:N0} shares of {marketData.IpoName} on {exchange} at ₹{tradePrice:N2}.",
-                        TransactionType = "BUY",
-                        StockName = marketData.IpoName,
-                        Exchange = exchange,
-                        Quantity = request.Quantity,
-                        Price = tradePrice,
-                        TotalAmount = totalAmount,
-                        NewCashBalance = investor.SimulatedCashBalance,
-                        RemainingHoldingQuantity = remainingQty
-                    });
                 }
-                else
+
+                // Server-side trading security: Security must exist and be actively listed
+                var ipo = await _context.IPOs.AsNoTracking().FirstOrDefaultAsync(i => i.IPO_id == request.IpoId);
+                if (ipo is null)
                 {
-                    // SELL logic
-                    Investment? investment = null;
-                    if (request.InvestmentId.HasValue && request.InvestmentId.Value > 0)
+                    return NotFound(new { success = false, message = "Security or IPO not found." });
+                }
+
+                bool isListedSecurity = string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase) ||
+                    (ipo.Listing_date.HasValue && ipo.Listing_date.Value.Date <= _clock.NowIst.Date);
+
+                if (!isListedSecurity)
+                {
+                    return BadRequest(new { success = false, message = $"Trading security policy: Secondary market trading is restricted to publicly listed stocks. '{ipo.IPO_name}' is currently in '{ipo.Status}' status." });
+                }
+
+                // 3. Validate the stock price again on the server
+                var marketData = await _stockMarketService.GetMarketDataAsync(request.IpoId);
+                if (marketData == null || !marketData.IsMarketOpen || !marketData.CanTrade)
+                {
+                    return BadRequest(new { success = false, message = "Market is currently closed. Secondary market trading is permitted strictly during official exchange hours (Monday – Friday, 09:30 AM to 03:30 PM IST). Trading is closed on weekends (Saturday and Sunday)." });
+                }
+
+                decimal? rawTradePrice = exchange == "BSE" ? (marketData.BsePrice ?? marketData.CurrentPrice) : (marketData.NsePrice ?? marketData.CurrentPrice);
+                if (!rawTradePrice.HasValue || rawTradePrice.Value <= 0m)
+                {
+                    return BadRequest(new { success = false, message = "Authoritative market price is unavailable. Trade rejected for safety." });
+                }
+                decimal tradePrice = rawTradePrice.Value;
+
+                // Circuit limit safety check
+                decimal? rawPrevClose = exchange == "BSE" ? (marketData.BsePreviousClose ?? marketData.PreviousClose) : (marketData.NsePreviousClose ?? marketData.PreviousClose);
+                decimal prevClose = rawPrevClose.HasValue && rawPrevClose.Value > 0m ? rawPrevClose.Value : tradePrice;
+                if (prevClose > 0m)
+                {
+                    decimal lowerCircuit = Math.Round(prevClose * 0.80m, 2);
+                    decimal upperCircuit = Math.Round(prevClose * 1.20m, 2);
+                    if (tradePrice < lowerCircuit || tradePrice > upperCircuit)
                     {
-                        investment = await _context.Investments.FirstOrDefaultAsync(i =>
-                            i.Investment_id == request.InvestmentId.Value && i.User_id == userId.Value);
+                        return BadRequest(new { success = false, message = $"Trading price ₹{tradePrice:N2} breached daily circuit filter limits (₹{lowerCircuit:N2} - ₹{upperCircuit:N2}). Order rejected." });
+                    }
+                }
+
+                // Server-side price slippage validation against expected price
+                if (request.ExpectedPrice.HasValue && request.ExpectedPrice.Value > 0m)
+                {
+                    decimal slippagePercent = Math.Abs(tradePrice - request.ExpectedPrice.Value) / request.ExpectedPrice.Value * 100m;
+                    if (slippagePercent > 5.0m)
+                    {
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = $"Market price changed from ₹{request.ExpectedPrice.Value:N2} to ₹{tradePrice:N2} ({slippagePercent:F2}% price movement exceeds 5% slippage protection limit). Please review the updated quote and confirm."
+                        });
+                    }
+                }
+
+                // 4. Consistent timestamp captured once for all related records
+                DateTime transactionTimestamp = _clock.NowIst;
+                decimal totalAmount = request.Quantity * tradePrice;
+
+                // 5. Ensure Buy/Sell operations are atomic database transactions with Serializable isolation
+                await using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+                try
+                {
+                    User? investor = await _context.Users.FirstOrDefaultAsync(u => u.User_id == userId.Value && u.Is_active);
+                    if (investor == null)
+                    {
+                        await transaction.RollbackAsync();
+                        return NotFound(new { success = false, message = "Active investor account record not found." });
+                    }
+
+                    int remainingQty = 0;
+                    string userName = $"{investor.First_name} {investor.Last_name}".Trim();
+                    if (string.IsNullOrWhiteSpace(userName)) userName = "Investor #" + investor.User_id;
+
+                    if (isBuy)
+                    {
+                        // Prevent negative cash balances
+                        if (investor.SimulatedCashBalance < totalAmount)
+                        {
+                            await transaction.RollbackAsync();
+                            return BadRequest(new
+                            {
+                                success = false,
+                                message = $"Insufficient simulated balance. Order requires ₹{totalAmount:N2}, but available balance is ₹{investor.SimulatedCashBalance:N2}."
+                            });
+                        }
+
+                        Investment? investment = await _context.Investments.FirstOrDefaultAsync(i =>
+                            i.User_id == userId.Value && i.IPO_id == request.IpoId && i.Status != "Closed");
+
+                        if (investment == null)
+                        {
+                            investment = new Investment
+                            {
+                                User_id = userId.Value,
+                                IPO_id = request.IpoId,
+                                Quantity = request.Quantity,
+                                Buy_price = tradePrice,
+                                Buy_date = transactionTimestamp,
+                                Current_price = tradePrice,
+                                Status = "Holding"
+                            };
+                            _context.Investments.Add(investment);
+                            await _context.SaveChangesAsync();
+                            remainingQty = request.Quantity;
+                        }
+                        else
+                        {
+                            decimal existingCost = (investment.Buy_price ?? 0m) * investment.Quantity;
+                            investment.Buy_price = (existingCost + totalAmount) / (investment.Quantity + request.Quantity);
+                            investment.Quantity += request.Quantity;
+                            investment.Current_price = tradePrice;
+                            investment.Status = "Holding";
+                            remainingQty = investment.Quantity;
+                        }
+
+                        investor.SimulatedCashBalance -= totalAmount;
+                        if (investor.SimulatedCashBalance < 0m)
+                        {
+                            throw new InvalidOperationException("Negative cash balance prevented. Transaction aborted.");
+                        }
+
+                        _context.InvestmentTransactions.Add(new InvestmentTransaction
+                        {
+                            Investment_id = investment.Investment_id,
+                            Transaction_type = "BUY",
+                            Quantity = request.Quantity,
+                            Price = tradePrice,
+                            Total_amount = totalAmount,
+                            Transaction_date = transactionTimestamp
+                        });
+
+                        _context.VirtualBalanceLedgers.Add(new VirtualBalanceLedger
+                        {
+                            UserId = userId.Value,
+                            AdminUserId = null,
+                            TransactionType = "TRADE_BUY",
+                            Amount = -totalAmount,
+                            BalanceBefore = investor.SimulatedCashBalance + totalAmount,
+                            BalanceAfter = investor.SimulatedCashBalance,
+                            Reason = $"Market purchase: {request.Quantity:N0} shares of {marketData.IpoName} ({exchange}) @ ₹{tradePrice:N2}",
+                            CreatedAt = transactionTimestamp
+                        });
+
+                        await _context.SaveChangesAsync();
+                        await transaction.CommitAsync();
+
+                        // Broadcast real-time trade execution to all connected users
+                        await _hubContext.Clients.All.SendAsync("ReceiveTradeNotification", new
+                        {
+                            stockName = marketData.IpoName,
+                            exchange = exchange,
+                            tradeType = "BUY",
+                            quantity = request.Quantity,
+                            price = tradePrice,
+                            totalAmount = totalAmount,
+                            user = userName,
+                            timestamp = transactionTimestamp.ToString("hh:mm:ss tt")
+                        });
+
+                        var buyResult = new TradeExecutionResultDto
+                        {
+                            Success = true,
+                            Message = $"Successfully bought {request.Quantity:N0} shares of {marketData.IpoName} on {exchange} at ₹{tradePrice:N2}.",
+                            TransactionType = "BUY",
+                            StockName = marketData.IpoName,
+                            Exchange = exchange,
+                            Quantity = request.Quantity,
+                            Price = tradePrice,
+                            TotalAmount = totalAmount,
+                            NewCashBalance = investor.SimulatedCashBalance,
+                            RemainingHoldingQuantity = remainingQty,
+                            Timestamp = transactionTimestamp.ToString("dd MMM yyyy, hh:mm:ss tt"),
+                            ClientRequestId = request.ClientRequestId ?? string.Empty
+                        };
+
+                        _recentTrades[idempotencyKey] = (DateTime.UtcNow, buyResult);
+                        return Ok(buyResult);
                     }
                     else
                     {
-                        investment = await _context.Investments.FirstOrDefaultAsync(i =>
-                            i.User_id == userId.Value && i.IPO_id == request.IpoId && i.Status != "Closed");
+                        // 6. Verify that the investment belongs to the logged-in investor
+                        Investment? investment = null;
+                        if (request.InvestmentId.HasValue && request.InvestmentId.Value > 0)
+                        {
+                            var targetInvestment = await _context.Investments.FirstOrDefaultAsync(i => i.Investment_id == request.InvestmentId.Value);
+                            if (targetInvestment == null)
+                            {
+                                await transaction.RollbackAsync();
+                                return NotFound(new { success = false, message = "Investment holding record not found." });
+                            }
+
+                            if (targetInvestment.User_id != userId.Value)
+                            {
+                                await transaction.RollbackAsync();
+                                _logger.LogWarning("Security Alert: Investor {UserId} attempted unauthorized sale on investment {InvestmentId} owned by User {OwnerId}.",
+                                    userId.Value, targetInvestment.Investment_id, targetInvestment.User_id);
+                                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Security violation: You can only sell investments that belong to your account." });
+                            }
+
+                            if (targetInvestment.IPO_id != request.IpoId)
+                            {
+                                await transaction.RollbackAsync();
+                                return BadRequest(new { success = false, message = "The selected investment holding does not match the requested stock." });
+                            }
+
+                            if (string.Equals(targetInvestment.Status, "Closed", StringComparison.OrdinalIgnoreCase))
+                            {
+                                await transaction.RollbackAsync();
+                                return BadRequest(new { success = false, message = "This investment holding has already been completely sold and closed." });
+                            }
+
+                            investment = targetInvestment;
+                        }
+                        else
+                        {
+                            investment = await _context.Investments.FirstOrDefaultAsync(i =>
+                                i.User_id == userId.Value && i.IPO_id == request.IpoId && i.Status != "Closed");
+
+                            if (investment == null)
+                            {
+                                await transaction.RollbackAsync();
+                                return BadRequest(new { success = false, message = "You do not own any active holdings in this stock to sell." });
+                            }
+                        }
+
+                        // 7. Prevent selling more shares than the investor owns
+                        int soldQuantity = await _context.InvestmentTransactions
+                            .Where(t => t.Investment_id == investment.Investment_id && t.Transaction_type == "SELL")
+                            .SumAsync(t => (int?)t.Quantity) ?? 0;
+
+                        int availableQuantity = Math.Max(0, investment.Quantity - soldQuantity);
+                        if (availableQuantity <= 0)
+                        {
+                            await transaction.RollbackAsync();
+                            return BadRequest(new { success = false, message = "You have 0 shares available to sell in this holding." });
+                        }
+
+                        if (request.Quantity > availableQuantity)
+                        {
+                            await transaction.RollbackAsync();
+                            return BadRequest(new
+                            {
+                                success = false,
+                                message = $"Trade rejected: You requested to sell {request.Quantity:N0} shares, but only own {availableQuantity:N0} available shares in this holding."
+                            });
+                        }
+
+                        investor.SimulatedCashBalance += totalAmount;
+
+                        _context.InvestmentTransactions.Add(new InvestmentTransaction
+                        {
+                            Investment_id = investment.Investment_id,
+                            Transaction_type = "SELL",
+                            Quantity = request.Quantity,
+                            Price = tradePrice,
+                            Total_amount = totalAmount,
+                            Transaction_date = transactionTimestamp
+                        });
+
+                        _context.VirtualBalanceLedgers.Add(new VirtualBalanceLedger
+                        {
+                            UserId = userId.Value,
+                            AdminUserId = null,
+                            TransactionType = "TRADE_SELL",
+                            Amount = totalAmount,
+                            BalanceBefore = investor.SimulatedCashBalance - totalAmount,
+                            BalanceAfter = investor.SimulatedCashBalance,
+                            Reason = $"Market sale: {request.Quantity:N0} shares of {marketData.IpoName} ({exchange}) @ ₹{tradePrice:N2}",
+                            CreatedAt = transactionTimestamp
+                        });
+
+                        remainingQty = availableQuantity - request.Quantity;
+                        if (remainingQty == 0)
+                        {
+                            investment.Status = "Closed";
+                        }
+
+                        await _context.SaveChangesAsync();
+                        await transaction.CommitAsync();
+
+                        // Broadcast real-time trade execution to all connected users
+                        await _hubContext.Clients.All.SendAsync("ReceiveTradeNotification", new
+                        {
+                            stockName = marketData.IpoName,
+                            exchange = exchange,
+                            tradeType = "SELL",
+                            quantity = request.Quantity,
+                            price = tradePrice,
+                            totalAmount = totalAmount,
+                            user = userName,
+                            timestamp = transactionTimestamp.ToString("hh:mm:ss tt")
+                        });
+
+                        var sellResult = new TradeExecutionResultDto
+                        {
+                            Success = true,
+                            Message = $"Successfully sold {request.Quantity:N0} shares of {marketData.IpoName} on {exchange} at ₹{tradePrice:N2}.",
+                            TransactionType = "SELL",
+                            StockName = marketData.IpoName,
+                            Exchange = exchange,
+                            Quantity = request.Quantity,
+                            Price = tradePrice,
+                            TotalAmount = totalAmount,
+                            NewCashBalance = investor.SimulatedCashBalance,
+                            RemainingHoldingQuantity = remainingQty,
+                            Timestamp = transactionTimestamp.ToString("dd MMM yyyy, hh:mm:ss tt"),
+                            ClientRequestId = request.ClientRequestId ?? string.Empty
+                        };
+
+                        _recentTrades[idempotencyKey] = (DateTime.UtcNow, sellResult);
+                        return Ok(sellResult);
                     }
-
-                    if (investment == null)
-                    {
-                        return BadRequest(new { success = false, message = "No active holdings found to sell." });
-                    }
-
-                    int soldQuantity = await _context.InvestmentTransactions
-                        .Where(t => t.Investment_id == investment.Investment_id && t.Transaction_type == "SELL")
-                        .SumAsync(t => (int?)t.Quantity) ?? 0;
-
-                    int availableQuantity = Math.Max(0, investment.Quantity - soldQuantity);
-                    if (request.Quantity > availableQuantity)
-                    {
-                        return BadRequest(new { success = false, message = $"You only have {availableQuantity:N0} shares available to sell." });
-                    }
-
-                    investor.SimulatedCashBalance += totalAmount;
-
-                    _context.InvestmentTransactions.Add(new InvestmentTransaction
-                    {
-                        Investment_id = investment.Investment_id,
-                        Transaction_type = "SELL",
-                        Quantity = request.Quantity,
-                        Price = tradePrice,
-                        Total_amount = totalAmount,
-                        Transaction_date = DateTime.Now
-                    });
-
-                    _context.VirtualBalanceLedgers.Add(new VirtualBalanceLedger
-                    {
-                        UserId = userId.Value,
-                        AdminUserId = null,
-                        TransactionType = "TRADE_SELL",
-                        Amount = totalAmount,
-                        BalanceBefore = investor.SimulatedCashBalance - totalAmount,
-                        BalanceAfter = investor.SimulatedCashBalance,
-                        Reason = $"Market sale: {request.Quantity:N0} shares of {marketData.IpoName} ({exchange}) @ ₹{tradePrice:N2}",
-                        CreatedAt = DateTime.Now
-                    });
-
-                    remainingQty = availableQuantity - request.Quantity;
-                    if (remainingQty == 0)
-                    {
-                        investment.Status = "Closed";
-                    }
-
-                    await _context.SaveChangesAsync();
-                    await transaction.CommitAsync();
-
-                    // Broadcast real-time trade execution to all connected users
-                    await _hubContext.Clients.All.SendAsync("ReceiveTradeNotification", new
-                    {
-                        stockName = marketData.IpoName,
-                        exchange = exchange,
-                        tradeType = "SELL",
-                        quantity = request.Quantity,
-                        price = tradePrice,
-                        totalAmount = totalAmount,
-                        user = userName,
-                        timestamp = DateTime.Now.ToString("hh:mm:ss tt")
-                    });
-
-                    return Ok(new TradeExecutionResultDto
-                    {
-                        Success = true,
-                        Message = $"Successfully sold {request.Quantity:N0} shares of {marketData.IpoName} on {exchange} at ₹{tradePrice:N2}.",
-                        TransactionType = "SELL",
-                        StockName = marketData.IpoName,
-                        Exchange = exchange,
-                        Quantity = request.Quantity,
-                        Price = tradePrice,
-                        TotalAmount = totalAmount,
-                        NewCashBalance = investor.SimulatedCashBalance,
-                        RemainingHoldingQuantity = remainingQty
-                    });
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    _logger.LogError(ex, "Trade execution failed");
+                    return StatusCode(500, new { success = false, message = "An error occurred while executing the trade. No charges or adjustments were applied." });
                 }
             }
-            catch (Exception ex)
+            finally
             {
-                await transaction.RollbackAsync();
-                _logger.LogError(ex, "Trade execution failed");
-                return StatusCode(500, new { success = false, message = "An error occurred while executing the trade." });
+                userLock.Release();
             }
         }
 
@@ -775,8 +942,8 @@ namespace IPOInvestmentManagement.Controllers
                 title = request.Title.Trim(),
                 message = request.Message.Trim(),
                 category = request.Category,
-                timestamp = DateTime.Now.ToString("hh:mm:ss tt"),
-                date = DateTime.Now.ToString("dd MMM yyyy")
+                timestamp = _clock.NowIst.ToString("hh:mm:ss tt"),
+                date = _clock.NowIst.ToString("dd MMM yyyy")
             });
 
             return Ok(new { success = true, recipientCount = activeInvestors.Count });
@@ -866,6 +1033,149 @@ namespace IPOInvestmentManagement.Controllers
                     fireRating = g.FireRating ?? "Neutral",
                     source = g.Source ?? "Unofficial Grey Market Desk"
                 })
+            });
+        }
+
+        [HttpPost("sip/create")]
+        public async Task<IActionResult> CreateSip([FromBody] CreateStockSipRequest request)
+        {
+            int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
+            string? role = HttpContext.Session.GetString("UserRole");
+
+            if (!userId.HasValue || !string.Equals(role, "Investor", StringComparison.OrdinalIgnoreCase))
+            {
+                return Unauthorized(new { success = false, message = "Systematic Investment Plans (SIP) are available strictly for authenticated investors." });
+            }
+
+            var (success, message, plan) = await _stockSipService.CreateSipAsync(userId.Value, request);
+            if (!success)
+            {
+                return BadRequest(new { success = false, message });
+            }
+
+            decimal newCashBalance = await _context.Users
+                .AsNoTracking()
+                .Where(u => u.User_id == userId.Value)
+                .Select(u => u.SimulatedCashBalance)
+                .FirstOrDefaultAsync();
+
+            return Ok(new
+            {
+                success = true,
+                message,
+                newCashBalance,
+                sipId = plan?.SipId,
+                symbol = plan?.StockSymbol,
+                amount = plan?.InstallmentAmount,
+                frequency = plan?.Frequency,
+                nextExecutionDate = plan?.NextExecutionDate.ToString("dd MMM yyyy, hh:mm tt")
+            });
+        }
+
+        [HttpPost("sip/{id}/execute")]
+        public async Task<IActionResult> ExecuteSip(int id)
+        {
+            int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
+            string? role = HttpContext.Session.GetString("UserRole");
+
+            if (!userId.HasValue || !string.Equals(role, "Investor", StringComparison.OrdinalIgnoreCase))
+            {
+                return Unauthorized(new { success = false, message = "SIP execution restricted to authenticated investors." });
+            }
+
+            var (success, message, shares, price) = await _stockSipService.ExecuteInstallmentAsync(id, requestingUserId: userId.Value, isManualTrigger: true);
+            if (!success)
+            {
+                if (message.StartsWith("Unauthorized", StringComparison.OrdinalIgnoreCase))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message });
+                }
+                return BadRequest(new { success = false, message });
+            }
+
+            return Ok(new
+            {
+                success = true,
+                message,
+                sharesBought = shares,
+                executedPrice = price
+            });
+        }
+
+        [HttpPost("sip/{id}/pause")]
+        public async Task<IActionResult> PauseSip(int id)
+        {
+            int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
+            if (!userId.HasValue) return Unauthorized(new { success = false, message = "Not authenticated." });
+
+            var (success, message) = await _stockSipService.PauseSipAsync(userId.Value, id);
+            return success ? Ok(new { success = true, message }) : BadRequest(new { success = false, message });
+        }
+
+        [HttpPost("sip/{id}/resume")]
+        public async Task<IActionResult> ResumeSip(int id)
+        {
+            int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
+            if (!userId.HasValue) return Unauthorized(new { success = false, message = "Not authenticated." });
+
+            var (success, message) = await _stockSipService.ResumeSipAsync(userId.Value, id);
+            return success ? Ok(new { success = true, message }) : BadRequest(new { success = false, message });
+        }
+
+        [HttpPost("sip/{id}/cancel")]
+        public async Task<IActionResult> CancelSip(int id)
+        {
+            int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
+            if (!userId.HasValue) return Unauthorized(new { success = false, message = "Not authenticated." });
+
+            var (success, message) = await _stockSipService.CancelSipAsync(userId.Value, id);
+            return success ? Ok(new { success = true, message }) : BadRequest(new { success = false, message });
+        }
+
+        [HttpGet("sip/my-plans")]
+        public async Task<IActionResult> GetMySipPlans()
+        {
+            int? userId = HttpContext.Session.GetInt32("User_id") ?? HttpContext.Session.GetInt32("UserId");
+            if (!userId.HasValue) return Unauthorized(new { success = false, message = "Not authenticated." });
+
+            var dashboard = await _stockSipService.GetSipDashboardAsync(userId.Value);
+            return Ok(dashboard);
+        }
+
+        [HttpPost("withdraw")]
+        public async Task<IActionResult> Withdraw([FromBody] WalletWithdrawalRequest request)
+        {
+            ISession? session = HttpContext.Features.Get<ISessionFeature>()?.Session;
+            int? userId = session?.GetInt32("User_id") ?? session?.GetInt32("UserId");
+            string? role = session?.GetString("UserRole");
+
+            if (!userId.HasValue)
+            {
+                return Unauthorized(new { success = false, message = "Authentication required. Please sign in as an investor." });
+            }
+
+            if (!string.Equals(role, "Investor", StringComparison.OrdinalIgnoreCase))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "Access denied: Withdrawals are restricted to Investor accounts." });
+            }
+
+            WalletWithdrawalResult result = await _walletWithdrawalService.WithdrawAsync(
+                userId.Value,
+                request,
+                HttpContext.Connection.RemoteIpAddress?.ToString());
+
+            if (!result.Success)
+            {
+                return BadRequest(new { success = false, message = result.Message, newCashBalance = result.NewCashBalance });
+            }
+
+            return Ok(new
+            {
+                success = true,
+                message = result.Message,
+                newCashBalance = result.NewCashBalance,
+                referenceNumber = result.Withdrawal?.ReferenceNumber,
+                withdrawal = result.Withdrawal
             });
         }
     }

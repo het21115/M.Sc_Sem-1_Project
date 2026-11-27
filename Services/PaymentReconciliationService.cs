@@ -243,6 +243,32 @@ namespace IPOInvestmentManagement.Services
 
             _context.IPOApplications.Add(application);
 
+            bool ledgerExists = await _context.VirtualBalanceLedgers.AnyAsync(l =>
+                l.UserId == record.UserId &&
+                l.TransactionType == "IPO_APPLICATION" &&
+                l.Reason.Contains(record.ApplicationNumber), cancellationToken);
+            if (!ledgerExists)
+            {
+                User? trackedInvestor = await _context.Users
+                    .FirstOrDefaultAsync(u => u.User_id == record.UserId && u.Is_active, cancellationToken);
+                if (trackedInvestor != null && trackedInvestor.SimulatedCashBalance >= record.Amount)
+                {
+                    decimal balanceBefore = trackedInvestor.SimulatedCashBalance;
+                    trackedInvestor.SimulatedCashBalance = balanceBefore - record.Amount;
+                    _context.VirtualBalanceLedgers.Add(new VirtualBalanceLedger
+                    {
+                        UserId = record.UserId,
+                        AdminUserId = null,
+                        TransactionType = "IPO_APPLICATION",
+                        Amount = -record.Amount,
+                        BalanceBefore = balanceBefore,
+                        BalanceAfter = trackedInvestor.SimulatedCashBalance,
+                        Reason = $"IPO application #{record.ApplicationNumber} for {ipo.IPO_name} ({record.AppliedLots} lot(s), {record.AppliedShares} shares @ ₹{record.BidPrice:N2})",
+                        CreatedAt = IpoClock.Shared.NowIst
+                    });
+                }
+            }
+
             _context.SystemNotifications.Add(new SystemNotification
             {
                 User_id = record.UserId,
@@ -291,8 +317,8 @@ namespace IPOInvestmentManagement.Services
                     record.RefundProcessedAt = DateTime.UtcNow;
                     record.UpdatedAt = DateTime.UtcNow;
 
-                    IPOApplication? app = await _context.IPOApplications.AsNoTracking()
-                        .FirstOrDefaultAsync(a => a.Razorpay_order_id == record.RazorpayOrderId, cancellationToken);
+                    await CreditRefundToWalletIfEligibleAsync(record, cancellationToken);
+
                     IPO? ipo = await _context.IPOs.AsNoTracking()
                         .FirstOrDefaultAsync(i => i.IPO_id == record.IpoId, cancellationToken);
 
@@ -300,7 +326,7 @@ namespace IPOInvestmentManagement.Services
                     {
                         User_id = record.UserId,
                         Title = $"Mandate Amount Unblocked / Refunded",
-                        Message = $"₹{record.UnblockedAmount:N2} has been unblocked/refunded to your bank account for {ipo?.IPO_name ?? "IPO"} application #{record.ApplicationNumber}. Ref: {record.RefundReferenceId}.",
+                        Message = $"₹{record.UnblockedAmount:N2} has been unblocked/refunded to your investor wallet for {ipo?.IPO_name ?? "IPO"} application #{record.ApplicationNumber}. Ref: {record.RefundReferenceId}.",
                         Created_at = DateTime.UtcNow,
                         Is_read = false
                     });
@@ -476,11 +502,50 @@ namespace IPOInvestmentManagement.Services
                     record.RefundReferenceId = refundId;
                     record.UnblockedAmount = refundAmount > 0m ? refundAmount : record.UnblockedAmount;
                     record.UpdatedAt = DateTime.UtcNow;
+                    await CreditRefundToWalletIfEligibleAsync(record, cancellationToken);
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private async Task CreditRefundToWalletIfEligibleAsync(PaymentRecord record, CancellationToken cancellationToken)
+        {
+            if (record.UnblockedAmount <= 0m)
+            {
+                return;
+            }
+
+            bool alreadyRefundedToWallet = await _context.VirtualBalanceLedgers.AnyAsync(l =>
+                l.UserId == record.UserId &&
+                l.TransactionType == "IPO_REFUND" &&
+                l.Reason.Contains(record.ApplicationNumber), cancellationToken);
+
+            if (alreadyRefundedToWallet)
+            {
+                return;
+            }
+
+            User? investor = await _context.Users.FirstOrDefaultAsync(u => u.User_id == record.UserId, cancellationToken);
+            if (investor is null)
+            {
+                return;
+            }
+
+            decimal before = investor.SimulatedCashBalance;
+            investor.SimulatedCashBalance = before + record.UnblockedAmount;
+            _context.VirtualBalanceLedgers.Add(new VirtualBalanceLedger
+            {
+                UserId = record.UserId,
+                AdminUserId = null,
+                TransactionType = "IPO_REFUND",
+                Amount = record.UnblockedAmount,
+                BalanceBefore = before,
+                BalanceAfter = investor.SimulatedCashBalance,
+                Reason = $"IPO mandate unblock/refund for #{record.ApplicationNumber} (Ref: {record.RefundReferenceId})",
+                CreatedAt = IpoClock.Shared.NowIst
+            });
         }
     }
 }

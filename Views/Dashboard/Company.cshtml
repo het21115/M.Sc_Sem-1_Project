@@ -16,11 +16,11 @@
         <div class="company-hero-live-market">
             <button type="button" class="btn company-live-market-btn" data-bs-toggle="modal" data-bs-target="#live-market-modal" title="Open Real-Time NSE / BSE Dual-Exchange Live Market Terminal">
                 <span class="company-live-indicator">
-                    <span class="company-live-ring"></span>
-                    <span class="company-live-dot"></span>
+                    <span class="company-live-ring" style="@(Model.Market.IsMarketOpen ? "" : "border-color:#ef4444; animation:none;")"></span>
+                    <span class="company-live-dot" style="@(Model.Market.IsMarketOpen ? "" : "background-color:#ef4444; box-shadow:0 0 8px #ef4444;")"></span>
                 </span>
                 <span class="company-live-text">Live Market</span>
-                <span class="company-market-pill">NSE &middot; BSE</span>
+                <span class="company-market-pill" style="@(Model.Market.IsMarketOpen ? "" : "background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#fca5a5;")">NSE &middot; BSE</span>
                 <span class="company-live-status-pill @(Model.Market.IsMarketOpen ? "is-open" : "is-closed")">
                     @(Model.Market.IsMarketOpen ? "LIVE" : "CLOSED")
                 </span>
@@ -52,7 +52,12 @@
                     <article>
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <strong>@notification.Title</strong>
-                            <small>@notification.Created_at.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</small>
+                            @{
+                                var displayTime = notification.Created_at > DateTime.UtcNow.AddMinutes(1)
+                                    ? notification.Created_at
+                                    : notification.Created_at.ToLocalTime();
+                            }
+                            <small>@displayTime.ToString("dd MMM yyyy, hh:mm tt")</small>
                         </div>
                         <p class="mb-0">@notification.Message</p>
                     </article>
@@ -461,12 +466,12 @@
                                         </div>
                                         <div class="analysis-kpi-box">
                                             <span class="kpi-label">REVENUE GROWTH</span>
-                                            <strong class="kpi-val text-success">&plus;@(detail.Analysis.Revenue_growth?.ToString("N2") ?? "-")%</strong>
+                                            <strong class="kpi-val @(detail.Analysis.Revenue_growth < 0 ? "text-danger" : "text-success")">@(detail.Analysis.Revenue_growth.HasValue ? $"{(detail.Analysis.Revenue_growth.Value >= 0 ? "+" : "")}{detail.Analysis.Revenue_growth.Value:N2}%" : "-")</strong>
                                             <small class="kpi-desc">Top-Line Expansion YoY</small>
                                         </div>
                                         <div class="analysis-kpi-box">
                                             <span class="kpi-label">PROFIT GROWTH</span>
-                                            <strong class="kpi-val text-success">&plus;@(detail.Analysis.Profit_growth?.ToString("N2") ?? "-")%</strong>
+                                            <strong class="kpi-val @(detail.Analysis.Profit_growth < 0 ? "text-danger" : "text-success")">@(detail.Analysis.Profit_growth.HasValue ? $"{(detail.Analysis.Profit_growth.Value >= 0 ? "+" : "")}{detail.Analysis.Profit_growth.Value:N2}%" : "-")</strong>
                                             <small class="kpi-desc">Earnings Growth YoY</small>
                                         </div>
                                     </div>

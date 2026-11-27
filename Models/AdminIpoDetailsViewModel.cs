@@ -27,5 +27,10 @@ namespace IPOInvestmentManagement.Models
             : 0m;
 
         public List<AuditLog> AuditHistory { get; set; } = new();
+        public IPOFinancial? Financial { get; set; }
+        public IPOAnalysis? Analysis { get; set; }
+        public decimal? DerivedRoe { get; set; }
+        public decimal? DerivedRevenueGrowth { get; set; }
+        public decimal? DerivedProfitGrowth { get; set; }
     }
 }

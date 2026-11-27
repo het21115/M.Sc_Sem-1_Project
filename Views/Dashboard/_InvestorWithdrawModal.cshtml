@@ -1,0 +1,181 @@
+@model IPOInvestmentManagement.Models.WalletWithdrawModalViewModel
+@using System.Globalization
+
+<div class="modal fade investor-modal" id="withdraw-funds-modal" tabindex="-1" aria-labelledby="withdraw-funds-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background:#0f172a; color:#f8fafc; border:1px solid #1e3a5f;">
+            <div class="modal-header" style="border-bottom:1px solid #1e3a5f;">
+                <div>
+                    <h2 class="modal-title h5 mb-0 text-white" id="withdraw-funds-modal-title">&#128179; Withdraw Wallet Funds</h2>
+                    <small style="color:#94a3b8;">Transfer funds from your investor cash balance via UPI or Bank Transfer</small>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form asp-controller="Dashboard" asp-action="WithdrawFunds" method="post" id="withdraw-funds-form">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ReturnTo" value="@Model.ReturnTo" />
+                <div class="modal-body">
+                    <div class="p-3 mb-3 rounded d-flex justify-content-between align-items-center" style="background:#132235; border:1px solid #1e3a5f;">
+                        <div>
+                            <small class="text-uppercase d-block" style="color:#94a3b8; font-size:0.72rem; letter-spacing:0.05em;">Available Withdrawable Balance</small>
+                            <strong class="fs-4 text-success" data-cash-balance>₹@Model.SimulatedCashBalance.ToString("N2")</strong>
+                        </div>
+                        <div class="d-flex gap-1">
+                            <button type="button" class="btn btn-sm btn-outline-info withdraw-pct-btn" data-pct="0.25" @(Model.SimulatedCashBalance < 1m ? "disabled" : "")>25%</button>
+                            <button type="button" class="btn btn-sm btn-outline-info withdraw-pct-btn" data-pct="0.50" @(Model.SimulatedCashBalance < 1m ? "disabled" : "")>50%</button>
+                            <button type="button" class="btn btn-sm btn-outline-success withdraw-pct-btn" data-pct="1.00" @(Model.SimulatedCashBalance < 1m ? "disabled" : "")>Max</button>
+                        </div>
+                    </div>
+
+                    @if (Model.SimulatedCashBalance < 1m)
+                    {
+                        <div class="alert alert-warning py-2 small mb-3">
+                            Minimum withdrawal amount is ₹1.00. Your available wallet balance is currently insufficient for withdrawal.
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label for="withdraw-amount-input" class="form-label small fw-semibold text-light">Withdrawal Amount (₹) <span class="text-danger">*</span></label>
+                        <input type="number"
+                               id="withdraw-amount-input"
+                               name="Amount"
+                               class="form-control"
+                               min="1.00"
+                               max="@Model.SimulatedCashBalance.ToString("F2", CultureInfo.InvariantCulture)"
+                               step="0.01"
+                               placeholder="Enter amount (min ₹1.00)"
+                               data-max-balance="@Model.SimulatedCashBalance.ToString("F2", CultureInfo.InvariantCulture)"
+                               style="background:#132032; border-color:#2a4365; color:#f8fafc;"
+                               required />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-light d-block">Payout Method <span class="text-danger">*</span></label>
+                        <div class="d-flex gap-3">
+                            <label class="d-flex align-items-center gap-2 text-light" style="cursor:pointer;">
+                                <input type="radio" name="PayoutMethod" value="UPI" checked onchange="window.toggleWithdrawMethod('UPI')" />
+                                <span>UPI Instant Payout</span>
+                            </label>
+                            <label class="d-flex align-items-center gap-2 text-light" style="cursor:pointer;">
+                                <input type="radio" name="PayoutMethod" value="Bank Transfer" onchange="window.toggleWithdrawMethod('Bank Transfer')" />
+                                <span>Bank Transfer (IMPS/NEFT)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="withdraw-upi-fields" class="mb-3">
+                        <label for="withdraw-upi-input" class="form-label small fw-semibold text-light">UPI ID <span class="text-danger">*</span></label>
+                        <input type="text"
+                               id="withdraw-upi-input"
+                               name="UpiId"
+                               value="@Model.InvestorUpiId"
+                               class="form-control"
+                               placeholder="yourname@upi"
+                               style="background:#132032; border-color:#2a4365; color:#f8fafc;"
+                               required />
+                        <small style="color:#94a3b8;">Example: investor@okicici or mobile@ybl</small>
+                    </div>
+
+                    <div id="withdraw-bank-fields" class="mb-3" style="display:none;">
+                        <div class="row g-2">
+                            <div class="col-md-7">
+                                <label for="withdraw-bank-account" class="form-label small fw-semibold text-light">Bank Account Number <span class="text-danger">*</span></label>
+                                <input type="text"
+                                       id="withdraw-bank-account"
+                                       name="BankAccountNumber"
+                                       class="form-control"
+                                       placeholder="9 to 18 digit account no."
+                                       pattern="\d{9,18}"
+                                       style="background:#132032; border-color:#2a4365; color:#f8fafc;" />
+                            </div>
+                            <div class="col-md-5">
+                                <label for="withdraw-ifsc" class="form-label small fw-semibold text-light">IFSC Code <span class="text-danger">*</span></label>
+                                <input type="text"
+                                       id="withdraw-ifsc"
+                                       name="IfscCode"
+                                       class="form-control text-uppercase"
+                                       placeholder="HDFC0001234"
+                                       maxlength="11"
+                                       style="background:#132032; border-color:#2a4365; color:#f8fafc;" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <label for="withdraw-remarks-input" class="form-label small fw-semibold text-light">Remarks (optional)</label>
+                        <input type="text"
+                               id="withdraw-remarks-input"
+                               name="Remarks"
+                               maxlength="300"
+                               class="form-control"
+                               placeholder="e.g., Profit payout to personal account"
+                               style="background:#132032; border-color:#2a4365; color:#f8fafc;" />
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top:1px solid #1e3a5f;">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="withdraw-submit-btn" class="btn btn-success fw-semibold" @(Model.SimulatedCashBalance < 1m ? "disabled" : "")>
+                        Confirm Withdrawal
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        window.toggleWithdrawMethod = function (method) {
+            var upiBox = document.getElementById("withdraw-upi-fields");
+            var bankBox = document.getElementById("withdraw-bank-fields");
+            var upiInput = document.getElementById("withdraw-upi-input");
+            var accInput = document.getElementById("withdraw-bank-account");
+            var ifscInput = document.getElementById("withdraw-ifsc");
+
+            var isBank = method === "Bank Transfer";
+            if (upiBox) upiBox.style.display = isBank ? "none" : "block";
+            if (bankBox) bankBox.style.display = isBank ? "block" : "none";
+            if (upiInput) upiInput.required = !isBank;
+            if (accInput) accInput.required = isBank;
+            if (ifscInput) ifscInput.required = isBank;
+        };
+
+        var amountInput = document.getElementById("withdraw-amount-input");
+        var modalEl = document.getElementById("withdraw-funds-modal");
+        if (modalEl && amountInput) {
+            modalEl.addEventListener("show.bs.modal", function () {
+                var balEl = document.querySelector("[data-cash-balance]");
+                if (balEl) {
+                    var parsed = parseFloat((balEl.textContent || "").replace(/[^0-9.]/g, ""));
+                    if (!isNaN(parsed) && parsed >= 0) {
+                        amountInput.setAttribute("data-max-balance", parsed.toFixed(2));
+                        amountInput.max = parsed.toFixed(2);
+                    }
+                }
+            });
+        }
+
+        document.querySelectorAll(".withdraw-pct-btn").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                if (!amountInput) return;
+                var maxBal = parseFloat(amountInput.getAttribute("data-max-balance") || "0");
+                var pct = parseFloat(btn.getAttribute("data-pct") || "0");
+                var computed = Math.floor(maxBal * pct * 100) / 100;
+                if (computed >= 1) {
+                    amountInput.value = computed.toFixed(2);
+                }
+            });
+        });
+
+        var form = document.getElementById("withdraw-funds-form");
+        if (form) {
+            form.addEventListener("submit", function () {
+                var submitBtn = document.getElementById("withdraw-submit-btn");
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = "Processing Withdrawal...";
+                }
+            });
+        }
+    })();
+</script>

@@ -89,7 +89,7 @@ namespace IPOInvestmentManagement.Controllers
 
             string password = user.Password_hash;
             user.Role = "Investor";
-            user.Created_at = DateTime.Now;
+            user.Created_at = IpoClock.Shared.NowIst;
             user.Is_active = true;
             user.Phone = user.Phone ?? string.Empty;
             user.Password_hash =
@@ -157,7 +157,7 @@ namespace IPOInvestmentManagement.Controllers
                 Email = registration.CompanyEmail,
                 Phone = registration.CompanyPhone,
                 Role = "Company",
-                Created_at = DateTime.Now,
+                Created_at = IpoClock.Shared.NowIst,
                 Is_active = true
             };
             user.Password_hash = _passwordHasher.HashPassword(user, registration.Password);
@@ -191,7 +191,7 @@ namespace IPOInvestmentManagement.Controllers
                 Phone = registration.CompanyPhone,
                 Address = registration.Address,
                 Approval_status = "Pending",
-                Created_at = DateTime.Now
+                Created_at = IpoClock.Shared.NowIst
             };
 
             HttpContext.Session.SetString("PendingRegistration", JsonSerializer.Serialize(user));

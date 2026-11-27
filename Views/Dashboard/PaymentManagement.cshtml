@@ -232,8 +232,8 @@
                                     
                                     <!-- Date & Time -->
                                     <td>
-                                        <div class="fw-semibold small">@payment.CreatedAt.ToString("dd MMM yyyy")</div>
-                                        <div class="text-muted" style="font-size: 0.75rem;">@payment.CreatedAt.ToString("hh:mm tt") IST</div>
+                                        <div class="fw-semibold small">@payment.CreatedAt.AddHours(5.5).ToString("dd MMM yyyy")</div>
+                                        <div class="text-muted" style="font-size: 0.75rem;">@payment.CreatedAt.AddHours(5.5).ToString("hh:mm tt") IST</div>
                                     </td>
 
                                     <!-- Investor Profile -->
@@ -391,7 +391,7 @@
                                         <div class="d-flex justify-content-end gap-1 flex-wrap">
                                             @if (!string.IsNullOrEmpty(payment.ReceiptNumber) || isSuccessful)
                                             {
-                                                <a class="btn btn-sm btn-outline-primary py-1 px-2" asp-controller="Dashboard" asp-action="PaymentReceipt" asp-route-paymentRecordId="@payment.PaymentRecordId" target="_blank" title="View official payment receipt">
+                                                <a class="btn btn-sm btn-outline-primary py-1 px-2" asp-controller="Dashboard" asp-action="PaymentReceipt" asp-route-paymentRecordId="@payment.PaymentRecordId" title="View official payment receipt">
                                                     &#128196; Receipt
                                                 </a>
                                             }

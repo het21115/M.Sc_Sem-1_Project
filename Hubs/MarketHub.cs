@@ -71,8 +71,8 @@ namespace IPOInvestmentManagement.Hubs
                 Title = title.Trim(),
                 Message = message.Trim(),
                 Category = string.IsNullOrWhiteSpace(category) ? "Announcement" : category.Trim(),
-                Timestamp = DateTime.Now.ToString("hh:mm:ss tt"),
-                Date = DateTime.Now.ToString("dd MMM yyyy")
+                Timestamp = IpoClock.Shared.NowIst.ToString("hh:mm:ss tt"),
+                Date = IpoClock.Shared.NowIst.ToString("dd MMM yyyy")
             };
 
             await Clients.All.SendAsync("ReceiveBroadcastMessage", payload);

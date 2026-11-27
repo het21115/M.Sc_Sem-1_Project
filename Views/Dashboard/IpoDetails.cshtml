@@ -85,6 +85,185 @@
             </form>
         </section>
 
+        <!-- FUNDAMENTAL SCORECARD / IPO ANALYSIS (ADMIN) -->
+        <section class="admin-user-details-card mt-4" style="border-top: 4px solid #0d9488;" id="admin-scorecard-section">
+            <div class="admin-section-head d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <span class="admin-overline" style="color: #0d9488;">EQUITY ANALYST SCORECARD</span>
+                    <h2>IPO Fundamental Analysis &amp; Scorecard</h2>
+                    <p class="text-muted mb-0">Publish or update the official ROE, growth rates, and analyst summary displayed on the Company and Investor dashboards.</p>
+                </div>
+                <span class="badge @(Model.Analysis != null ? "bg-success" : "bg-warning text-dark")">
+                    @(Model.Analysis != null ? $"Published ({Model.Analysis.Updated_at:dd MMM yyyy})" : "Pending Analyst Review")
+                </span>
+            </div>
+
+            @{
+                (string Unit, decimal? DisplayVal) SplitCurrencyUnit(decimal? rawAmount)
+                {
+                    if (!rawAmount.HasValue) return ("Cr", null);
+                    decimal abs = Math.Abs(rawAmount.Value);
+                    if (abs >= 10000000m) return ("Cr", Math.Round(rawAmount.Value / 10000000m, 4));
+                    if (abs >= 100000m) return ("L", Math.Round(rawAmount.Value / 100000m, 4));
+                    if (abs >= 1000m && rawAmount.Value % 1000m == 0m) return ("K", Math.Round(rawAmount.Value / 1000m, 4));
+                    return ("INR", rawAmount.Value);
+                }
+
+                var revDisplay = SplitCurrencyUnit(Model.Analysis?.Revenue);
+                var profitDisplay = SplitCurrencyUnit(Model.Analysis?.Profit);
+            }
+
+            <form asp-controller="Dashboard" asp-action="SaveIpoAnalysis" method="post" class="p-3 bg-light rounded border mt-3" id="admin-scorecard-form">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ipoId" value="@Model.Ipo.IPO_id" />
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">Return on Equity / ROE</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" name="roe" class="form-control scorecard-rate-input" data-preview="preview-roe" value="@(Model.Analysis?.ROE?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" placeholder="e.g. 18.50" />
+                            <select name="roeUnit" class="form-select scorecard-rate-unit" data-preview="preview-roe" style="max-width: 118px;">
+                                <option value="pct" selected>%</option>
+                                <option value="ratio">Ratio (x)</option>
+                                <option value="bps">bps</option>
+                            </select>
+                        </div>
+                        <small class="text-muted d-block mt-1" id="preview-roe"></small>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">Revenue Growth YoY</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" name="revenueGrowth" class="form-control scorecard-rate-input" data-preview="preview-rev-growth" value="@(Model.Analysis?.Revenue_growth?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" placeholder="e.g. 24.10" />
+                            <select name="revenueGrowthUnit" class="form-select scorecard-rate-unit" data-preview="preview-rev-growth" style="max-width: 118px;">
+                                <option value="pct" selected>%</option>
+                                <option value="ratio">Ratio (x)</option>
+                                <option value="bps">bps</option>
+                            </select>
+                        </div>
+                        <small class="text-muted d-block mt-1" id="preview-rev-growth"></small>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary">Profit Growth YoY</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" name="profitGrowth" class="form-control scorecard-rate-input" data-preview="preview-profit-growth" value="@(Model.Analysis?.Profit_growth?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" placeholder="e.g. 31.40" />
+                            <select name="profitGrowthUnit" class="form-select scorecard-rate-unit" data-preview="preview-profit-growth" style="max-width: 118px;">
+                                <option value="pct" selected>%</option>
+                                <option value="ratio">Ratio (x)</option>
+                                <option value="bps">bps</option>
+                            </select>
+                        </div>
+                        <small class="text-muted d-block mt-1" id="preview-profit-growth"></small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-secondary">Revenue</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" name="revenue" class="form-control scorecard-currency-input" data-preview="preview-revenue" value="@(revDisplay.DisplayVal?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))" placeholder="e.g. 145.00" />
+                            <select name="revenueUnit" class="form-select scorecard-currency-unit" data-preview="preview-revenue" style="max-width: 135px;">
+                                <option value="Cr" selected="@(revDisplay.Unit == "Cr" ? "selected" : null)">Crores (Cr)</option>
+                                <option value="L" selected="@(revDisplay.Unit == "L" ? "selected" : null)">Lakhs (L)</option>
+                                <option value="K" selected="@(revDisplay.Unit == "K" ? "selected" : null)">Thousands (K)</option>
+                                <option value="INR" selected="@(revDisplay.Unit == "INR" ? "selected" : null)">Rupees (₹)</option>
+                            </select>
+                        </div>
+                        <small class="text-muted d-block mt-1" id="preview-revenue"></small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold small text-secondary">Profit After Tax (PAT)</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" name="profit" class="form-control scorecard-currency-input" data-preview="preview-profit" value="@(profitDisplay.DisplayVal?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))" placeholder="e.g. 18.00" />
+                            <select name="profitUnit" class="form-select scorecard-currency-unit" data-preview="preview-profit" style="max-width: 135px;">
+                                <option value="Cr" selected="@(profitDisplay.Unit == "Cr" ? "selected" : null)">Crores (Cr)</option>
+                                <option value="L" selected="@(profitDisplay.Unit == "L" ? "selected" : null)">Lakhs (L)</option>
+                                <option value="K" selected="@(profitDisplay.Unit == "K" ? "selected" : null)">Thousands (K)</option>
+                                <option value="INR" selected="@(profitDisplay.Unit == "INR" ? "selected" : null)">Rupees (₹)</option>
+                            </select>
+                        </div>
+                        <small class="text-muted d-block mt-1" id="preview-profit"></small>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold small text-secondary">Analyst Summary / Scorecard Commentary</label>
+                        <textarea name="analysisSummary" rows="2" class="form-control form-control-sm" placeholder="Summarize competitive position, valuation, margin trend, and key risks...">@(Model.Analysis?.Analysis_summary)</textarea>
+                    </div>
+                </div>
+                <div class="mt-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <small class="text-muted">
+                        @if (Model.Financial != null)
+                        {
+                            string FormatCompactInr(decimal? amt)
+                            {
+                                if (!amt.HasValue) return "-";
+                                decimal v = amt.Value;
+                                if (Math.Abs(v) >= 10000000m) return $"₹{v:N2} ({v / 10000000m:N2} Cr)";
+                                if (Math.Abs(v) >= 100000m) return $"₹{v:N2} ({v / 100000m:N2} L)";
+                                return $"₹{v:N2}";
+                            }
+                            <text>Latest Filing (FY @Model.Financial.Financial_year): Revenue @FormatCompactInr(Model.Financial.Revenue) &middot; PAT @FormatCompactInr(Model.Financial.Profit) &middot; Net Worth @FormatCompactInr(Model.Financial.Net_worth)</text>
+                        }
+                        else
+                        {
+                            <text>No financial statement filed yet for this IPO.</text>
+                        }
+                    </small>
+                    <button type="submit" class="btn btn-sm btn-success fw-semibold">Save Fundamental Scorecard</button>
+                </div>
+            </form>
+            <script>
+                (function () {
+                    var currencyMult = { Cr: 10000000, L: 100000, K: 1000, INR: 1 };
+                    var rateMult = { pct: 1, ratio: 100, bps: 0.01 };
+
+                    function formatInrShort(rupees) {
+                        var abs = Math.abs(rupees);
+                        var formatted = rupees.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        if (abs >= 10000000) return "Saved as ₹" + formatted + " (" + (rupees / 10000000).toFixed(2) + " Cr)";
+                        if (abs >= 100000) return "Saved as ₹" + formatted + " (" + (rupees / 100000).toFixed(2) + " L)";
+                        return "Saved as ₹" + formatted;
+                    }
+
+                    function updateCurrencyPreview(previewId) {
+                        var input = document.querySelector('.scorecard-currency-input[data-preview="' + previewId + '"]');
+                        var select = document.querySelector('.scorecard-currency-unit[data-preview="' + previewId + '"]');
+                        var preview = document.getElementById(previewId);
+                        if (!input || !select || !preview) return;
+                        var val = parseFloat(input.value);
+                        if (isNaN(val)) {
+                            preview.textContent = "";
+                            return;
+                        }
+                        var rupees = val * (currencyMult[select.value] || 1);
+                        preview.textContent = formatInrShort(rupees);
+                    }
+
+                    function updateRatePreview(previewId) {
+                        var input = document.querySelector('.scorecard-rate-input[data-preview="' + previewId + '"]');
+                        var select = document.querySelector('.scorecard-rate-unit[data-preview="' + previewId + '"]');
+                        var preview = document.getElementById(previewId);
+                        if (!input || !select || !preview) return;
+                        var val = parseFloat(input.value);
+                        if (isNaN(val)) {
+                            preview.textContent = "";
+                            return;
+                        }
+                        var pct = val * (rateMult[select.value] || 1);
+                        preview.textContent = "Saved as " + pct.toFixed(2) + "%";
+                    }
+
+                    document.querySelectorAll(".scorecard-currency-input, .scorecard-currency-unit").forEach(function (el) {
+                        var id = el.getAttribute("data-preview");
+                        el.addEventListener("input", function () { updateCurrencyPreview(id); });
+                        el.addEventListener("change", function () { updateCurrencyPreview(id); });
+                        updateCurrencyPreview(id);
+                    });
+
+                    document.querySelectorAll(".scorecard-rate-input, .scorecard-rate-unit").forEach(function (el) {
+                        var id = el.getAttribute("data-preview");
+                        el.addEventListener("input", function () { updateRatePreview(id); });
+                        el.addEventListener("change", function () { updateRatePreview(id); });
+                        updateRatePreview(id);
+                    });
+                })();
+            </script>
+        </section>
+
         <!-- AUDIT LOG & STATUS TRANSITION HISTORY -->
         <section class="admin-user-details-card mt-4">
             <div class="admin-section-head d-flex flex-wrap justify-content-between align-items-center gap-2">

@@ -101,33 +101,66 @@ namespace IPOInvestmentManagement.Services
                 .OrderByDescending(marketData => marketData.LastUpdated)
                 .ToListAsync(cancellationToken);
 
+            DateTime oneYearAgo = now.AddDays(-365);
+            List<StockPriceHistory> historicalTrades = await context.StockPriceHistories.AsNoTracking()
+                .Where(h => ids.Contains(h.IPOId) && h.Timestamp >= oneYearAgo)
+                .ToListAsync(cancellationToken);
+
             return ipos.Select(ipo =>
             {
                 listings.TryGetValue(ipo.IPO_id, out IPOListing? listing);
                 StockMarketData? nseData = marketDataRows.FirstOrDefault(r => r.IPOId == ipo.IPO_id && string.Equals(r.Exchange, "NSE", StringComparison.OrdinalIgnoreCase));
                 StockMarketData? bseData = marketDataRows.FirstOrDefault(r => r.IPOId == ipo.IPO_id && string.Equals(r.Exchange, "BSE", StringComparison.OrdinalIgnoreCase));
 
-                decimal defaultBase = listing?.NSE_listing_price
+                decimal? defaultBaseNullable = listing?.NSE_listing_price
                     ?? listing?.BSE_listing_price
                     ?? listing?.Issue_price
                     ?? ipo.Price_max
-                    ?? ipo.Price_min
-                    ?? 100m;
+                    ?? ipo.Price_min;
 
-                decimal nseCurrent = nseData?.CurrentPrice ?? listing?.NSE_closing_price ?? listing?.NSE_listing_price ?? defaultBase;
+                decimal defaultBase = defaultBaseNullable ?? 0m;
+
+                decimal? rawNseCurrent = nseData?.CurrentPrice ?? listing?.NSE_closing_price ?? listing?.NSE_listing_price ?? defaultBaseNullable;
+                decimal nseCurrent = rawNseCurrent ?? 0m;
                 decimal nsePrevious = nseData?.PreviousClose ?? listing?.NSE_listing_price ?? listing?.Issue_price ?? defaultBase;
-                decimal nseChange = nseData?.PriceChange ?? (nseCurrent - nsePrevious);
-                decimal nseChangePct = nseData?.PriceChangePercentage ?? (nsePrevious > 0 ? (nseChange / nsePrevious * 100m) : 0m);
+                decimal nseChange = nseData?.PriceChange ?? (nseCurrent > 0 && nsePrevious > 0 ? (nseCurrent - nsePrevious) : 0m);
+                decimal nseChangePct = nseData?.PriceChangePercentage ?? (nsePrevious > 0 ? Math.Round(nseChange / nsePrevious * 100m, 2) : 0m);
 
-                decimal bseCurrent = bseData?.CurrentPrice ?? listing?.BSE_closing_price ?? listing?.BSE_listing_price ?? Math.Round(defaultBase * 0.999m, 2);
+                decimal? rawBseCurrent = bseData?.CurrentPrice ?? listing?.BSE_closing_price ?? listing?.BSE_listing_price ?? defaultBaseNullable;
+                decimal bseCurrent = rawBseCurrent ?? 0m;
                 decimal bsePrevious = bseData?.PreviousClose ?? listing?.BSE_listing_price ?? listing?.Issue_price ?? defaultBase;
-                decimal bseChange = bseData?.PriceChange ?? (bseCurrent - bsePrevious);
-                decimal bseChangePct = bseData?.PriceChangePercentage ?? (bsePrevious > 0 ? (bseChange / bsePrevious * 100m) : 0m);
+                decimal bseChange = bseData?.PriceChange ?? (bseCurrent > 0 && bsePrevious > 0 ? (bseCurrent - bsePrevious) : 0m);
+                decimal bseChangePct = bseData?.PriceChangePercentage ?? (bsePrevious > 0 ? Math.Round(bseChange / bsePrevious * 100m, 2) : 0m);
 
                 decimal primaryCurrent = nseCurrent > 0 ? nseCurrent : bseCurrent;
                 decimal primaryPrevious = nsePrevious > 0 ? nsePrevious : bsePrevious;
-                decimal primaryChange = nseChange;
-                decimal primaryPercentage = nseChangePct;
+                decimal primaryChange = nseCurrent > 0 ? nseChange : bseChange;
+                decimal primaryPercentage = nseCurrent > 0 ? nseChangePct : bseChangePct;
+
+                // Calculate genuine 52-week High and Low from actual trade history
+                var ipoTrades = historicalTrades.Where(h => h.IPOId == ipo.IPO_id).ToList();
+                var historicalPriceList = ipoTrades.Select(h => h.Price)
+                    .Concat(ipoTrades.Select(h => h.HighPrice))
+                    .Concat(ipoTrades.Select(h => h.LowPrice))
+                    .Where(p => p > 0)
+                    .ToList();
+
+                if (primaryCurrent > 0) historicalPriceList.Add(primaryCurrent);
+                if (primaryPrevious > 0) historicalPriceList.Add(primaryPrevious);
+                if (nseData?.DayHigh > 0) historicalPriceList.Add(nseData.DayHigh.Value);
+                if (bseData?.DayHigh > 0) historicalPriceList.Add(bseData.DayHigh.Value);
+                if (nseData?.DayLow > 0) historicalPriceList.Add(nseData.DayLow.Value);
+                if (bseData?.DayLow > 0) historicalPriceList.Add(bseData.DayLow.Value);
+                if (listing?.NSE_listing_price > 0) historicalPriceList.Add(listing.NSE_listing_price.Value);
+                if (listing?.BSE_listing_price > 0) historicalPriceList.Add(listing.BSE_listing_price.Value);
+                if (listing?.Issue_price > 0) historicalPriceList.Add(listing.Issue_price.Value);
+
+                decimal? h52 = historicalPriceList.Any() ? historicalPriceList.Max() : (decimal?)null;
+                decimal? l52 = historicalPriceList.Any() ? historicalPriceList.Min() : (decimal?)null;
+
+                long? nseVol = nseData?.Volume;
+                long? bseVol = bseData?.Volume;
+                long? combinedVol = (nseVol.HasValue || bseVol.HasValue) ? ((nseVol ?? 0) + (bseVol ?? 0)) : (long?)null;
 
                 string stockSymbol = nseData?.StockSymbol ?? bseData?.StockSymbol ?? listing?.StockSymbol ?? (ipo.IPO_name.Length <= 8 ? ipo.IPO_name.ToUpperInvariant() : ipo.IPO_name[..8].ToUpperInvariant());
 
@@ -141,39 +174,43 @@ namespace IPOInvestmentManagement.Services
                     IssuePrice = listing?.Issue_price ?? ipo.Price_max ?? ipo.Price_min,
                     ListingPrice = listing?.NSE_listing_price ?? listing?.BSE_listing_price,
 
-                    CurrentPrice = primaryCurrent,
-                    PreviousClose = primaryPrevious,
-                    PriceChange = primaryChange,
-                    PriceChangePercentage = primaryPercentage,
-                    DayHigh = nseData?.DayHigh ?? bseData?.DayHigh ?? Math.Max(primaryCurrent, primaryPrevious),
-                    DayLow = nseData?.DayLow ?? bseData?.DayLow ?? Math.Min(primaryCurrent, primaryPrevious),
-                    Volume = (nseData?.Volume ?? 0) + (bseData?.Volume ?? 0),
+                    CurrentPrice = primaryCurrent > 0 ? primaryCurrent : (decimal?)null,
+                    PreviousClose = primaryPrevious > 0 ? primaryPrevious : (decimal?)null,
+                    PriceChange = primaryCurrent > 0 ? primaryChange : (decimal?)null,
+                    PriceChangePercentage = primaryCurrent > 0 ? primaryPercentage : (decimal?)null,
+                    DayHigh = nseData?.DayHigh ?? bseData?.DayHigh ?? (primaryCurrent > 0 ? primaryCurrent : (decimal?)null),
+                    DayLow = nseData?.DayLow ?? bseData?.DayLow ?? (primaryCurrent > 0 ? primaryCurrent : (decimal?)null),
+                    Volume = combinedVol,
                     LastUpdated = nseData?.LastUpdated ?? bseData?.LastUpdated ?? listing?.Listing_date ?? now,
 
+                    // 52-Week Actual High and Low
+                    High52w = h52,
+                    Low52w = l52,
+
                     // Dedicated NSE
-                    NsePrice = nseCurrent,
+                    NsePrice = nseCurrent > 0 ? nseCurrent : (decimal?)null,
                     NseListingPrice = listing?.NSE_listing_price,
-                    NsePreviousClose = nsePrevious,
-                    NsePriceChange = nseChange,
-                    NsePriceChangePercentage = nseChangePct,
-                    NseDayHigh = nseData?.DayHigh ?? Math.Max(nseCurrent, nsePrevious),
-                    NseDayLow = nseData?.DayLow ?? Math.Min(nseCurrent, nsePrevious),
-                    NseVolume = nseData?.Volume ?? 45000,
+                    NsePreviousClose = nsePrevious > 0 ? nsePrevious : (decimal?)null,
+                    NsePriceChange = nseCurrent > 0 ? nseChange : (decimal?)null,
+                    NsePriceChangePercentage = nseCurrent > 0 ? nseChangePct : (decimal?)null,
+                    NseDayHigh = nseData?.DayHigh ?? (nseCurrent > 0 ? nseCurrent : (decimal?)null),
+                    NseDayLow = nseData?.DayLow ?? (nseCurrent > 0 ? nseCurrent : (decimal?)null),
+                    NseVolume = nseVol,
 
                     // Dedicated BSE
-                    BsePrice = bseCurrent,
+                    BsePrice = bseCurrent > 0 ? bseCurrent : (decimal?)null,
                     BseListingPrice = listing?.BSE_listing_price,
-                    BsePreviousClose = bsePrevious,
-                    BsePriceChange = bseChange,
-                    BsePriceChangePercentage = bseChangePct,
-                    BseDayHigh = bseData?.DayHigh ?? Math.Max(bseCurrent, bsePrevious),
-                    BseDayLow = bseData?.DayLow ?? Math.Min(bseCurrent, bsePrevious),
-                    BseVolume = bseData?.Volume ?? 32000,
+                    BsePreviousClose = bsePrevious > 0 ? bsePrevious : (decimal?)null,
+                    BsePriceChange = bseCurrent > 0 ? bseChange : (decimal?)null,
+                    BsePriceChangePercentage = bseCurrent > 0 ? bseChangePct : (decimal?)null,
+                    BseDayHigh = bseData?.DayHigh ?? (bseCurrent > 0 ? bseCurrent : (decimal?)null),
+                    BseDayLow = bseData?.DayLow ?? (bseCurrent > 0 ? bseCurrent : (decimal?)null),
+                    BseVolume = bseVol,
 
-                    BestBidPrice = Math.Max(0.05m, primaryCurrent - 0.05m),
-                    BestAskPrice = primaryCurrent + 0.05m,
+                    BestBidPrice = primaryCurrent > 0 ? Math.Max(0.05m, primaryCurrent - 0.05m) : (decimal?)null,
+                    BestAskPrice = primaryCurrent > 0 ? primaryCurrent + 0.05m : (decimal?)null,
 
-                    IsAvailable = true,
+                    IsAvailable = primaryCurrent > 0,
                     IsMarketOpen = marketOpen,
                     CanTrade = marketOpen && primaryCurrent > 0,
                     IsListingToday = ipo.Listing_date?.Date == now.Date,
@@ -189,21 +226,7 @@ namespace IPOInvestmentManagement.Services
 
         private static DateTime GetIndiaStandardTime()
         {
-            try
-            {
-                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
-            }
-            catch
-            {
-                try
-                {
-                    return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata"));
-                }
-                catch
-                {
-                    return DateTime.UtcNow.AddHours(5).AddMinutes(30);
-                }
-            }
+            return IpoClock.Shared.NowIst;
         }
     }
 }

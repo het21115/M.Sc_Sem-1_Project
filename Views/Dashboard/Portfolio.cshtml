@@ -30,9 +30,9 @@
                 <p class="portfolio-intro">Live NSE and BSE price streaming, automated P&amp;L updates, and instant buy-sell simulation.</p>
             </div>
             <div class="portfolio-actions d-flex flex-wrap align-items-center gap-2">
-                <span class="badge bg-secondary-subtle text-light border border-secondary px-2 py-1 small align-self-center" title="Virtual balances can only be adjusted by a platform Administrator with an audit reason">
-                    Balance Managed by Admin
-                </span>
+                <button type="button" class="btn btn-success fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#withdraw-funds-modal" title="Withdraw funds from your investor wallet">
+                    &#128179; Withdraw Funds
+                </button>
                 <div class="dropdown d-inline-block">
                     <button class="btn btn-primary dropdown-toggle shadow-sm" type="button" id="investorReportsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                         📄 Advanced Reports (PDF)
@@ -85,6 +85,7 @@
                         </li>
                     </ul>
                 </div>
+                <a class="btn btn-outline-success fw-bold" asp-controller="Dashboard" asp-action="Index" asp-fragment="investor-sips" title="View & manage systematic investment plans">📈 Stock SIP Plans</a>
                 <a class="btn btn-outline-secondary" asp-controller="Dashboard" asp-action="Index">Back to dashboard</a>
             </div>
         </div>
@@ -92,6 +93,10 @@
         @if (TempData["InvestorMessage"] is string investorMessage)
         {
             <div class="alert alert-info investor-dashboard-alert" role="alert">@investorMessage</div>
+        }
+        @if (TempData["InvestorError"] is string investorError)
+        {
+            <div class="alert alert-danger investor-dashboard-alert" role="alert">@investorError</div>
         }
 
         <section class="portfolio-summary" aria-label="Portfolio summary">
@@ -128,7 +133,7 @@
             </div>
             <div>
                 <span>SIMULATED CASH</span>
-                <small>Available virtual balance</small>
+                <small>Available balance · <a href="#withdraw-funds-modal" class="text-success text-decoration-none fw-semibold" data-bs-toggle="modal" data-bs-target="#withdraw-funds-modal">Withdraw &rarr;</a></small>
                 <strong class="text-info" data-cash-balance>₹@Model.SimulatedCashBalance.ToString("N2")</strong>
             </div>
         </section>
@@ -239,7 +244,18 @@
                     </div>
                 </div>
 
-                <form class="portfolio-trade-form" asp-controller="Dashboard" asp-action="Buy" method="post">
+                @if (!Model.Market.IsMarketOpen)
+                {
+                    <div class="market-closed-banner p-3 mb-3 d-flex align-items-center gap-2" style="background:#131c2b; border:1px solid #ef4444; border-radius:8px;">
+                        <span class="ticker-pulse" style="width:10px; height:10px; background:#ef4444; box-shadow:0 0 8px rgba(239, 68, 68, 0.5);"></span>
+                        <div>
+                            <strong class="text-danger" style="font-size:0.9rem;">MARKET CLOSED (09:30 AM – 03:30 PM IST)</strong>
+                            <div style="font-size:0.75rem; color:#cbd5e1 !important;">Trading is closed on weekends (Saturday &amp; Sunday) and public holidays. Orders execute during active market hours.</div>
+                        </div>
+                    </div>
+                }
+
+                <form class="portfolio-trade-form" asp-controller="Dashboard" asp-action="Buy" method="post" onsubmit="const btn=this.querySelector('button[type=submit]'); if(btn){btn.disabled=true; btn.textContent='Processing Order...';}">
                     @Html.AntiForgeryToken()
                     <label>
                         Listed stock
@@ -274,8 +290,8 @@
                     <input type="hidden" name="Price" value="0" />
 
                     <div class="d-flex gap-2 mt-3">
-                        <button class="btn portfolio-buy-button flex-grow-1" type="submit">
-                            Buy at verified live price
+                        <button class="btn portfolio-buy-button flex-grow-1" type="submit" @(!Model.Market.IsMarketOpen ? "disabled style=opacity:0.5;cursor:not-allowed;" : "")>
+                            @(!Model.Market.IsMarketOpen ? "Market Closed (Trading Unavailable)" : "Buy at verified live price")
                         </button>
                     </div>
                 </form>
@@ -348,8 +364,48 @@
             }
         </section>
 
+        <section class="portfolio-card" id="portfolio-withdrawals">
+            <div class="terminal-section-head">
+                <div>
+                    <span class="terminal-overline">05 / WALLET WITHDRAWALS</span>
+                    <h2>Withdrawal Transactions</h2>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="investor-library-note">Total withdrawn: ₹@Model.TotalWithdrawnAmount.ToString("N2")</span>
+                    <button type="button" class="btn btn-sm btn-success fw-bold" data-bs-toggle="modal" data-bs-target="#withdraw-funds-modal">
+                        &#128179; New Withdrawal
+                    </button>
+                </div>
+            </div>
+            @if (Model.WithdrawalHistory.Count == 0)
+            {
+                <div class="terminal-empty">No withdrawal transactions yet. Use "New Withdrawal" to transfer funds to your UPI ID or bank account.</div>
+            }
+            else
+            {
+                <div class="transaction-list">
+                    @foreach (var wd in Model.WithdrawalHistory)
+                    {
+                        <div>
+                            <span class="transaction-badge sell">WITHDRAW</span>
+                            <strong>@wd.ReferenceNumber &middot; @wd.PayoutMethod</strong>
+                            <small>
+                                @wd.DestinationAccount &middot; @wd.CreatedAt.ToString("dd MMM yyyy, hh:mm tt") IST
+                                @if (!string.IsNullOrWhiteSpace(wd.Remarks))
+                                {
+                                    <span>&middot; @wd.Remarks</span>
+                                }
+                            </small>
+                            <b class="text-danger">-₹@wd.Amount.ToString("N2")</b>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+
         <!-- Live market modal partial -->
         <partial name="_InvestorLiveMarket" model="new DashboardViewModel { Market = Model.Market }" />
+        <partial name="_InvestorWithdrawModal" model='new IPOInvestmentManagement.Models.WalletWithdrawModalViewModel { SimulatedCashBalance = Model.SimulatedCashBalance, InvestorUpiId = Model.InvestorUpiId, ReturnTo = "Portfolio" }' />
     </main>
 </div>
 

@@ -1,4 +1,5 @@
 using IPOInvestmentManagement.Data;
+using IPOInvestmentManagement.Filters;
 using IPOInvestmentManagement.Models;
 using IPOInvestmentManagement.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -8,25 +9,39 @@ namespace IPOInvestmentManagement.Controllers
 {
     [ApiController]
     [Route("api/test-clock")]
+    [TypeFilter(typeof(TestClockAccessFilter))]
     public class IpoTestClockController : ControllerBase
     {
         private readonly IIpoClock _clock;
         private readonly IIpoStatusService _statusService;
         private readonly ApplicationDbContext _context;
+        private readonly IHostEnvironment _environment;
 
         public IpoTestClockController(
             IIpoClock clock,
             IIpoStatusService statusService,
-            ApplicationDbContext context)
+            ApplicationDbContext context,
+            IHostEnvironment environment)
         {
             _clock = clock;
             _statusService = statusService;
             _context = context;
+            _environment = environment;
+        }
+
+        private IActionResult? EnsureTestClockAccess()
+        {
+            return TestClockAccessGuard.Validate(HttpContext, _environment);
         }
 
         [HttpGet("status")]
         public IActionResult GetStatus()
         {
+            if (EnsureTestClockAccess() is { } denied)
+            {
+                return denied;
+            }
+
             return Ok(new
             {
                 isSimulated = _clock.IsSimulated,
@@ -40,6 +55,11 @@ namespace IPOInvestmentManagement.Controllers
         [HttpPost("set-time")]
         public async Task<IActionResult> SetSimulatedTime([FromQuery] string time, [FromQuery] bool syncDatabase = true)
         {
+            if (EnsureTestClockAccess() is { } denied)
+            {
+                return denied;
+            }
+
             if (!DateTime.TryParse(time, out DateTime parsedTime))
             {
                 return BadRequest(new { success = false, message = "Invalid datetime format. Example: 2026-12-07 09:30:00" });
@@ -66,6 +86,11 @@ namespace IPOInvestmentManagement.Controllers
         [HttpPost("reset-time")]
         public async Task<IActionResult> ResetSimulatedTime([FromQuery] bool syncDatabase = true)
         {
+            if (EnsureTestClockAccess() is { } denied)
+            {
+                return denied;
+            }
+
             _clock.ResetSimulatedTime();
 
             IpoStatusSyncResult? syncResult = null;
@@ -87,6 +112,11 @@ namespace IPOInvestmentManagement.Controllers
         [HttpPost("sync-now")]
         public async Task<IActionResult> SyncNow()
         {
+            if (EnsureTestClockAccess() is { } denied)
+            {
+                return denied;
+            }
+
             var result = await _statusService.SynchronizeIpoStatusesAsync();
             return Ok(result);
         }
@@ -94,6 +124,11 @@ namespace IPOInvestmentManagement.Controllers
         [HttpGet("run-all-tests")]
         public async Task<IActionResult> RunAllTests()
         {
+            if (EnsureTestClockAccess() is { } denied)
+            {
+                return denied;
+            }
+
             // Create a standardized test IPO matching user specifications:
             // - Vertex Renewable Energy IPO
             // - Opening Date: 7 December 2026, 09:30 AM IST

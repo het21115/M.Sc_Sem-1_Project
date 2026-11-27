@@ -411,7 +411,7 @@ body {
 .company-pipeline .table td { border-bottom-color: #edf1f4; color: #617082; font-size: .82rem; }
 .company-pipeline .table td:first-child { color: var(--company-ink); }
 .company-empty { background: #f6f8fa; color: #8190a0; font-size: .82rem; margin: 1.2rem 0 0; padding: 1.2rem; }
-.company-detail-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.company-detail-grid { align-items: start; display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .company-detail-panel { background: #fff; border-top: 4px solid var(--company-green); box-shadow: 0 .5rem 1.4rem rgba(23,40,61,.07); min-width: 0; padding: 1.4rem 1.5rem; }
 .company-detail-wide { grid-column: span 1; }
 .company-detail-coral { border-top-color: var(--company-coral); }
@@ -1996,6 +1996,9 @@ body {
   @keyframes admin-live-pulse-ring { 0% { opacity: 1; transform: scale(0.6); } 100% { opacity: 0; transform: scale(1.65); } }
   .admin-live-text { color: #ffffff; font-size: .8rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
   .admin-market-pill { background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.45); border-radius: 999px; color: #34d399; font-size: .62rem; font-weight: 750; letter-spacing: .06em; padding: 3px 8px; }
+  .admin-live-status-pill { border-radius: 999px; font-size: .6rem; font-weight: 750; letter-spacing: .05em; padding: 3px 8px; }
+  .admin-live-status-pill.is-open { background: rgba(16, 185, 129, 0.22); border: 1px solid rgba(52, 211, 153, 0.55); color: #6ee7b7; }
+  .admin-live-status-pill.is-closed { background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; }
   .admin-live-arrow { color: #6ee7b7; font-size: .88rem; transition: transform .2s ease, color .2s ease; }
   .admin-live-market-btn:hover .admin-live-arrow { color: #a7f3d0; transform: translate(2px, -2px); }
   .admin-page-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 0; }
@@ -2461,7 +2464,12 @@ body {
     font-size: 0.78rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+    color: #cbd5e1;
+}
+
+.admin-adjust-form .form-control::placeholder {
     color: #94a3b8;
+    opacity: 1;
 }
 
 .admin-adjust-form .form-control:focus,

@@ -739,7 +739,7 @@ namespace IPOInvestmentManagement.Services
             string phone = !string.IsNullOrWhiteSpace(_investor?.Phone) ? _investor.Phone : "N/A";
             string demat = !string.IsNullOrWhiteSpace(_investor?.DematAccountNumber) ? _investor.DematAccountNumber : $"IN300123-10{_investor?.User_id:D4}89";
             string pan = $"ABCDE{(_investor?.User_id ?? 1):D4}F";
-            string nowFormatted = DateTime.Now.ToString("dd MMM yyyy, hh:mm tt IST", CultureInfo.InvariantCulture);
+            string nowFormatted = IpoClock.Shared.NowIst.ToString("dd MMM yyyy, hh:mm tt IST", CultureInfo.InvariantCulture);
 
             // Left Column
             sb.AppendLine("0.12 0.15 0.20 rg");
@@ -999,7 +999,7 @@ namespace IPOInvestmentManagement.Services
             WriteObj(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>");
 
             // Render each page
-            string genTime = DateTime.Now.ToString("dd MMM yyyy, hh:mm tt", CultureInfo.InvariantCulture);
+            string genTime = IpoClock.Shared.NowIst.ToString("dd MMM yyyy, hh:mm tt", CultureInfo.InvariantCulture);
 
             for (int i = 0; i < pageCount; i++)
             {

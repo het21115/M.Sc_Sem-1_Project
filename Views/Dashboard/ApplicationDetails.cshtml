@@ -5,6 +5,7 @@
     var ipo = Model.Ipo;
     var allotment = Model.Allotment;
     var upiId = string.IsNullOrWhiteSpace(application.Upi_id) ? Model.Investor?.UpiId : application.Upi_id;
+    int lotSize = ipo?.Lot_size ?? 1;
 }
 
 <div class="admin-console">
@@ -21,7 +22,7 @@
                 <div><span>IPO</span><strong>@(Model.Ipo?.IPO_name ?? "Not available")</strong></div>
                 <div><span>Application number</span><strong>@(Model.Application.Application_number ?? $"#{Model.Application.Application_id}")</strong></div>
                 <div><span>Status</span><strong>@(Model.Application.Status ?? "Pending")</strong></div>
-                <div><span>Application date</span><strong>@Model.Application.Application_date.ToString("dd MMM yyyy, hh:mm tt")</strong></div>
+                <div><span>Application date</span><strong>@Model.Application.Application_date.AddHours(5.5).ToString("dd MMM yyyy, hh:mm tt") IST</strong></div>
                 <div><span>Applied lots</span><strong>@Model.Application.Applied_lots.ToString("N0")</strong></div>
                 <div><span>Applied shares</span><strong>@Model.Application.Applied_shares.ToString("N0")</strong></div>
                 <div><span>Bid price</span><strong>₹@((Model.Application.Bid_price ?? 0m).ToString("N2"))</strong></div>
@@ -48,7 +49,7 @@
                     <strong>
                         @if (Model.Payment != null)
                         {
-                            <a class="btn btn-sm btn-outline-primary py-0 px-2 font-monospace" asp-controller="Dashboard" asp-action="PaymentReceipt" asp-route-paymentRecordId="@Model.Payment.PaymentRecordId" target="_blank">
+                            <a class="btn btn-sm btn-outline-primary py-0 px-2 font-monospace" asp-controller="Dashboard" asp-action="PaymentReceipt" asp-route-paymentRecordId="@Model.Payment.PaymentRecordId">
                                 📄 @(Model.Payment.ReceiptNumber ?? "View Receipt")
                             </a>
                         }
@@ -95,6 +96,48 @@
                         &#128190; Download Allotment Advice PDF
                     </a>
                 </div>
+
+                @if (ipo.Allotment_finalized)
+                {
+                    <div class="alert alert-secondary d-flex align-items-center justify-content-between p-3 mt-3 border">
+                        <div>
+                            <strong>&#128274; Finalized Allotment (Locked)</strong>
+                            <p class="mb-0 small text-muted">Allotment for this IPO was finalized and locked on @(ipo.Allotment_finalized_at?.ToString("dd MMM yyyy, hh:mm tt") ?? "record"). Standard editing is disabled.</p>
+                        </div>
+                        <button type="button" class="btn btn-outline-warning btn-sm" onclick="var box = document.getElementById('authorized-correction-box'); box.style.display = box.style.display === 'none' ? 'block' : 'none';">
+                            &#9888; Authorized Correction Process
+                        </button>
+                    </div>
+
+                    <div id="authorized-correction-box" class="p-3 my-3 border border-warning rounded bg-light" style="display: none;">
+                        <h6 class="text-danger fw-bold">&#9888; Authorized Allotment Correction Process</h6>
+                        <p class="small text-muted mb-3">SEBI Auditable Action: Adjusting a finalized allotment requires an auditable justification, verifies lot size and applied shares invariants, recalculates refunds, synchronizes demat holdings, and records an official Audit Log.</p>
+                        <form asp-controller="Dashboard" asp-action="AuthorizeAllotmentCorrection" method="post" onsubmit="return confirm('WARNING: You are about to execute an authorized correction on a finalized allotment. This action will adjust demat shares and bank unblocks. Are you sure?');">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="ApplicationId" value="@application.Application_id" />
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Corrected Lots (0 to @application.Applied_lots):</label>
+                                    <input type="number" name="CorrectedLots" class="form-control form-control-sm" min="0" max="@application.Applied_lots" value="@allotment.Allotted_lots" required />
+                                    <span class="small text-muted">Allotted shares must equal Lots &times; @lotSize</span>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Allotment Price (₹):</label>
+                                    <input type="number" name="CorrectedPrice" class="form-control form-control-sm" step="0.01" min="@(ipo.Price_min ?? 0)" max="@(ipo.Price_max ?? decimal.MaxValue)" value="@allotment.Allotment_price.ToString("F2")" />
+                                </div>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small fw-bold text-danger">Mandatory Auditable Justification (Min 10 characters):</label>
+                                <textarea name="CorrectionReason" class="form-control form-control-sm" rows="2" placeholder="State regulatory, audit, or technical discrepancy reason for this correction..." required minlength="10"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Authorization Confirmation Passcode:</label>
+                                <input type="text" name="AuthorizationPasscode" class="form-control form-control-sm" placeholder="Type CONFIRM-CORRECTION" required />
+                            </div>
+                            <button type="submit" class="btn btn-danger btn-sm">Authorize & Commit Correction</button>
+                        </form>
+                    </div>
+                }
             }
             @if (Model.Payment?.UnblockedAmount > 0 && Model.Payment.RefundStatus != "Completed")
             {
@@ -123,11 +166,12 @@
                 }
                 @{
                     var todayIst = DateTime.UtcNow.AddHours(5.5).Date;
+                    bool isIpoCancelledOrRejected = string.Equals(ipo.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) || string.Equals(ipo.Status, "Rejected", StringComparison.OrdinalIgnoreCase);
                     bool isClosed = todayIst > ipo.Close_date.Date || string.Equals(ipo.Status, "Closed", StringComparison.OrdinalIgnoreCase) || string.Equals(ipo.Status, "Listed", StringComparison.OrdinalIgnoreCase);
                     bool hasAllotmentDate = ipo.Allotment_date.HasValue;
                     bool isAllotmentDateReached = hasAllotmentDate && todayIst >= ipo.Allotment_date!.Value.Date;
-                    bool canProcessAllotment = isClosed && isAllotmentDateReached;
-                    int lotSize = ipo.Lot_size ?? 1;
+                    bool canProcessAllotment = isClosed && isAllotmentDateReached && !ipo.Allotment_finalized && !isIpoCancelledOrRejected;
+                    lotSize = ipo?.Lot_size ?? lotSize;
                     decimal defaultPrice = (application.Application_amount ?? 0m) / (application.Applied_shares > 0 ? application.Applied_shares : 1);
                     if (defaultPrice <= 0m) { defaultPrice = ipo.Price_max ?? ipo.Price_min ?? 0m; }
                 }
@@ -220,7 +264,15 @@
                 else if (allotment is null && !canProcessAllotment && !string.Equals(application.Status, "Rejected", StringComparison.OrdinalIgnoreCase) && !string.Equals(application.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
                 {
                     <p class="admin-muted admin-allotment-note">
-                        @if (!isClosed)
+                        @if (isIpoCancelledOrRejected)
+                        {
+                            <text>Allotment cannot be processed because this IPO issue has been @(ipo?.Status?.ToLowerInvariant() ?? "closed").</text>
+                        }
+                        else if (ipo.Allotment_finalized)
+                        {
+                            <text>Allotment for this IPO has been finalized and locked. Normal allotment processing is disabled.</text>
+                        }
+                        else if (!isClosed)
                         {
                             <text>Allotment can be processed only after the IPO bidding window closes (Closing date: @ipo.Close_date.ToString("dd MMM yyyy")).</text>
                         }

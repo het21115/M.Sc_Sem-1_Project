@@ -21,22 +21,22 @@
                 @if (Model.IsSimulationActive)
                 {
                     <span class="badge bg-warning text-dark px-2 py-1" id="chart-sim-badge" style="font-size:0.75rem;" title="Simulation Mode: Market prices are simulated within realistic configurable limits.">
-                        ⚠️ SIMULATED (DEV)
+                        ⚠️ SIMULATED DATA (DEV)
                     </span>
                 }
                 else if (Model.IsStale)
                 {
                     <span class="badge bg-warning text-dark px-2 py-1" id="chart-stale-badge" style="font-size:0.75rem;" title="@(Model.StaleWarning ?? "Live exchange quote feed is delayed or offline.")">
-                        ⚠️ STALE FEED
+                        ⚠️ STALE DATA
                     </span>
                 }
                 else
                 {
                     <span class="badge bg-success text-white px-2 py-1" id="chart-live-badge" style="font-size:0.75rem;" title="Connected to Licensed Market-Data Feed (@Model.DataSource)">
-                        ✓ LIVE EXCHANGE
+                        ● LIVE DATA
                     </span>
                 }
-                <span class="badge @(Model.IsMarketOpen ? "bg-success" : "bg-danger") px-2 py-1" style="font-size:0.75rem;">
+                <span class="badge @(Model.IsMarketOpen ? "bg-success" : "bg-danger") px-2 py-1" id="chart-market-status-badge" style="font-size:0.75rem;">
                     @(Model.IsMarketOpen ? "● MARKET OPEN" : "○ MARKET CLOSED")
                 </span>
                 <span class="badge bg-dark border border-secondary text-light px-2 py-1" id="chart-source-badge" style="font-size:0.72rem;">
@@ -71,12 +71,24 @@
 
         <!-- Big Price Display -->
         <div class="stock-price-block my-3">
-            <div class="stock-main-price" id="chart-main-price" data-nse-price="@Model.IpoId">₹@nsePrice.ToString("N2")</div>
-            <div class="stock-price-change @(isUp ? "profit" : "loss")" id="chart-price-delta" data-nse-change="@Model.IpoId">
-                <span class="delta-val" id="chart-delta-val">@(isUp ? "+" : "")₹@priceChange.ToString("N2")</span>
-                <span class="delta-pct" id="chart-delta-pct">(@(isUp ? "+" : "")@priceChangePct.ToString("F2")%)</span>
-                <span class="delta-tf" id="chart-delta-tf">1D</span>
-            </div>
+            @if (Model.CurrentPrice.HasValue && Model.CurrentPrice.Value > 0)
+            {
+                <div class="stock-main-price" id="chart-main-price" data-nse-price="@Model.IpoId">₹@nsePrice.ToString("N2")</div>
+                <div class="stock-price-change @(isUp ? "profit" : "loss")" id="chart-price-delta" data-nse-change="@Model.IpoId">
+                    <span class="delta-val" id="chart-delta-val">@(isUp ? "+" : "")₹@priceChange.ToString("N2")</span>
+                    <span class="delta-pct" id="chart-delta-pct">(@(isUp ? "+" : "")@priceChangePct.ToString("F2")%)</span>
+                    <span class="delta-tf" id="chart-delta-tf">1D</span>
+                </div>
+            }
+            else
+            {
+                <div class="stock-main-price text-muted" id="chart-main-price" data-nse-price="@Model.IpoId" style="font-size:1.6rem;">Price Unavailable</div>
+                <div class="stock-price-change text-muted" id="chart-price-delta" data-nse-change="@Model.IpoId">
+                    <span class="delta-val" id="chart-delta-val">--</span>
+                    <span class="delta-pct" id="chart-delta-pct">(--)</span>
+                    <span class="delta-tf" id="chart-delta-tf">1D</span>
+                </div>
+            }
         </div>
 
         <!-- Real-time Chart Canvas Viewport -->
@@ -131,7 +143,7 @@
             <div class="d-flex align-items-center gap-1">
                 <span class="text-muted" id="chart-last-updated-text" style="font-size:0.7rem;">Updated: @(Model.LastUpdated?.ToString("hh:mm:ss tt") ?? "Live")</span>
                 <span id="chart-data-source-pill" class="badge @(Model.IsSimulationActive ? "bg-dark text-warning border border-warning" : (Model.IsStale ? "bg-dark text-warning border border-warning" : "bg-dark text-success border border-success"))">
-                    @(Model.IsSimulationActive ? "SIMULATED" : (Model.IsStale ? "STALE / OFFLINE" : "EXCHANGE FEED"))
+                    @(Model.IsSimulationActive ? "SIMULATED" : (Model.IsStale ? "STALE DATA" : "LIVE DATA"))
                 </span>
             </div>
         </div>
@@ -155,11 +167,11 @@
                 <div class="range-labels">
                     <div>
                         <span class="range-sub">Today's Low</span>
-                        <strong id="perf-today-low">₹@(Model.DayLow?.ToString("N2") ?? nsePrice.ToString("N2"))</strong>
+                        <strong id="perf-today-low">@(Model.DayLow.HasValue && Model.DayLow.Value > 0 ? $"₹{Model.DayLow.Value:N2}" : (nsePrice > 0 ? $"₹{nsePrice:N2}" : "Unavailable"))</strong>
                     </div>
                     <div class="text-end">
                         <span class="range-sub">Today's High</span>
-                        <strong id="perf-today-high">₹@(Model.DayHigh?.ToString("N2") ?? nsePrice.ToString("N2"))</strong>
+                        <strong id="perf-today-high">@(Model.DayHigh.HasValue && Model.DayHigh.Value > 0 ? $"₹{Model.DayHigh.Value:N2}" : (nsePrice > 0 ? $"₹{nsePrice:N2}" : "Unavailable"))</strong>
                     </div>
                 </div>
                 <div class="range-bar-track">
@@ -173,11 +185,11 @@
                 <div class="range-labels">
                     <div>
                         <span class="range-sub">52-Week Low</span>
-                        <strong id="perf-52w-low">₹@((nsePrice * 0.70m).ToString("N2"))</strong>
+                        <strong id="perf-52w-low">@(Model.Low52w.HasValue && Model.Low52w.Value > 0 ? $"₹{Model.Low52w.Value:N2}" : "Unavailable")</strong>
                     </div>
                     <div class="text-end">
                         <span class="range-sub">52-Week High</span>
-                        <strong id="perf-52w-high">₹@((nsePrice * 1.35m).ToString("N2"))</strong>
+                        <strong id="perf-52w-high">@(Model.High52w.HasValue && Model.High52w.Value > 0 ? $"₹{Model.High52w.Value:N2}" : "Unavailable")</strong>
                     </div>
                 </div>
                 <div class="range-bar-track">
@@ -190,27 +202,27 @@
             <div class="stock-fundamentals-grid mt-4">
                 <div class="fund-item">
                     <span>Open Price</span>
-                    <strong id="perf-open">₹@prevClose.ToString("N2")</strong>
+                    <strong id="perf-open">@(prevClose > 0 ? $"₹{prevClose:N2}" : "Unavailable")</strong>
                 </div>
                 <div class="fund-item">
                     <span>Prev. Close</span>
-                    <strong id="perf-prev-close">₹@prevClose.ToString("N2")</strong>
+                    <strong id="perf-prev-close">@(prevClose > 0 ? $"₹{prevClose:N2}" : "Unavailable")</strong>
                 </div>
                 <div class="fund-item">
                     <span>Volume</span>
-                    <strong id="perf-volume">@((Model.Volume ?? 45000).ToString("N0"))</strong>
+                    <strong id="perf-volume">@(Model.Volume.HasValue && Model.Volume.Value > 0 ? Model.Volume.Value.ToString("N0") : "Unavailable")</strong>
                 </div>
                 <div class="fund-item">
                     <span>Lower Circuit</span>
-                    <strong id="perf-lower-circuit" class="text-danger">₹@((prevClose * 0.80m).ToString("N2"))</strong>
+                    <strong id="perf-lower-circuit" class="text-danger">@(prevClose > 0 ? $"₹{(prevClose * 0.80m):N2}" : "Unavailable")</strong>
                 </div>
                 <div class="fund-item">
                     <span>Upper Circuit</span>
-                    <strong id="perf-upper-circuit" class="text-success">₹@((prevClose * 1.20m).ToString("N2"))</strong>
+                    <strong id="perf-upper-circuit" class="text-success">@(prevClose > 0 ? $"₹{(prevClose * 1.20m):N2}" : "Unavailable")</strong>
                 </div>
                 <div class="fund-item">
                     <span>Best Bid / Ask</span>
-                    <strong id="perf-bid-ask">₹@((Model.BestBidPrice ?? (nsePrice - 0.05m)).ToString("N2")) / ₹@((Model.BestAskPrice ?? (nsePrice + 0.05m)).ToString("N2"))</strong>
+                    <strong id="perf-bid-ask">@(Model.BestBidPrice.HasValue ? $"₹{Model.BestBidPrice.Value:N2}" : (nsePrice > 0 ? $"₹{(nsePrice - 0.05m):N2}" : "Unavailable")) / @(Model.BestAskPrice.HasValue ? $"₹{Model.BestAskPrice.Value:N2}" : (nsePrice > 0 ? $"₹{(nsePrice + 0.05m):N2}" : "Unavailable"))</strong>
                 </div>
             </div>
         </div>
@@ -287,15 +299,27 @@
     <div class="stock-chart-bottombar fixed-bottom" style="max-width:820px; margin:0 auto; left:0; right:0;">
         @if (string.Equals(Context.Session.GetString("UserRole"), "Investor", StringComparison.OrdinalIgnoreCase))
         {
-            <button type="button" class="btn btn-chart-sip" onclick="window.triggerSimulatedSip()">
+            <button type="button" class="btn btn-chart-sip" onclick="window.openStockSipModal(@Model.IpoId, '@Model.StockSymbol', '@Model.CompanyName.Replace("'", "\\'")', @nsePrice, '@Model.Exchange')">
                 SIP
             </button>
-            <button type="button" class="btn btn-chart-sell" onclick="window.openFastTrade(@Model.IpoId, '@Model.IpoName.Replace("'", "\\'")', '@Model.StockSymbol', @nsePrice, @bsePrice, 0, null, 'SELL')">
-                Sell
-            </button>
-            <button type="button" class="btn btn-chart-buy" onclick="window.openFastTrade(@Model.IpoId, '@Model.IpoName.Replace("'", "\\'")', '@Model.StockSymbol', @nsePrice, @bsePrice, 0, null, 'BUY')">
-                Buy
-            </button>
+            @if (Model.IsMarketOpen)
+            {
+                <button type="button" class="btn btn-chart-sell" onclick="window.openFastTrade(@Model.IpoId, '@Model.IpoName.Replace("'", "\\'")', '@Model.StockSymbol', @nsePrice, @bsePrice, 0, null, 'SELL')">
+                    Sell
+                </button>
+                <button type="button" class="btn btn-chart-buy" onclick="window.openFastTrade(@Model.IpoId, '@Model.IpoName.Replace("'", "\\'")', '@Model.StockSymbol', @nsePrice, @bsePrice, 0, null, 'BUY')">
+                    Buy
+                </button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-chart-sell" disabled style="opacity:0.6; cursor:not-allowed;" title="Market Closed (Trading active Mon-Fri, 09:30 AM to 03:30 PM IST)">
+                    Sell (Closed)
+                </button>
+                <button type="button" class="btn btn-chart-buy" disabled style="opacity:0.6; cursor:not-allowed;" title="Market Closed (Trading active Mon-Fri, 09:30 AM to 03:30 PM IST)">
+                    Buy (Closed)
+                </button>
+            }
         }
         else
         {
@@ -308,20 +332,23 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        if (window.openStockLiveChart) {
-            state.currentChartStock = {
-                ipoId: @Model.IpoId,
-                symbol: "@Model.StockSymbol",
-                companyName: "@Model.CompanyName.Replace("\"", "\\\"")",
-                ipoName: "@Model.IpoName.Replace("\"", "\\\"")",
-                exchange: "@Model.Exchange",
-                timeframe: "1D",
-                isCandle: false
-            };
-            if (typeof initCanvasEvents === "function") initCanvasEvents();
-            if (typeof window.loadStockChartData === "function") {
-                window.loadStockChartData(@Model.IpoId, "1D", "@Model.Exchange");
-            }
+        const stockData = {
+            ipoId: @Model.IpoId,
+            symbol: "@Model.StockSymbol",
+            companyName: "@Model.CompanyName.Replace("\"", "\\\"")",
+            ipoName: "@Model.IpoName.Replace("\"", "\\\"")",
+            exchange: "@Model.Exchange",
+            timeframe: "1D",
+            isCandle: false
+        };
+        if (typeof window.setCurrentChartStock === "function") {
+            window.setCurrentChartStock(stockData);
+        } else if (window.marketState) {
+            window.marketState.currentChartStock = stockData;
+        }
+        if (typeof initCanvasEvents === "function") initCanvasEvents();
+        if (typeof window.loadStockChartData === "function") {
+            window.loadStockChartData(@Model.IpoId, "1D", "@Model.Exchange");
         }
     });
 </script>
